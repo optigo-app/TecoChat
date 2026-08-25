@@ -1,0 +1,29 @@
+@use "@/src/global.scss" as *;
+
+.app-layout {
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
+    box-sizing: border-box;
+
+    &__content {
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: 0;
+        box-sizing: border-box;
+        transition: margin-left $transition-duration ease;
+
+        // Mobile-first: sidebar is a drawer, so no left margin.
+        // Safe-area padding keeps content clear of notches / home indicators.
+        padding-left: var(--safe-left);
+        padding-right: var(--safe-right);
+        padding-bottom: var(--safe-bottom);
+
+        // Desktop: restore fixed sidebar offset via margin-left (set inline).
+        @media (min-width: 768px) {
+            padding-left: 0;
+            padding-right: 0;
+            padding-bottom: 0;
+        }
+    }
+}

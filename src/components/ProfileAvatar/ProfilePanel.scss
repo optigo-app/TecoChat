@@ -1,0 +1,154 @@
+@use "../../global.scss" as *;
+
+.profile-panel-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    // Full-screen container: dynamic viewport height with fallback
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: var(--color-surface);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    animation: slideInFromLeft 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.08);
+    -webkit-tap-highlight-color: transparent;
+
+    @keyframes slideInFromLeft {
+        from {
+            transform: translateX(-100%);
+            opacity: 0.8;
+        }
+
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    .profile-panel-header {
+        display: flex;
+        align-items: center;
+        // Use --safe-top for notched devices, with a sensible base height
+        min-height: calc(64px + var(--safe-top, 0px));
+        padding: var(--safe-top, 0px) var(--space-sm, 20px) 0;
+        gap: var(--space-xs, 10px);
+        border-bottom: 1px solid $sidebar-borderColor;
+
+        .header_title {
+            font-family: $font-family;
+            font-weight: 500;
+            color: $titleColor;
+            margin: 0;
+            // Fluid typography for the header title
+            font-size: clamp(1rem, 1vw + 0.8rem, 1.25rem);
+        }
+
+        .back-btn {
+            color: $text2ndColor;
+            transition: all 0.2s ease;
+            // Ensure tap target is at least 44x44px
+            min-width: 44px;
+            min-height: 44px;
+
+            &:hover {
+                background: $hover-bg;
+                color: $primary-main;
+            }
+        }
+    }
+
+    .profile-panel-body {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        .avatar-section {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            // Fluid padding: smaller on mobile, larger on desktop
+            padding: var(--space-xl, 40px) 0;
+
+            .avatar-wrapper {
+                position: relative;
+
+                .large-avatar {
+                    border: 4px solid var(--color-surface);
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+                    transition: transform 0.3s ease;
+
+                    &:hover {
+                        transform: scale(1.02);
+                    }
+                }
+            }
+        }
+
+        .info-section {
+            width: 100%;
+            background-color: var(--color-surface);
+            // Fluid padding
+            padding: var(--space-md, 24px) var(--space-lg, 30px);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
+            margin-bottom: var(--space-xs, 10px);
+
+            .info-label {
+                // Fluid typography
+                font-size: clamp(0.78rem, 0.4vw + 0.7rem, 0.85rem);
+                margin-bottom: var(--space-xs, 8px);
+                color: $text2ndColor;
+            }
+
+            .info-value {
+                // Fluid typography
+                font-size: clamp(1rem, 0.8vw + 0.85rem, 1.1rem);
+                color: $titleColor;
+                font-weight: 500;
+                text-transform: capitalize;
+            }
+
+            .info-desc {
+                // Fluid typography
+                font-size: clamp(0.78rem, 0.4vw + 0.7rem, 0.85rem);
+                color: $text2ndColor;
+                line-height: 1.5;
+            }
+        }
+    }
+
+    // ── Mobile-specific overrides (<= 768px) ──────────────────────────
+    @media (max-width: 768px) {
+        .profile-panel-header {
+            // Respect safe-area inset on notched devices
+            padding: var(--safe-top, 0px) var(--space-xs, 16px) 0;
+            min-height: calc(56px + var(--safe-top, 0px));
+            gap: var(--space-xs, 8px);
+
+            .back-btn {
+                min-width: 44px;
+                min-height: 44px;
+            }
+        }
+
+        .profile-panel-body {
+            .avatar-section {
+                // Smaller padding on mobile
+                padding: var(--space-lg, 24px) 0;
+            }
+
+            .info-section {
+                // Smaller padding on mobile
+                padding: var(--space-sm, 16px) var(--space-md, 20px);
+                margin-bottom: var(--space-xs, 8px);
+            }
+        }
+    }
+}

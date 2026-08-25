@@ -1,0 +1,527 @@
+@use "@/src/global.scss" as *;
+
+// ── Media Viewer Container ───────────────────────────────────────────────────
+// Uses theme surface for background (light = white, dark = dark surface)
+.media-viewer-container {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    width: 100%;
+    background: var(--color-surface);
+    overflow: hidden;
+    position: relative;
+}
+
+// ── Header ───────────────────────────────────────────────────────────────────
+.media-viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px;
+    padding-top: max(8px, var(--safe-top));
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+    z-index: 100;
+    height: 60px;
+
+    .media-viewer-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }
+
+    .media-viewer-user-info {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+    }
+
+    .media-viewer-username {
+        font-family: $font-family;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: var(--color-title);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .media-viewer-timestamp {
+        font-family: $font-family;
+        font-size: 11px;
+        margin-top: 2px;
+        color: var(--color-text-secondary);
+    }
+
+    .media-viewer-header-right {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .media-viewer-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+
+        .toolbar-btn {
+            color: var(--color-text-secondary);
+            padding: 8px;
+            border-radius: 10px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: var(--color-hover-bg);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+
+            &:hover {
+                color: $primary-main;
+                background: var(--color-hover-bg-strong);
+                transform: scale(1.08);
+            }
+
+            &:active {
+                transform: scale(0.95);
+            }
+
+            svg {
+                stroke-width: 1.8;
+                transition: transform 0.2s ease;
+            }
+
+            &:hover svg {
+                transform: scale(1.1);
+            }
+        }
+
+        .toolbar-divider {
+            width: 1px;
+            height: 20px;
+            background: var(--color-border);
+            margin: 0 6px;
+        }
+
+        .media-viewer-close {
+            &:hover {
+                background-color: rgba(244, 67, 54, 0.12);
+                color: #d32f2f;
+            }
+        }
+    }
+}
+
+// ── Content area ─────────────────────────────────────────────────────────────
+.media-viewer-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.media-viewer-display {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    width: 100%;
+}
+
+.media-viewer-swiper {
+    width: 100%;
+    height: 100%;
+
+    .swiper-slide {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+}
+
+.media-viewer-slide {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    position: relative;
+}
+
+// ── Reaction overlay (bottom-left of slide) ──────────────────────────────────
+.media-viewer-reaction-group {
+    position: absolute;
+    bottom: 45px;
+    left: 40px;
+    z-index: 1000;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    &:hover {
+        transform: scale(1.05);
+    }
+
+    .reaction-pills {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 24px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+
+        [data-theme="dark"] & {
+            background: rgba(35, 35, 51, 0.95);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .reaction-icons {
+            display: flex;
+            align-items: center;
+
+            .Emoji,
+            img,
+            span {
+                border: 2px solid #fff;
+                border-radius: 50%;
+                background: #fff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 16px;
+
+                [data-theme="dark"] & {
+                    border-color: rgba(35, 35, 51, 1);
+                    background: rgba(35, 35, 51, 1);
+                }
+            }
+        }
+    }
+}
+
+.media-content {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    user-select: none;
+    -webkit-user-drag: none;
+
+    &.loading {
+        opacity: 0;
+    }
+
+    &.loaded {
+        opacity: 1;
+        transition: opacity 0.3s ease;
+    }
+}
+
+// ── Navigation arrows ────────────────────────────────────────────────────────
+.media-viewer-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 50;
+    opacity: 0.7;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    color: var(--color-title);
+    background: var(--color-hover-bg);
+
+    &:hover {
+        background: var(--color-hover-bg-strong);
+        color: $primary-main;
+        opacity: 1;
+        transform: translateY(-50%) scale(1.1);
+    }
+
+    &.prev {
+        left: 20px;
+    }
+
+    &.next {
+        right: 20px;
+    }
+}
+
+// ── Footer / Thumbnails ──────────────────────────────────────────────────────
+.media-viewers-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 10px;
+    padding-bottom: var(--safe-bottom, 0);
+    z-index: 100;
+    flex-shrink: 0;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+
+    .media-count {
+        font-family: $font-family;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--color-title);
+        padding-top: 6px;
+    }
+
+    .media-viewer-thumbnails {
+        display: flex;
+        gap: 10px;
+        padding: 4px 10px 8px;
+        max-width: 95%;
+        overflow-x: auto;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+
+        .thumbnail {
+            flex-shrink: 0;
+            width: 72px;
+            height: 72px;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid var(--color-border);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0.6;
+            position: relative;
+
+            &:hover {
+                opacity: 0.9;
+                transform: translateY(-4px);
+                border-color: var(--color-border);
+            }
+
+            &.active {
+                opacity: 1;
+                border-color: $primary-main;
+                border-width: 2px;
+                box-shadow: 0 0 15px rgba($primary-main, 0.4);
+            }
+
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+
+            .thumbnail-video,
+            .thumbnail-document {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: var(--color-surface-elevated);
+                color: var(--color-title);
+            }
+
+            .thumbnail-video-icon {
+                width: 40px;
+                height: 40px;
+                object-fit: contain;
+                display: block;
+                margin: auto;
+            }
+
+            .thumbnail-icon {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                &.pdf { color: #f24e1e; background: rgba(242, 78, 30, 0.1); }
+                &.doc { color: #2b579a; background: rgba(43, 87, 154, 0.1); }
+                &.sheet { color: #217346; background: rgba(33, 115, 70, 0.1); }
+                &.ppt { color: #d24726; background: rgba(210, 71, 38, 0.1); }
+                &.archive { color: #ffa000; background: rgba(255, 160, 0, 0.1); }
+                &.code { color: #7c4dff; background: rgba(124, 77, 255, 0.1); }
+                &.psd { color: #31c5f0; background: rgba(49, 197, 240, 0.1); }
+                &.apk { color: #16a34a; background: rgba(22, 163, 74, 0.1); }
+                &.default { color: #64748b; background: rgba(100, 116, 139, 0.1); }
+            }
+        }
+    }
+}
+
+// ── Document preview ─────────────────────────────────────────────────────────
+// Uses theme elevated surface for both light & dark
+.document-preview {
+    width: min(520px, 92%);
+    padding: 24px;
+    background: var(--color-surface-elevated);
+    border-radius: 16px;
+    border: 1px solid var(--color-border);
+    color: var(--color-title);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+
+    .document-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .document-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 14px;
+        background: var(--color-hover-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        &.pdf { color: #f24e1e; background: rgba(242, 78, 30, 0.1); }
+        &.doc { color: #2b579a; background: rgba(43, 87, 154, 0.1); }
+        &.sheet { color: #217346; background: rgba(33, 115, 70, 0.1); }
+        &.ppt { color: #d24726; background: rgba(210, 71, 38, 0.1); }
+        &.archive { color: #ffa000; background: rgba(255, 160, 0, 0.1); }
+        &.code { color: #7c4dff; background: rgba(124, 77, 255, 0.1); }
+        &.psd { color: #31c5f0; background: rgba(49, 197, 240, 0.1); }
+        &.apk { color: #16a34a; background: rgba(22, 163, 74, 0.1); }
+        &.default { color: #64748b; background: rgba(100, 116, 139, 0.1); }
+    }
+
+    .document-info {
+        flex: 1;
+        min-width: 0;
+
+        .document-name {
+            font-family: $font-family;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--color-title);
+        }
+
+        .document-size {
+            font-size: 14px;
+            color: var(--color-text-secondary);
+        }
+    }
+
+    .document-actions {
+        display: flex;
+        gap: 12px;
+
+        .document-action {
+            flex: 1;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: $font-family;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+
+            &.primary {
+                background: $primary-main;
+                color: #fff;
+
+                &:hover {
+                    opacity: 0.9;
+                }
+            }
+        }
+    }
+}
+
+// ── Caption ──────────────────────────────────────────────────────────────────
+.media-viewer-caption {
+    padding: 12px 20px;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    color: var(--color-title);
+    font-family: $font-family;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    text-align: center;
+    max-height: 120px;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+// ── Mobile adjustments ───────────────────────────────────────────────────────
+@media (max-width: 768px) {
+    .media-viewer-header {
+        padding: 10px;
+
+        .media-viewer-toolbar {
+            gap: 0;
+
+            .toolbar-divider {
+                margin: 0 4px;
+            }
+
+            .toolbar-btn {
+                padding: 6px;
+            }
+        }
+    }
+
+    .media-viewer-content {
+        .media-viewer-nav {
+            width: 36px;
+            height: 36px;
+
+            &.prev {
+                left: 10px;
+            }
+
+            &.next {
+                right: 10px;
+            }
+        }
+
+        .media-viewer-slide {
+            padding: 20px;
+        }
+    }
+
+    .media-viewers-footer {
+        padding-bottom: 10px;
+
+        .media-viewer-thumbnails .thumbnail {
+            width: 50px;
+            height: 50px;
+        }
+    }
+}
+
+.swiper-button-next::after,
+.swiper-button-prev::after {
+    display: none;
+}

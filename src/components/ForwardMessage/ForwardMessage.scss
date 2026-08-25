@@ -1,0 +1,212 @@
+@use "../../global.scss" as *;
+
+// ── Header ───────────────────────────────────────────────────────────────────
+.fm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+
+    .fm-headerLeft {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+
+        .fm-closeBtn {
+            margin-left: -6px;
+        }
+
+        .fm-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--color-title);
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .fm-headerIcon {
+            color: $primary-main;
+        }
+    }
+
+    .fm-closeBtn {
+        color: $text2ndColor;
+
+        &:hover {
+            background: rgba($primary-main, 0.10);
+            color: $primary-main;
+        }
+    }
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+.fm-search {
+    padding: 10px 12px 8px;
+
+    .MuiOutlinedInput-root {
+        border-radius: 999px;
+        font-size: 0.875rem;
+        background: var(--color-hover-bg);
+
+        fieldset {
+            border-color: var(--color-border);
+        }
+
+        &:hover fieldset {
+            border-color: rgba($primary-main, 0.35);
+        }
+
+        &.Mui-focused fieldset {
+            border-color: $primary-main;
+            box-shadow: 0 0 0 3px rgba($primary-main, 0.12);
+        }
+    }
+}
+
+// ── Section title ────────────────────────────────────────────────────────────
+.fm-sectionTitle {
+    padding: 8px 14px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: $text2ndColor;
+
+    &--divider {
+        margin-top: 6px;
+        border-top: 1px solid var(--color-border);
+        padding-top: 12px;
+    }
+}
+
+// ── Contact list ─────────────────────────────────────────────────────────────
+.fm-contacts {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow-y: auto;
+
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background-color: var(--color-scrollbar-thumb);
+        border-radius: 2px;
+    }
+}
+
+.fm-empty {
+    padding: 20px 14px;
+    text-align: center;
+
+    .fm-emptyText {
+        font-size: 0.85rem;
+        color: $text2ndColor;
+        font-weight: 500;
+    }
+}
+
+.fm-contactItem {
+    height: 64px;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color $transition-duration ease;
+
+    &:hover {
+        background: var(--color-hover-bg);
+    }
+
+    &.isSelected {
+        background: transparent;
+        border-left: none;
+    }
+
+    &.isHighlighted {
+        background: var(--color-hover-bg);
+    }
+
+    &.isHighlighted.isSelected {
+        background: rgba($primary-main, 0.06);
+    }
+
+    .MuiCheckbox-root {
+        padding: 6px;
+    }
+
+    .fm-rowCheckbox {
+        padding: 6px;
+        margin-left: -2px;
+        margin-right: 2px;
+    }
+
+    .MuiListItemText-root {
+        margin: 0;
+        min-width: 0;
+    }
+
+    .MuiListItemText-primary {
+        color: var(--color-title);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .MuiListItemText-secondary {
+        color: $text2ndColor;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 2px;
+    }
+}
+
+// ── Actions footer ───────────────────────────────────────────────────────────
+.fm-actions {
+    padding: 10px 12px;
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+    background: var(--color-surface);
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+}
+
+.fm-selectedFooterText {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: $text2ndColor;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fm-sendFab {
+    width: 44px !important;
+    height: 44px !important;
+    background: $primary-main !important;
+    color: #ffffff !important;
+    border-radius: 999px !important;
+    box-shadow: 0 12px 26px rgba(17, 24, 39, 0.18) !important;
+
+    &:hover {
+        background: $button-color-hover !important;
+    }
+}
+
+.fm-sendBtn.Mui-disabled {
+    background: #cccccc !important;
+    color: #ffffff !important;
+}

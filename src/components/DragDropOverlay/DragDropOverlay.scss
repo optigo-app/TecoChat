@@ -1,0 +1,57 @@
+@use "../../global.scss" as *;
+
+.drag-drop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(115, 103, 240, 0.08);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    transform: translateY(100%);
+    visibility: hidden;
+    border: 2px dashed $primary-main;
+    margin: 16px;
+    border-radius: 16px;
+
+    &.visible {
+        opacity: 1;
+        transform: translateY(0);
+        visibility: visible;
+        backdrop-filter: blur(8px);
+    }
+
+    .overlay-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+
+        .upload-icon {
+            width: 50px;
+            height: 50px;
+            margin-bottom: 24px;
+            color: $primary-main;
+            filter: drop-shadow(0 4px 12px rgba(115, 103, 240, 0.3));
+        }
+
+        .overlay-text {
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: $titleColor;
+        }
+
+        .overlay-subtext {
+            color: $text2ndColor;
+            font-size: 1.1rem;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+    }
+}

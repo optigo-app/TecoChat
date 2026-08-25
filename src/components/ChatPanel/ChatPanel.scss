@@ -1,0 +1,1098 @@
+@use "@/src/global.scss" as *;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ChatPanel — main chat conversation area
+// ═══════════════════════════════════════════════════════════════════════════
+
+.chat-panel-wrapper {
+    display: flex;
+    height: 100vh; // fallback
+    height: 100dvh;
+    width: 100%;
+    overflow: hidden;
+}
+
+.chat-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    height: 100vh; // fallback
+    height: 100dvh;
+    width: 100%;
+    background:
+        linear-gradient(var(--chat-bg-overlay), var(--chat-bg-overlay)),
+        var(--chat-bg-image);
+    background-size: auto, auto;
+    background-position: center, center;
+    background-repeat: repeat, repeat;
+    background-attachment: scroll, scroll;
+    overflow: hidden;
+    position: relative;
+
+    // Empty state — solid background, no image
+    &--empty {
+        background: var(--color-surface);
+    }
+
+    // Ensure children stack above the pattern
+    > *:not(.media-preview-overlay):not(.media-viewer-overlay) {
+        position: relative;
+        z-index: 1;
+    }
+
+    // Media preview / viewer overlays should be above everything
+    > .media-preview-overlay,
+    > .media-viewer-overlay {
+        z-index: 1000;
+    }
+
+    // Blur message list when media preview is open
+    &.media-preview-open {
+        .message-list-wrapper,
+        .message-list-scroll {
+            filter: blur(2px);
+            pointer-events: none;
+        }
+    }
+
+    // ── Empty state ─────────────────────────────────────────────────────
+    &--empty {
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+        color: $text2ndColor;
+        padding: 24px 16px;
+
+        .chat-panel__empty-title {
+            font-family: $font-family;
+            font-weight: 600;
+            font-size: clamp(1rem, 1vw + 0.8rem, 1.1rem);
+            color: $titleColor;
+        }
+
+        .chat-panel__empty-subtitle {
+            font-family: $font-family;
+            font-size: clamp(0.8rem, 0.5vw + 0.7rem, 0.875rem);
+            color: $text2ndColor;
+        }
+    }
+}
+
+// ── Chat header ──────────────────────────────────────────────────────────────
+.chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background-color: var(--color-surface, #fff);
+    border-bottom: 1px solid var(--color-border-light, rgba(0, 0, 0, 0.06));
+    flex-shrink: 0;
+    min-height: 56px;
+    gap: 8px;
+    // Safe area: use max() so we always have at least 8px, even on desktop
+    padding-top: max(0px, var(--safe-top));
+    position: relative;
+    z-index: 5;
+    -webkit-tap-highlight-color: transparent;
+
+    [data-theme="dark"] & {
+        background-color: var(--color-surface, #1a1a2e);
+        border-bottom-color: var(--color-border-light, rgba(255, 255, 255, 0.08));
+    }
+
+    // Desktop: taller header, more padding
+    @media (min-width: 768px) {
+        min-height: 64px;
+        padding: 0 24px;
+        gap: 12px;
+    }
+
+    &__left {
+        display: flex;
+        align-items: center;
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 4px 0px;
+    }
+
+    &__back {
+        color: $text2ndColor;
+        -webkit-tap-highlight-color: transparent;
+        // 44x44 touch target
+        min-width: 44px;
+        min-height: 44px;
+
+        &:hover {
+            color: $primary-main;
+        }
+    }
+
+    &__info {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+    }
+
+    &__name {
+        font-family: $font-family;
+        font-size: clamp(0.95rem, 1vw + 0.75rem, 1.05rem);
+        font-weight: 600 !important;
+        color: $titleColor;
+        line-height: 1 !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__status {
+        font-family: $font-family;
+        font-size: clamp(11px, 0.5vw + 9px, 12px);
+        color: #6b7280;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+
+        @media (min-width: 768px) {
+            max-width: 320px;
+        }
+    }
+
+    &__typing {
+        font-family: $font-family;
+        font-size: clamp(11px, 0.5vw + 9px, 12px);
+        color: $primary-main;
+        font-weight: 500;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+
+        @media (min-width: 768px) {
+            max-width: 320px;
+        }
+    }
+
+    &__right {
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+        gap: 4px;
+
+        @media (min-width: 768px) {
+            gap: 8px;
+        }
+    }
+
+    &__btn {
+        color: $text2ndColor;
+        padding: 8px;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+        -webkit-tap-highlight-color: transparent;
+        // Ensure 44x44 touch target on mobile
+        min-width: 44px;
+        min-height: 44px;
+
+        @media (min-width: 768px) {
+            min-width: 40px;
+            min-height: 40px;
+            padding: 8px;
+        }
+
+        &:hover {
+            color: $titleColor;
+            background: $hover-bg;
+        }
+    }
+}
+
+// ── Message list ─────────────────────────────────────────────────────────────
+.message-list {
+    flex: 1;
+    // Allow horizontal scrolling (wide media/code) but hide the horizontal
+    // scrollbar — vertical scrollbar stays visible.
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 8px 10px;
+    scroll-behavior: auto;
+    -webkit-overflow-scrolling: touch;
+    background: transparent;
+    overscroll-behavior: contain;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+
+    &--visible {
+        opacity: 1;
+    }
+
+    &--loading {
+        opacity: 1;
+    }
+
+    &::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    &::-webkit-scrollbar:horizontal {
+        display: none !important;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: rgba($text2ndColor, 0.3);
+        border-radius: 3px;
+    }
+
+    &::-webkit-scrollbar-thumb:horizontal {
+        display: none !important;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    &__loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        height: 100%;
+        color: $text2ndColor;
+    }
+
+    &__loading-text {
+        font-family: $font-family;
+        font-weight: 500;
+        opacity: 0.65;
+    }
+
+    &__older-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px;
+        color: $text2ndColor;
+        flex-shrink: 0;
+        background: var(--color-surface);
+        border-bottom: 1px solid $sidebar-borderColor;
+    }
+
+    &__older-text {
+        font-family: $font-family;
+        font-weight: 500;
+    }
+
+    // Desktop: more padding
+    @media (min-width: 768px) {
+        padding: 8px 16px;
+    }
+}
+
+// ── Date separator ───────────────────────────────────────────────────────────
+.date-separator {
+    display: flex;
+    justify-content: center;
+    margin: 8px 0 4px 0;
+
+    &__text {
+        font-family: $font-family;
+        font-size: clamp(11px, 0.5vw + 9px, 12px);
+        font-weight: 400;
+        color: $text2ndColor;
+        background-color: $bg-light;
+        padding: 3px 8px;
+        border-radius: 16px;
+    }
+}
+
+// ── Message rows ─────────────────────────────────────────────────────────────
+.message-row {
+    display: flex;
+    align-items: flex-end;
+    margin: 4px 0;
+    padding: 0;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+
+    // Outgoing — right aligned
+    &.outgoing {
+        justify-content: flex-end;
+    }
+
+    // Incoming — left aligned
+    &.incoming {
+        justify-content: flex-start;
+    }
+
+    // System message — centered
+    &.system {
+        justify-content: center;
+        margin: 8px 0;
+
+        .system-message {
+            background: $hover-bg;
+            border-radius: 12px;
+            padding: 4px 12px;
+            max-width: 90%;
+
+            @media (min-width: 768px) {
+                max-width: 85%;
+            }
+
+            .MuiTypography-root {
+                font-family: $font-family;
+                font-size: clamp(10px, 0.3vw + 9px, 11px);
+                color: $text2ndColor;
+                text-align: center;
+            }
+        }
+    }
+}
+
+// ── Message bubble (modifiers only — base styles in .message-bubble-wrapper) ──
+.message-bubble {
+    // Failed
+    &.failed {
+        background: rgba(211, 47, 47, 0.1);
+        border: 1px solid rgba(211, 47, 47, 0.3);
+    }
+
+    // Deleted
+    &.deleted {
+        opacity: 0.6;
+        font-style: italic;
+    }
+}
+
+// ── Message content parts ────────────────────────────────────────────────────
+.message-text {
+    font-family: $font-family;
+    font-size: clamp(13px, 0.5vw + 11px, 14px);
+    line-height: 1.45;
+    word-break: break-word;
+    color: $titleColor;
+    padding-right: 4px;
+    // WhatsApp-style: pre-wrap preserves spaces and tabs.
+    // Line breaks come from <br> tags added by renderMessageText.
+    white-space: pre-wrap;
+    // Allow text selection on message content
+    user-select: text;
+    -webkit-user-select: text;
+
+    a {
+        color: $primary-main;
+        text-decoration: underline;
+        word-break: break-word;
+    }
+
+    strong {
+        font-weight: 700;
+    }
+
+    em {
+        font-style: italic;
+    }
+
+    del {
+        text-decoration: line-through;
+    }
+
+    code {
+        font-family: monospace;
+        background: $hover-bg;
+        padding: 2px 4px;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+}
+
+.message-sender-name {
+    display: block;
+    font-family: $font-family;
+    font-size: clamp(11px, 0.5vw + 9px, 12px);
+    font-weight: 700;
+    color: $primary-main;
+    margin-bottom: 2px;
+}
+
+.message-forwarded {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    opacity: 0.7;
+
+    .MuiTypography-root {
+        font-size: clamp(10px, 0.3vw + 9px, 11px);
+        font-style: italic;
+        font-weight: 500;
+        color: $text2ndColor;
+    }
+}
+
+.message-reply-preview {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba($primary-main, 0.06);
+    cursor: pointer;
+
+    &-line {
+        width: 3px;
+        background: $primary-main;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+
+    &-content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+    }
+
+    &-sender {
+        font-size: clamp(10px, 0.3vw + 9px, 11px);
+        font-weight: 600;
+        color: $primary-main;
+        line-height: 1.2;
+    }
+
+    &-text {
+        font-size: clamp(10px, 0.3vw + 9px, 11px);
+        color: $text2ndColor;
+        line-height: 1.3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+.message-deleted {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    &-text {
+        font-size: clamp(0.78rem, 0.3vw + 0.7rem, 0.8rem);
+        color: $text2ndColor;
+        font-style: italic;
+    }
+}
+
+.message-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+    margin-top: 2px;
+
+    .message-time {
+        font-family: $font-family;
+        font-size: clamp(10px, 0.3vw + 9px, 11px);
+        opacity: 0.7;
+        line-height: 1;
+    }
+
+    .message-edited {
+        font-size: clamp(9px, 0.2vw + 8px, 10px);
+        color: $text2ndColor;
+        font-style: italic;
+    }
+
+    .message-failed {
+        font-size: clamp(9px, 0.2vw + 8px, 10px);
+        color: $error-main;
+        font-weight: 500;
+    }
+
+    .message-status-icon {
+        display: flex;
+        align-items: center;
+    }
+}
+
+// ── Typing indicator ─────────────────────────────────────────────────────────
+.typing-indicator {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    background: $sidebar-Bgcolor;
+    border: 1px solid $sidebar-borderColor;
+    border-radius: 18px;
+    border-bottom-left-radius: 4px;
+    max-width: 80px;
+
+    &__name {
+        font-family: $font-family;
+        font-size: clamp(10px, 0.3vw + 9px, 11px);
+        font-weight: 600;
+        color: $primary-main;
+    }
+
+    &__dots {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+    }
+
+    .typing-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: $text2ndColor;
+        animation: typingDot 1.4s infinite ease-in-out;
+
+        @keyframes typingDot {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+            30% {
+                transform: translateY(-6px);
+                opacity: 1;
+            }
+        }
+    }
+}
+
+// ── Scroll to bottom button ──────────────────────────────────────────────────
+.scroll-to-bottom-btn {
+    position: absolute;
+    bottom: 70px;
+    right: 16px;
+    background: $sidebar-Bgcolor !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15) !important;
+    color: $primary-main !important;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 50% !important;
+    z-index: 10;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+
+    @media (min-width: 768px) {
+        bottom: 80px;
+        right: 20px;
+        width: 40px !important;
+        height: 40px !important;
+    }
+
+    &:hover {
+        transform: scale(1.08);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+    }
+}
+
+// ── Chat input area ───────────────────────────────────────────────────────────
+.chat-input-area {
+    flex-shrink: 0;
+    padding: 8px 8px 14px 8px;
+    padding-bottom: calc(14px + var(--safe-bottom));
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    position: relative;
+    z-index: 5;
+    transition: height 0.15s ease;
+
+    @media (min-width: 768px) {
+        padding: 12px 16px 20px 16px;
+        padding-bottom: calc(20px + var(--safe-bottom));
+    }
+}
+
+.chat-input-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 20px;
+    padding: 8px 10px;
+    transition: all 0.2s ease;
+    position: relative;
+    min-height: 48px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);
+
+    @media (min-width: 768px) {
+        gap: 8px;
+        border-radius: 24px;
+        padding: 10px 14px;
+    }
+
+    [data-theme="dark"] & {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    // Focus state — themed primary glow
+    &:focus-within {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(115, 103, 240, 0.12), 0 4px 16px rgba(0, 0, 0, 0.05);
+
+        [data-theme="dark"] & {
+            box-shadow: 0 0 0 3px rgba(115, 103, 240, 0.15), 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+    }
+
+    // When editor grows multi-line, buttons stay centered (not sinking)
+    .chat-input-editor-wrapper {
+        display: flex;
+        align-items: center;
+        min-height: 36px;
+        padding: 2px 0;
+    }
+}
+
+.chat-input-btn {
+    color: $text2ndColor;
+    padding: 8px;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    // Compact on mobile — centered with input text
+    min-width: 36px;
+    min-height: 36px;
+
+    @media (min-width: 768px) {
+        min-width: 40px;
+        min-height: 40px;
+        padding: 10px;
+    }
+
+    &:hover {
+        color: $primary-main;
+        background: $hover-bg-strong;
+    }
+}
+
+.chat-input-editor-wrapper {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+}
+
+.chat-input-count {
+    position: absolute;
+    bottom: -18px;
+    right: 56px;
+    font-family: $font-family;
+    font-size: clamp(10px, 0.2vw + 8px, 11px);
+    color: $text2ndColor;
+    font-weight: 400;
+    transition: color 0.2s ease-in-out;
+
+    &.warning {
+        color: $warning-main;
+        font-weight: 600;
+    }
+}
+
+.chat-input-send {
+    color: var(--color-text-white, #fff);
+    padding: 8px;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    background-color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    // Compact on mobile — centered with input text
+    min-width: 36px;
+    min-height: 36px;
+
+    @media (min-width: 768px) {
+        min-width: 40px;
+        min-height: 40px;
+        padding: 10px;
+    }
+
+    &:hover {
+        background-color: var(--color-primary);
+        transform: scale(1.05);
+    }
+
+    &.active {
+        color: var(--color-text-white, #fff);
+        background: var(--color-primary);
+
+        &:hover {
+            background: var(--color-primary);
+            transform: scale(1.05);
+        }
+    }
+
+    &.Mui-disabled,
+    &:disabled {
+        background-color: var(--color-text-light, #ebebeb);
+        color: $text2ndColor;
+        transform: none;
+    }
+}
+
+// ── Emoji / attach panels (placeholders) ─────────────────────────────────────
+.chat-input-emoji-panel,
+.chat-input-attach-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 8px;
+    right: 8px;
+    background: $sidebar-Bgcolor;
+    border: 1px solid $sidebar-borderColor;
+    border-radius: 16px;
+    padding: 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: $text2ndColor;
+
+    @media (min-width: 768px) {
+        left: 16px;
+        right: 16px;
+    }
+}
+
+// ── Spin animation ───────────────────────────────────────────────────────────
+.spin {
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+// ── Scroll-to-bottom pulse animation ─────────────────────────────────────────
+@keyframes scrollToBottomPulse {
+    0% {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+        transform: translateY(0px) scale(1);
+    }
+    50% {
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+        transform: translateY(-1px) scale(1.03);
+    }
+    100% {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+        transform: translateY(0px) scale(1);
+    }
+}
+
+// ── Message item wrapper (new) ────────────────────────────────────────────────
+.message-item {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    position: relative;
+    padding-left: 8px;
+    padding-right: 8px;
+
+    @media (min-width: 768px) {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    &.user-message {
+        justify-content: flex-end;
+        padding-block: 4px;
+    }
+
+    &.customer-message {
+        justify-content: flex-start;
+        padding-block: 4px;
+    }
+
+    &.blink-message {
+        position: relative;
+        z-index: 3;
+        isolation: isolate;
+
+        &::after {
+            content: '';
+            position: absolute;
+            inset: -6px;
+            border-radius: 16px;
+            pointer-events: none;
+            opacity: 0;
+            background: rgba(115, 103, 240, 0.18);
+            animation: blinkAnimation 1.75s ease-in-out 5;
+
+            [data-theme="dark"] & {
+                background: rgba(184, 170, 255, 0.22);
+            }
+        }
+
+        > * {
+            position: relative;
+            z-index: 1;
+        }
+    }
+}
+
+@keyframes blinkAnimation {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+}
+
+// ── Message bubble wrapper (matches old MessageContent.scss) ──────────────────
+.message-bubble-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+    margin: 4px 0;
+    z-index: 1;
+    overflow: visible !important;
+
+    @media (min-width: 768px) {
+        max-width: 70%;
+    }
+
+    @media (min-width: 1024px) {
+        max-width: 420px;
+    }
+
+    &.outgoing {
+        align-items: flex-end;
+        margin-left: auto;
+    }
+
+    &.incoming {
+        align-items: flex-start;
+        margin-right: auto;
+    }
+
+    .message-bubble {
+        position: relative;
+        padding: 8px 10px 6px 10px;
+        border-radius: 18px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        transition: all 0.2s ease;
+        width: fit-content;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 64px;
+
+        @media (min-width: 768px) {
+            padding: 10px 12px 8px 12px;
+        }
+
+        &.text-message {
+            padding: 8px 10px 6px 10px;
+
+            @media (min-width: 768px) {
+                padding: 10px 12px 8px 12px;
+            }
+        }
+
+        &.media-message {
+            padding: 4px;
+
+            @media (min-width: 768px) {
+                padding: 6px;
+            }
+        }
+
+        &.outgoing {
+            border-bottom-right-radius: 0;
+            background-color: var(--color-bubble-outgoing);
+            color: var(--color-text-primary, #333);
+        }
+
+        &.incoming {
+            border-bottom-left-radius: 0;
+            background-color: var(--color-bubble-incoming);
+            color: var(--color-text-primary, #333);
+        }
+
+        // ── Starred message effect ───────────────────────────────────────────
+        // Small gold glow accent at the top-right corner only.
+        // Layered as background-image so it paints above the bubble's
+        // background-color — no z-index, no layout change to children.
+        &.starred {
+            background-image: radial-gradient(
+                circle at top right,
+                rgba(255, 215, 0, 0.22) 0%,
+                rgba(255, 165, 0, 0.1) 30%,
+                transparent 60%
+            );
+        }
+    }
+}
+
+// ── Messages area (new) ───────────────────────────────────────────────────────
+.messages-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+    background: transparent;
+}
+
+// ── Message reaction chip ─────────────────────────────────────────────────────
+.message-reaction {
+    font-size: clamp(13px, 0.5vw + 11px, 14px);
+    line-height: 1;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    // Ensure adequate touch target on mobile
+    min-height: 32px;
+
+    .emoji-item {
+        display: inline-flex;
+        align-items: center;
+    }
+}
+
+// ── TypoDate (date header in list) ────────────────────────────────────────────
+.typoDate {
+    font-family: $font-family;
+    font-size: clamp(11px, 0.5vw + 9px, 12px);
+    font-weight: 400;
+    color: $text2ndColor;
+    background-color: $bg-light;
+    padding: 3px 8px;
+    border-radius: 16px;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+// ── Media preview thumbnail hover-remove ──────────────────────────────────────
+.media-preview-overlay {
+    .thumb-remove-btn {
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+
+    // Show remove button on thumbnail hover
+    [class*="thumbnail"]:hover .thumb-remove-btn,
+    .thumb-remove-btn:hover {
+        opacity: 1 !important;
+    }
+}
+
+// ── Formatting toolbar ────────────────────────────────────────────────────────
+.formatting-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: $sidebar-Bgcolor;
+    border: 1px solid $sidebar-borderColor;
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+    .formatting-item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        cursor: pointer;
+        color: $text2ndColor;
+        transition: all 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+
+        @media (min-width: 768px) {
+            width: 32px;
+            height: 32px;
+        }
+
+        &:hover {
+            background: $hover-bg;
+            color: $primary-main;
+        }
+    }
+
+    .formatting-tooltip {
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-bottom: 6px;
+        background: $titleColor;
+        color: $bg-light;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        align-items: center;
+
+        .tooltip-label {
+            font-weight: 500;
+        }
+
+        .tooltip-shortcut {
+            opacity: 0.7;
+            font-size: 10px;
+        }
+    }
+
+    .formatting-item:hover .formatting-tooltip {
+        opacity: 1;
+    }
+}
+
+// ── Mobile spacing for message items ──────────────────────────────────────────
+// Mobile-first: these are the base (mobile) styles. Desktop overrides above.
+// No additional max-width media query needed — the base styles ARE mobile.
+
+// ── Read more text (matches old MessageContent.scss) ──────────────────────────
+.read-more-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--read-more-lines, 5);
+    line-clamp: var(--read-more-lines, 5);
+    overflow: hidden;
+    word-break: break-word;
+    white-space: pre-wrap;
+    font-family: $font-family;
+    font-size: clamp(13px, 0.5vw + 11px, 14px);
+    line-height: 1.45;
+    color: $titleColor;
+    user-select: text;
+    -webkit-user-select: text;
+
+    &.expanded {
+        display: block;
+        -webkit-line-clamp: unset;
+        line-clamp: unset;
+        overflow: visible;
+    }
+}
+
+// ── System message (new) ──────────────────────────────────────────────────────
+.system-message-typography {
+    font-family: $font-family;
+    font-size: clamp(11px, 0.5vw + 9px, 12px);
+    color: $text2ndColor;
+    text-align: center;
+}

@@ -1,0 +1,454 @@
+@use "@/src/global.scss" as *;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sidebar — full height, profile at bottom
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Mobile overlay ───────────────────────────────────────────────────────────
+// Covers the full screen including safe-area insets.
+.sidebar-mobile-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    // Use env() directly so the overlay extends under notches / home indicators.
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1099;
+    opacity: 0;
+    animation: sidebar-overlay-in 200ms ease forwards;
+    -webkit-tap-highlight-color: transparent;
+
+    @keyframes sidebar-overlay-in {
+        to { opacity: 1; }
+    }
+}
+
+// ── Main container ───────────────────────────────────────────────────────────
+.sidebar_mainDiv {
+    background: $sidebar-Bgcolor;
+    border-right: 1px solid $sidebar-borderColor;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    box-sizing: border-box;
+
+    // ── Mobile drawer ─────────────────────────────────────────────────────
+    &.mobile {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        // Mobile-first: 85vw drawer, capped at 320px on larger phones.
+        width: 85vw;
+        max-width: 320px;
+        min-width: 0;
+        padding: 0 var(--space-md) var(--space-md);
+        padding-top: var(--safe-top);
+        padding-bottom: var(--safe-bottom);
+        z-index: 1100;
+        transform: translateX(-100%);
+        transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+        -webkit-tap-highlight-color: transparent;
+        will-change: transform;
+
+        &.open {
+            transform: translateX(0);
+        }
+
+        // Larger touch targets for menu items on mobile.
+        .sidebar_main_link {
+            min-height: 48px;
+            padding-block: 12px;
+        }
+
+        // Close button must be easily tappable (44x44 min).
+        .mobile-close {
+            min-width: 44px;
+            min-height: 44px;
+        }
+    }
+
+    // ── Desktop fixed (full height — no header offset) ────────────────────
+    @media (min-width: 768px) {
+        min-width: 260px;
+        width: 260px;
+        height: 100vh;
+        height: 100dvh;
+        padding: 0 16px 0px 16px;
+        padding-top: var(--safe-top);
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 1000;
+        transition: width $transition-duration ease, min-width $transition-duration ease;
+
+        // Collapsed state
+        &.collapsed {
+            min-width: 76px;
+            width: 76px;
+            padding: 0 10px 10px 10px;
+            padding-top: var(--safe-top);
+
+            .agentic-chat-header {
+                justify-content: center;
+
+                &__icon {
+                    gap: 0;
+                }
+            }
+
+            .sidebar_main {
+                ul {
+                    align-items: center;
+
+                    li {
+                        a {
+                            flex-direction: column;
+                            justify-content: center;
+                            gap: 4px;
+                            width: auto;
+                            min-width: 56px;
+                            height: auto;
+                            min-height: 56px;
+                            padding: 8px 4px;
+                            border-radius: $sidebar-item-radius;
+                            border: 1px solid transparent;
+                            background: transparent;
+
+                            &:hover {
+                                transform: translateY(-1px);
+                            }
+
+                            svg {
+                                opacity: 0.9;
+                                width: 20px;
+                                height: 20px;
+                            }
+
+                            &.active {
+                                background: transparent !important;
+                                box-shadow: none !important;
+                                border-color: transparent !important;
+
+                                .sidebar-item-icon {
+                                    background: $sidebar-Activebg;
+                                    color: #fff;
+                                    box-shadow: rgba(99, 99, 99, 0.2) 0px 2px 8px 0px;
+                                }
+
+                                svg {
+                                    color: #fff !important;
+                                    opacity: 1;
+                                }
+
+                                span {
+                                    color: $text2ndColor !important;
+                                }
+                            }
+
+                            .sidebar-item-icon {
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                width: 38px;
+                                height: 38px;
+                                border-radius: 12px;
+                                transition: all 0.2s ease;
+                            }
+
+                            span {
+                                display: block;
+                                font-size: 10px;
+                                font-weight: 500;
+                                text-align: center;
+                                line-height: 1;
+                                color: $text2ndColor;
+                            }
+                        }
+                    }
+                }
+            }
+
+            .sidebar-profile {
+                justify-content: center;
+                padding: 8px 4px 0px 4px;
+            }
+
+            .powered-by {
+                padding: 6px 4px;
+
+                span {
+                    display: none;
+                }
+
+                .optigo-logo {
+                    img {
+                        max-width: 100%;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Content wrapper ──────────────────────────────────────────────────────────
+.sidebar-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow-y: hidden;
+    overflow-x: hidden;
+    padding-right: 0.25rem;
+    gap: $sidebar-section-gap;
+}
+
+.sidebar-sections {
+    display: flex;
+    flex-direction: column;
+    gap: $sidebar-section-gap;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+}
+
+// ── Header (logo + title + toggle) ───────────────────────────────────────────
+.agentic-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid $sidebar-borderColor;
+    padding-block: 0.65rem;
+    cursor: pointer;
+    transition: all $transition-duration ease;
+
+    &__icon {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .icon-bg {
+        width: 40px;
+        height: 40px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        .icon {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+    }
+
+    .title {
+        // Fluid typography: scales smoothly from mobile to desktop.
+        font-size: clamp(1.125rem, 2vw + 0.5rem, 1.5625rem);
+        font-weight: 600;
+        color: $titleColor;
+        margin: 0;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .sidebar-toggle {
+        width: 32px;
+        height: 32px;
+        border-radius: 12px;
+        border: 1px solid $sidebar-borderColor;
+        background: $hover-bg;
+        color: $text2ndColor;
+        transition: transform $transition-duration ease, background-color $transition-duration ease;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+
+        &:hover {
+            background: rgba($primary-main, 0.08);
+            color: $primary-main;
+            transform: translateY(-1px);
+        }
+    }
+
+    // No hover bg on the header section
+    &:hover {
+        opacity: 0.95;
+    }
+}
+
+// ── Menu items ───────────────────────────────────────────────────────────────
+.sidebar_main {
+    ul {
+        padding-inline-start: 0;
+        overflow-y: auto;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow-x: hidden;
+        list-style: none;
+
+        &::-webkit-scrollbar {
+            width: 0;
+            display: none;
+        }
+        scrollbar-width: none;
+    }
+
+    li {
+        margin-bottom: 0;
+        list-style: none;
+    }
+}
+
+.sidebar_main_link {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: $sidebar-item-gap;
+    padding: $sidebar-item-padding-y $sidebar-item-padding-x;
+    border: 1px solid transparent;
+    border-radius: $sidebar-item-radius;
+    text-decoration: none;
+    color: $titleColor;
+    font-weight: 500;
+    font-family: $font-family;
+    font-size: 14px;
+    transition: all $transition-duration ease;
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+
+    &:hover {
+        background-color: $hover-bg;
+        border-color: rgba($primary-main, 0.14);
+        color: $titleColor;
+        transform: translateX(2px);
+    }
+
+    &.active {
+        background: $sidebar-Activebg;
+        color: #fff !important;
+        box-shadow: rgba(99, 99, 99, 0.2) 0px 2px 8px 0px;
+
+        svg,
+        .sidebar-item-icon {
+            color: #fff;
+            opacity: 1;
+        }
+    }
+
+    .sidebar-item-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    svg {
+        width: $sidebar-icon-size;
+        height: $sidebar-icon-size;
+        color: $titleColor;
+        transition: color 0.2s ease;
+        opacity: 0.85;
+    }
+
+    span {
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+// ── Profile section at bottom ────────────────────────────────────────────────
+.sidebar-profile {
+    margin-top: auto;
+    padding: 12px 8px 0px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    border-top: 1px solid $sidebar-borderColor;
+    flex-shrink: 0;
+    min-height: 56px;
+
+    .profile-menu {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
+
+// ── Powered by section ───────────────────────────────────────────────────────
+.powered-by {
+    padding: 12px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: $font-family;
+    color: $text2ndColor;
+    flex-shrink: 0;
+    border-top: 1px solid $sidebar-borderColor;
+
+    &.collapsed {
+        padding: 6px 4px;
+
+        span {
+            display: none;
+        }
+
+        .optigo-logo {
+            img {
+                max-width: 28px;
+            }
+        }
+    }
+
+    span {
+        line-height: 1;
+        color: $text2ndColor;
+        white-space: nowrap;
+    }
+
+    .optigo-logo {
+        display: flex;
+        align-items: center;
+        height: 2rem;
+
+        img {
+            height: 100%;
+            width: auto;
+            max-width: 70px;
+            object-fit: contain;
+            filter: grayscale(1) opacity(0.7);
+            transition: filter $transition-duration ease;
+        }
+    }
+
+    &:hover {
+        .optigo-logo img {
+            filter: grayscale(0) opacity(1);
+        }
+    }
+}
+
+// ── Hamburger button (mobile) ────────────────────────────────────────────────
+.sidebar-hamburger {
+    color: $text2ndColor;
+    flex-shrink: 0;
+    min-width: 44px;
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+}

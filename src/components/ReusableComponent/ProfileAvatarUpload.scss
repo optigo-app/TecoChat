@@ -1,0 +1,49 @@
+.avatar-container {
+    position: relative;
+    display: inline-block;
+
+    .profile-avatar {
+        transition: all 0.2s ease;
+    }
+
+    .avatar-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        text-align: center;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        cursor: pointer;
+
+        &:hover {
+            opacity: 1;
+        }
+
+        span {
+            font-size: 10px;
+            margin-top: 4px;
+            line-height: 1.2;
+        }
+    }
+
+    &:hover .avatar-overlay {
+        opacity: 1;
+    }
+}
+
+.group-avatar-container {
+    .avatar-overlay {
+        opacity: 1;
+        background-color: rgba(0, 0, 0, 0.6);
+    }
+}

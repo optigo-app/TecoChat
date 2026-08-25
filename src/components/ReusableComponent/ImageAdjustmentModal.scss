@@ -1,0 +1,111 @@
+@use "../../global.scss" as *;
+
+.image-adjustment-container {
+    position: relative;
+    background: $wa-input-bg;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+
+    img {
+        display: block;
+        max-width: none;
+        max-height: none;
+        object-fit: contain;
+    }
+}
+
+.image-adjustment-container * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.MuiDialog-paper {
+    &::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: $hover-bg;
+        border-radius: 3px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: rgba($primary-main, 0.3);
+        border-radius: 3px;
+
+        &:hover {
+            background: rgba($primary-main, 0.5);
+        }
+    }
+}
+
+.image-adjustment-modal {
+    .MuiButton-contained {
+        background: $button-Bgcolor;
+        color: $button-color;
+        border-color: $button-Bordercolor;
+        font-family: $font-family;
+        text-transform: capitalize;
+        border-radius: 16px;
+
+        &:hover {
+            background-color: $button-color-hover;
+            border-color: $button-Bordercolor;
+        }
+    }
+
+    .MuiButton-outlined {
+        background: $wa-icon-bg;
+        color: $secondaryColor;
+        border-color: $wa-icon-bg;
+        font-family: $font-family;
+        text-transform: capitalize;
+        border-radius: 16px;
+
+        &:hover {
+            background-color: $button-color-hover;
+            border-color: $button-Bordercolor;
+            color: $button-color;
+        }
+    }
+
+    .MuiIconButton-root {
+        transition: all 0.2s ease;
+
+        &:hover {
+            transform: scale(1.05);
+        }
+    }
+
+    .MuiTooltip-tooltip {
+        background-color: $titleColor !important;
+        color: var(--color-text-white) !important;
+        font-family: $font-family !important;
+        font-size: 12px !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
+        box-shadow: $box-shadow-value !important;
+    }
+
+    .MuiTooltip-arrow {
+        color: $titleColor !important;
+    }
+
+    .MuiBackdrop-root {
+        background-color: $wa-overlay-bg !important;
+        backdrop-filter: blur(4px) !important;
+        animation: fadeIn 0.25s ease-out !important;
+    }
+}

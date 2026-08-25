@@ -1,0 +1,209 @@
+@use "../../global.scss" as *;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOBILE-FIRST session-check styles
+// Base styles target mobile (stacked column). Enhance at md (768px) and
+// lg (1024px) to side-by-side layout.
+// ═══════════════════════════════════════════════════════════════════════════
+
+.session-wrapper {
+    display: flex;
+    flex-direction: column; // Mobile: stacked
+    height: 100vh;
+    height: 100dvh;
+    font-family: $font-family;
+    color: $text-white;
+    position: relative;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    overflow-y: auto;
+
+    // Tablet+ : side-by-side
+    @media (min-width: 768px) {
+        flex-direction: row;
+    }
+
+    .session-left {
+        // Mobile: compact header section
+        flex: unset;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: var(--space-xl) var(--space-md);
+
+        h1 {
+            // Fluid: 1.75rem → 3.5rem
+            font-size: clamp(1.75rem, 4vw + 0.75rem, 3.5rem);
+            font-weight: 700;
+            line-height: 1.2;
+
+            span {
+                color: $primary-main;
+            }
+        }
+
+        .description {
+            margin-top: var(--space-md);
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 500px;
+            // Fluid: 0.875rem → 0.95rem
+            font-size: clamp(0.875rem, 0.5vw + 0.75rem, 0.95rem);
+            color: $secondaryColor;
+            line-height: 1.6;
+        }
+    }
+
+    .session-right {
+        // Mobile: full-width card section
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, $sidebar-Bgcolor 0%, rgba($primary-main, 0.10) 100%);
+        padding: var(--space-md);
+
+        .session-card {
+            background: $sidebar-Bgcolor;
+            border-radius: var(--radius-lg);
+            // Mobile: full-width with padding
+            padding: var(--space-lg) var(--space-md);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: var(--shadow-paper);
+
+            .logo {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                margin-bottom: var(--space-md);
+            }
+
+            .message {
+                // Fluid: 0.875rem → 1rem
+                font-size: clamp(0.875rem, 0.5vw + 0.75rem, 1rem);
+                color: $titleColor;
+                margin-bottom: var(--space-lg);
+            }
+
+            .buttons {
+                // Mobile: stacked buttons
+                display: flex;
+                flex-direction: column;
+                gap: var(--space-sm);
+
+                .btn {
+                    width: 100%;
+                    flex: unset;
+                    padding: var(--space-sm) var(--space-md);
+                    font-weight: 600;
+                    border: none;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    border-radius: var(--radius-md) !important;
+                    // Touch-friendly
+                    min-height: 48px;
+                    font-size: 16px;
+                    -webkit-tap-highlight-color: transparent;
+                    user-select: none;
+
+                    &.stay {
+                        background: $button-Bgcolor;
+                        color: $button-color;
+
+                        &:disabled {
+                            background: rgba($primary-main, 0.45);
+                            cursor: not-allowed;
+                            opacity: 0.8;
+                        }
+                    }
+
+                    &.logout {
+                        background: $button-DangerBgcolor;
+                        color: $button-Dangercolor;
+
+                        &:disabled {
+                            background: rgba($error-main, 0.45);
+                            cursor: not-allowed;
+                            opacity: 0.8;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Tablet+ : side-by-side layout enhancements
+    @media (min-width: 768px) {
+        .session-left {
+            flex: 1;
+            padding: var(--space-2xl);
+            text-align: left;
+            align-items: flex-start;
+
+            .description {
+                margin-left: 0;
+            }
+        }
+
+        .session-right {
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.1);
+
+            .session-card {
+                padding: var(--space-xl) var(--space-2xl);
+            }
+
+            .buttons {
+                flex-direction: row;
+                justify-content: space-between;
+
+                .btn {
+                    flex: 1;
+                    min-height: 44px;
+                    font-size: 0.875rem;
+                }
+            }
+        }
+    }
+
+    // Desktop : generous spacing
+    @media (min-width: 1024px) {
+        .session-left {
+            padding: 6rem;
+        }
+
+        .session-right {
+            .session-card {
+                padding: 2.5rem 3rem;
+            }
+        }
+    }
+
+    /* Loader Overlay */
+    .loader-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba($sidebar-Bgcolor, 0.9);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        backdrop-filter: blur(3px);
+        transition: opacity 0.3s ease;
+
+        .lottie-container {
+            // Fluid: 120px → 200px
+            width: clamp(120px, 20vw + 40px, 200px);
+            height: clamp(120px, 20vw + 40px, 200px);
+            margin: 0 auto;
+        }
+    }
+}

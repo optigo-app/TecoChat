@@ -1,13 +1,223 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+:root,
+[data-theme="light"] {
+  /* Font family — Poppins loaded via <link> in app/layout.tsx head.
+     Fallbacks match the old CRA app. */
+  --font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+
+  /* Brand */
+  --color-primary: #7367f0;
+  --color-primary-light: rgba(115, 103, 240, 0.16);
+  --color-primary-gradient: linear-gradient(270deg, rgba(115, 103, 240, 0.7) 0%, #7367f0 100%);
+  --color-primary-blue: #007bfc;
+
+  /* Mention text — readable on both light and dark bubble backgrounds */
+  --color-mention-text: #6356d4;
+  --color-mention-bg: rgba(115, 103, 240, 0.08);
+
+  /* Buttons */
+  --color-button-bg: linear-gradient(270deg, rgba(115, 103, 240, 0.7) 0%, #7367f0 100%);
+  --color-button-color: #ffffff;
+  --color-button-hover: #685dd8;
+  --color-button-border: #685dd8;
+  --color-button-danger-bg: linear-gradient(270deg, rgba(255, 72, 66, 0.8) 0%, #d90429 100%);
+  --color-button-danger-color: #ffffff;
+
+  /* Sidebar / surfaces */
+  --color-sidebar-bg: #ffffff;
+  --color-sidebar-border: #5a5a5a0e;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-background: #f5f5f5;
+  --color-hover-bg: rgba(0, 0, 0, 0.04);
+  --color-hover-bg-strong: rgba(255, 255, 255, 0.7);
+
+  /* Glassmorphic surfaces */
+  --color-glass-bg: rgba(255, 255, 255, 0.72);
+  --color-glass-border: rgba(255, 255, 255, 0.5);
+  --color-glass-bg-dark: rgba(35, 35, 51, 0.72);
+  --color-glass-border-dark: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --color-title: #444050;
+  --color-text-secondary: #7d7f85;
+  --color-text-2nd: #6d6b77;
+  --color-placeholder: #808080;
+  --color-text-white: #ffffff;
+  --color-text-light: #f1f1f1;
+
+  /* Status */
+  --color-success: #28c76f;
+  --color-error: #d32f2f;
+  --color-warning: #f57c00;
+  --color-info: #00cfe8;
+
+  /* Danger zone (detail panel) — theme-aware red tints */
+  --danger-bg: rgba(211, 47, 47, 0.03);
+  --danger-bg-hover: rgba(211, 47, 47, 0.08);
+  --danger-border: rgba(211, 47, 47, 0.12);
+  --danger-border-hover: rgba(211, 47, 47, 0.24);
+  --danger-icon-bg: rgba(211, 47, 47, 0.1);
+  --danger-icon-bg-hover: rgba(211, 47, 47, 0.18);
+  --danger-shadow: 0 2px 10px rgba(211, 47, 47, 0.1);
+
+  /* Borders / shadows */
+  --color-border: rgba(0, 0, 0, 0.12);
+  --color-border-light: rgba(0, 0, 0, 0.08);
+  --shadow-box: 0 4px 16px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-paper: 0px 5px 5px -3px rgba(0, 0, 0, 0.2), 0px 8px 10px 1px rgba(0, 0, 0, 0.14), 0px 3px 14px 2px rgba(0, 0, 0, 0.12);
+  --shadow-picker: 0 8px 32px rgba(115, 103, 240, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  /* Login-specific */
+  --login-background-light: rgba(115, 103, 240, 0.08);
+  --login-fieldset-border: rgba(0, 0, 0, 0.18);
+  --login-input-bg: transparent;
+
+  /* Toggle switch */
+  --color-toggle-off: rgba(0, 0, 0, 0.22);
+  --color-toggle-knob: #ffffff;
+
+  /* Chat bubble backgrounds */
+  --color-bubble-outgoing: rgba(115, 103, 240, 0.15);
+  --color-bubble-incoming: #ffffff;
+
+  /* Chat message area background */
+  --color-chat-bg: #f9fafb;
+  --color-chat-pattern: rgba(115, 103, 240, 0.025);
+  --chat-bg-image: url(/icons/bg-3-light.jpg);
+  --chat-bg-overlay: rgba(249, 250, 251, 0.80);
+
+  /* WhatsApp-style surface colors (for CreateGroup, AddConversation, dialogs) */
+  --color-wa-surface: #ffffff;
+  --color-wa-surface-2: #f5f6f6;
+  --color-wa-surface-3: #f0f2f5;
+  --color-wa-chip-bg: #f0f2f5;
+  --color-wa-text-primary: #111b21;
+  --color-wa-text-secondary: #667781;
+  --color-wa-text-tertiary: #54656f;
+  --color-wa-border-light: rgba(134, 150, 160, 0.15);
+  --color-wa-hover: rgba(134, 150, 160, 0.1);
+  --color-wa-disabled-bg: #e9edef;
+  --color-wa-overlay-bg: rgba(0, 0, 0, 0.55);
+  --color-wa-icon-bg: #ebebed;
+  --color-wa-icon-bg-hover: #7367f0;
+  --color-wa-modal-bg: #ffffff;
+  --color-wa-modal-text: #444050;
+  --color-wa-modal-header-border: #5a5a5a0e;
+  --color-wa-danger: #ea4335;
+  --color-wa-danger-hover: #d33426;
+  --color-wa-success: #00a884;
+  --color-wa-input-bg: #f8f9fa;
+  --color-wa-chip-delete: #667781;
+  --color-wa-chip-delete-hover: #3b4a54;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+[data-theme="dark"] {
+  /* Brand (unchanged) */
+  --color-primary: #7367f0;
+  --color-primary-light: rgba(115, 103, 240, 0.22);
+  --color-primary-gradient: linear-gradient(270deg, rgba(115, 103, 240, 0.7) 0%, #7367f0 100%);
+  --color-primary-blue: #3d9bff;
+
+  /* Mention text — light pill background with dark text so it's visible
+     on both dark purple outgoing bubbles and dark incoming bubbles. */
+  --color-mention-text: #2a2a3d;
+  --color-mention-bg: rgba(232, 226, 255, 0.9);
+
+  /* Buttons */
+  --color-button-bg: linear-gradient(270deg, rgba(115, 103, 240, 0.8) 0%, #7367f0 100%);
+  --color-button-color: #ffffff;
+  --color-button-hover: #8479f2;
+  --color-button-border: #8479f2;
+  --color-button-danger-bg: linear-gradient(270deg, rgba(255, 72, 66, 0.85) 0%, #d90429 100%);
+  --color-button-danger-color: #ffffff;
+
+  /* Sidebar / surfaces */
+  --color-sidebar-bg: #232333;
+  --color-sidebar-border: rgba(255, 255, 255, 0.08);
+  --color-surface: #232333;
+  --color-surface-elevated: #303045;
+  --color-background: #161622;
+  --color-hover-bg: rgba(255, 255, 255, 0.06);
+  --color-hover-bg-strong: rgba(255, 255, 255, 0.08);
+
+  /* Glassmorphic surfaces (dark) */
+  --color-glass-bg: rgba(35, 35, 51, 0.72);
+  --color-glass-border: rgba(255, 255, 255, 0.08);
+  --color-glass-bg-dark: rgba(35, 35, 51, 0.72);
+  --color-glass-border-dark: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --color-title: #e4e4ef;
+  --color-text-secondary: #a0a0b5;
+  --color-text-2nd: #a0a0b5;
+  --color-placeholder: #6c6c80;
+  --color-text-white: #ffffff;
+  --color-text-light: #34343f;
+
+  /* Status */
+  --color-success: #28c76f;
+  --color-error: #ff4d4f;
+  --color-warning: #ffb74d;
+  --color-info: #29d4f0;
+
+  /* Danger zone (detail panel) — theme-aware red tints */
+  --danger-bg: rgba(255, 77, 79, 0.05);
+  --danger-bg-hover: rgba(255, 77, 79, 0.12);
+  --danger-border: rgba(255, 77, 79, 0.15);
+  --danger-border-hover: rgba(255, 77, 79, 0.3);
+  --danger-icon-bg: rgba(255, 77, 79, 0.12);
+  --danger-icon-bg-hover: rgba(255, 77, 79, 0.22);
+  --danger-shadow: 0 2px 10px rgba(255, 77, 79, 0.15);
+
+  /* Borders / shadows */
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-light: rgba(255, 255, 255, 0.08);
+  --shadow-box: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-paper: 0px 5px 5px -3px rgba(0, 0, 0, 0.5), 0px 8px 10px 1px rgba(0, 0, 0, 0.4), 0px 3px 14px 2px rgba(0, 0, 0, 0.4);
+  --shadow-picker: 0 8px 32px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.18);
+
+  /* Login-specific */
+  --login-background-light: rgba(115, 103, 240, 0.16);
+  --login-fieldset-border: rgba(255, 255, 255, 0.18);
+  --login-input-bg: transparent;
+
+  /* Toggle switch */
+  --color-toggle-off: rgba(255, 255, 255, 0.18);
+  --color-toggle-knob: #e4e4ef;
+
+  /* Chat bubble backgrounds */
+  --color-bubble-outgoing: rgba(115, 103, 240, 0.55);
+  --color-bubble-incoming: #2a2a3d;
+
+  /* Chat message area background */
+  --color-chat-bg: #161622;
+  --color-chat-pattern: rgba(115, 103, 240, 0.04);
+  --chat-bg-image: url(/icons/bg-3-dark.png);
+  --chat-bg-overlay: rgba(22, 22, 34, 0.85);
+
+  /* WhatsApp-style surface colors (for CreateGroup, AddConversation, dialogs) */
+  --color-wa-surface: #232333;
+  --color-wa-surface-2: #2a2a3d;
+  --color-wa-surface-3: #333344;
+  --color-wa-chip-bg: #333344;
+  --color-wa-text-primary: #e4e4ef;
+  --color-wa-text-secondary: #a0a0b5;
+  --color-wa-text-tertiary: #8e8e9e;
+  --color-wa-border-light: rgba(255, 255, 255, 0.1);
+  --color-wa-hover: rgba(255, 255, 255, 0.06);
+  --color-wa-disabled-bg: #3a3a4d;
+  --color-wa-overlay-bg: rgba(0, 0, 0, 0.65);
+  --color-wa-icon-bg: #3a3a4d;
+  --color-wa-icon-bg-hover: #7367f0;
+  --color-wa-modal-bg: #2a2a3d;
+  --color-wa-modal-text: #e4e4ef;
+  --color-wa-modal-header-border: rgba(255, 255, 255, 0.08);
+  --color-wa-danger: #ff5252;
+  --color-wa-danger-hover: #ff3838;
+  --color-wa-success: #00a884;
+  --color-wa-input-bg: #1e1e2d;
+  --color-wa-chip-delete: #a0a0b5;
+  --color-wa-chip-delete-hover: #e4e4ef;
 }
 
 html {
@@ -21,14 +231,25 @@ body {
 }
 
 body {
-  min-height: 100%;
+  /* Use dynamic viewport height so mobile browser chrome doesn't cover content.
+     100dvh adjusts as the address bar shows/hides. Fallback to 100vh. */
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-title);
+  background: var(--color-background);
+  font-family: var(--font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 200ms ease, color 200ms ease;
+
+  /* App-like feel on mobile */
+  -webkit-tap-highlight-color: transparent; /* no blue flash on tap */
+  -webkit-touch-callout: none;              /* no long-press callout */
+  overscroll-behavior-y: none;              /* no rubber-band scroll bounce */
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 * {
@@ -42,8 +263,534 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+/* ── Mobile app-like helpers ─────────────────────────────────────────── */
+
+/* Safe-area insets for notched / rounded-display devices.
+   Use these on fixed headers/footers: padding: var(--safe-top) ... */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* App-like header / footer heights (mobile) */
+  --app-header-height: 56px;
+  --app-bottom-nav-height: 60px;
+
+  /* ── Standardized breakpoints (keep in sync with src/hooks/useIsMobile.ts) ── */
+  --bp-xs: 0px;
+  --bp-sm: 480px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1440px;
+  --bp-xxl: 1920px;
+  --mobile-breakpoint: 768px;
+  --tablet-breakpoint: 1024px;
+  --desktop-breakpoint: 1440px;
+
+  /* ── Fluid spacing scale (clamp = min, preferred, max) ── */
+  --space-xs: clamp(0.25rem, 0.5vw + 0.125rem, 0.5rem);
+  --space-sm: clamp(0.5rem, 1vw + 0.25rem, 0.75rem);
+  --space-md: clamp(0.75rem, 1.5vw + 0.375rem, 1rem);
+  --space-lg: clamp(1rem, 2vw + 0.5rem, 1.5rem);
+  --space-xl: clamp(1.5rem, 3vw + 0.75rem, 2.5rem);
+  --space-2xl: clamp(2rem, 5vw + 1rem, 4rem);
+
+  /* ── Fluid border radius ── */
+  --radius-sm: clamp(4px, 0.5vw + 2px, 8px);
+  --radius-md: clamp(8px, 1vw + 4px, 12px);
+  --radius-lg: clamp(12px, 1.5vw + 6px, 20px);
+  --radius-xl: clamp(16px, 2vw + 8px, 28px);
+
+  /* ── Fluid container max-widths ── */
+  --container-sm: 100%;
+  --container-md: 100%;
+  --container-lg: 100%;
+  --container-xl: 1200px;
+  --container-xxl: 1440px;
+}
+
+/* Full-height app shell — use .app-shell on the outermost wrapper */
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* App-like fixed header that respects the status-bar safe area */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding-top: var(--safe-top);
+}
+
+/* App-like fixed bottom navigation that respects the home-indicator safe area */
+.app-bottom-nav {
+  position: sticky;
+  bottom: 0;
+  z-index: 100;
+  padding-bottom: var(--safe-bottom);
+}
+
+/* Touch-friendly tap targets (min 44x44 per Apple HIG / Material guidelines) */
+.tap-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Reply preview slide-down animation (ported from old ReplyPreview.scss) */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 80px;
   }
 }
+
+@keyframes dropPulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.03); }
+}
+
+/* App-like scroll container — momentum scrolling on iOS, no scrollbars on mobile */
+.app-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Hide scrollbars on mobile but keep them on desktop */
+@media (max-width: 768px) {
+  .app-scroll::-webkit-scrollbar {
+    display: none;
+  }
+  .app-scroll {
+    scrollbar-width: none;
+  }
+}
+
+/* Media preview thumbnail strip — hide scrollbar on all sizes (scroll via mouse/drag) */
+.media-preview-thumbs::-webkit-scrollbar {
+  display: none;
+}
+.media-preview-thumbs {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* ── MUI DatePicker theming (chat header + search panel) ─────────────────── */
+/* Picker container / paper */
+.MuiPickersLayout-root {
+  background-color: var(--color-surface-elevated);
+  color: var(--color-title);
+  border-radius: 16px;
+  box-shadow: var(--shadow-picker);
+  border: 1px solid var(--color-border-light);
+  overflow: hidden;
+}
+.MuiPickersLayout-content {
+  background-color: transparent;
+}
+.MuiPickersLayout-content .MuiDateCalendar-root {
+  background-color: transparent;
+  color: var(--color-title);
+}
+
+/* Toolbar (shows selected date at top) */
+.MuiDatePickerToolbar-root,
+.MuiDateTimePickerToolbar-root {
+  background-color: var(--color-primary);
+  border-radius: 0;
+}
+.MuiDatePickerToolbar-title,
+.MuiDateTimePickerToolbar-title {
+  color: #fff;
+}
+.MuiPickersToolbarText-root {
+  color: #fff;
+}
+/* Mobile toolbar: year button, date text, pen icon — all white on primary bg */
+.MuiPickersToolbar-root .MuiButtonBase-root {
+  color: #fff;
+}
+.MuiPickersToolbar-root .MuiTypography-root {
+  color: #fff;
+}
+.MuiPickersToolbar-root .MuiIconButton-root {
+  color: #fff;
+}
+.MuiPickersToolbar-root .MuiIconButton-root:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+.MuiPickersToolbarPenIcon-root {
+  color: #fff;
+}
+
+/* Calendar header (month/year label + arrows) */
+.MuiPickersCalendarHeader-root {
+  color: var(--color-title);
+}
+.MuiPickersCalendarHeader-label {
+  color: var(--color-title);
+  font-weight: 600;
+}
+.MuiPickersArrowSwitcher-button {
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.MuiPickersArrowSwitcher-button:hover {
+  background-color: var(--color-hover-bg);
+  color: var(--color-primary);
+}
+
+/* Week day labels (Su, Mo, Tu, ...) */
+.MuiPickersCalendarHeader-dayLabels .MuiTypography-root {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* Day cells */
+.MuiPickersDay-root {
+  color: var(--color-title);
+  border-radius: 10px;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.1s ease;
+}
+.MuiPickersDay-root:hover:not(.Mui-selected):not(.Mui-disabled) {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+.MuiPickersDay-root:focus {
+  box-shadow: 0 0 0 2px rgba(115, 103, 240, 0.3);
+}
+.MuiPickersDay-root.Mui-selected {
+  background-color: var(--color-primary) !important;
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(115, 103, 240, 0.2);
+}
+.MuiPickersDay-root.Mui-selected:hover {
+  background-color: var(--color-primary) !important;
+  filter: brightness(1.08);
+}
+.MuiPickersDay-root.MuiPickersDay-today {
+  border: 1.5px solid var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+.MuiPickersDay-root.MuiPickersDay-today.Mui-selected {
+  border: 1.5px solid var(--color-primary);
+  color: #fff !important;
+}
+.MuiPickersDay-root.Mui-disabled {
+  color: var(--color-text-secondary);
+  opacity: 0.4;
+}
+
+/* Year / month views */
+.MuiPickersYear-root,
+.MuiPickersMonth-root {
+  color: var(--color-title);
+  border-radius: 10px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.MuiPickersYear-root:hover:not(.Mui-selected),
+.MuiPickersMonth-root:hover:not(.Mui-selected) {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+.MuiPickersYear-root.Mui-selected,
+.MuiPickersMonth-root.Mui-selected {
+  background-color: var(--color-primary) !important;
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(115, 103, 240, 0.2);
+}
+
+/* Action buttons (Cancel / OK) */
+.MuiDialogActions-root {
+  background-color: transparent;
+  border-top: 1px solid var(--color-border-light);
+  padding: 8px 12px;
+}
+.MuiDialogActions-root .MuiButton-root {
+  color: var(--color-primary);
+  font-weight: 600;
+  border-radius: 8px;
+  text-transform: none;
+}
+.MuiDialogActions-root .MuiButton-root:hover {
+  background-color: var(--color-primary-light);
+}
+
+/* Desktop paper (popover) */
+.MuiPickersPopper-paper {
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-picker);
+  border: 1px solid var(--color-border-light);
+  background-color: var(--color-surface-elevated);
+}
+
+/* Mobile dialog */
+.MuiDialog-paper {
+  border-radius: 16px;
+  background-color: var(--color-surface-elevated);
+}
+
+/* Prevent text selection on UI chrome (buttons, nav) for a native-app feel.
+   Content areas should opt out with .selectable. */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Chat input selection highlight — visible in both light and dark mode.
+   The default browser selection color is nearly invisible on dark editor
+   backgrounds. This ensures "select all" in the chat input is clearly visible. */
+.lexical-content-editable ::selection,
+.lexical-content-editable::selection {
+  background: #7367f0 !important;
+  color: #fff !important;
+}
+
+/* Inputs: prevent iOS auto-zoom on focus (font-size >= 16px) and style forms
+   to feel native. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Fluid typography ────────────────────────────────────────────────────── */
+/* Use these classes OR the CSS variables directly. clamp() smoothly scales
+   between min and max based on viewport width. Mobile-first (small at 320px,
+   full size at 1440px). */
+
+.text-fluid-xs   { font-size: clamp(0.625rem, 0.5vw + 0.5rem, 0.75rem); }   /* 10–12px */
+.text-fluid-sm   { font-size: clamp(0.75rem, 0.5vw + 0.625rem, 0.875rem); } /* 12–14px */
+.text-fluid-base { font-size: clamp(0.875rem, 0.5vw + 0.75rem, 1rem); }     /* 14–16px */
+.text-fluid-lg   { font-size: clamp(1rem, 1vw + 0.75rem, 1.25rem); }        /* 16–20px */
+.text-fluid-xl   { font-size: clamp(1.25rem, 2vw + 0.75rem, 1.75rem); }     /* 20–28px */
+.text-fluid-2xl  { font-size: clamp(1.5rem, 3vw + 0.75rem, 2.5rem); }       /* 24–40px */
+.text-fluid-3xl  { font-size: clamp(2rem, 4vw + 1rem, 3.5rem); }            /* 32–56px */
+
+/* ── Responsive display utilities (show/hide by breakpoint) ──────────────── */
+/* Mobile-first: .mobile-only shows on mobile, hidden on tablet+.
+   .desktop-only hidden on mobile, shows on tablet+. */
+
+.mobile-only { display: revert; }
+.tablet-only { display: none; }
+.desktop-only { display: none; }
+
+@media (max-width: 767px) {
+  .tablet-only { display: none; }
+  .desktop-only { display: none; }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .mobile-only { display: none; }
+  .tablet-only { display: revert; }
+  .desktop-only { display: none; }
+}
+
+@media (min-width: 1024px) {
+  .mobile-only { display: none; }
+  .tablet-only { display: none; }
+  .desktop-only { display: revert; }
+}
+
+/* ── Responsive flex/grid direction ──────────────────────────────────────── */
+.flex-col-mobile {
+  flex-direction: column;
+}
+@media (min-width: 768px) {
+  .flex-col-mobile {
+    flex-direction: row;
+  }
+}
+
+/* ── Responsive container ────────────────────────────────────────────────── */
+.container-responsive {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--space-md);
+  padding-right: var(--space-md);
+}
+@media (min-width: 768px) {
+  .container-responsive {
+    max-width: var(--container-lg);
+    padding-left: var(--space-lg);
+    padding-right: var(--space-lg);
+  }
+}
+@media (min-width: 1024px) {
+  .container-responsive {
+    max-width: var(--container-xl);
+  }
+}
+@media (min-width: 1440px) {
+  .container-responsive {
+    max-width: var(--container-xxl);
+  }
+}
+
+/* ── Responsive gap (flex/grid spacing) ──────────────────────────────────── */
+.gap-responsive {
+  gap: var(--space-sm);
+}
+@media (min-width: 768px) {
+  .gap-responsive {
+    gap: var(--space-md);
+  }
+}
+@media (min-width: 1024px) {
+  .gap-responsive {
+    gap: var(--space-lg);
+  }
+}
+
+/* ── Responsive padding ──────────────────────────────────────────────────── */
+.pad-responsive {
+  padding: var(--space-md);
+}
+@media (min-width: 768px) {
+  .pad-responsive {
+    padding: var(--space-lg);
+  }
+}
+@media (min-width: 1024px) {
+  .pad-responsive {
+    padding: var(--space-xl);
+  }
+}
+
+/* ── Full-height app sections (dynamic viewport) ─────────────────────────── */
+.h-screen-dvh {
+  height: 100vh;
+  height: 100dvh;
+}
+.min-h-screen-dvh {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ── Safe-area padding helpers ───────────────────────────────────────────── */
+.safe-top { padding-top: var(--safe-top); }
+.safe-bottom { padding-bottom: var(--safe-bottom); }
+.safe-left { padding-left: var(--safe-left); }
+.safe-right { padding-right: var(--safe-right); }
+.safe-x {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+.safe-y {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+.safe-all {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* ── Stacked layout (mobile) → row layout (desktop) ──────────────────────── */
+.stack-responsive {
+  display: flex;
+  flex-direction: column;
+}
+@media (min-width: 768px) {
+  .stack-responsive {
+    flex-direction: row;
+  }
+}
+
+/* ── Hide on keyboard open (when viewport height shrinks on mobile) ──────── */
+/* Uses a JS-set attribute on <html>: data-keyboard="open" */
+@media (max-width: 768px) {
+  [data-keyboard="open"] .hide-on-keyboard {
+    display: none !important;
+  }
+}
+
+/* ── Prevent layout shift on mobile when keyboard opens ──────────────────── */
+@media (max-width: 768px) {
+  .sticky-bottom-keyboard {
+    position: sticky;
+    bottom: 0;
+    transition: transform 200ms ease;
+  }
+  [data-keyboard="open"] .sticky-bottom-keyboard {
+    transform: translateY(0);
+  }
+}
+
+/* ── Responsive grid (auto-fill with min column width) ───────────────────── */
+.grid-responsive {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
+}
+@media (min-width: 480px) {
+  .grid-responsive {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .grid-responsive {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-lg);
+  }
+}
+
+/* ── Truncate text (1 line, 2 lines) ─────────────────────────────────────── */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.truncate-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Aspect ratio helpers (for media previews) ───────────────────────────── */
+.aspect-square { aspect-ratio: 1 / 1; }
+.aspect-video { aspect-ratio: 16 / 9; }
+.aspect-photo { aspect-ratio: 3 / 4; }
+
+/* ── Disable horizontal pull-to-refresh on scroll containers ─────────────── */
+.no-pull-refresh {
+  overscroll-behavior-y: contain;
+}
+
+

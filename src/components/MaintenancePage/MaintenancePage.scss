@@ -1,0 +1,63 @@
+@use "../../global.scss" as *;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOBILE-FIRST maintenance page styles
+// The component uses inline sx for most styling. This SCSS file provides
+// the 100dvh / 100vh fallback and safe-area inset support that can't be
+// expressed cleanly in a single inline style declaration.
+// ═══════════════════════════════════════════════════════════════════════════
+
+.maintenance-page {
+    // 100vh fallback for older browsers, then 100dvh for modern
+    min-height: 100vh;
+    min-height: 100dvh;
+    // Safe-area insets for notched devices
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    -webkit-tap-highlight-color: transparent;
+
+    .maintenance-icon-box {
+        // Fluid icon container: 96px → 120px
+        width: clamp(96px, 10vw + 60px, 120px) !important;
+        height: clamp(96px, 10vw + 60px, 120px) !important;
+        border-radius: clamp(20px, 3vw + 12px, 28px) !important;
+    }
+
+    .maintenance-icon-gear {
+        // Fluid gear icon: 44px → 56px
+        svg {
+            width: clamp(44px, 4vw + 32px, 56px) !important;
+            height: clamp(44px, 4vw + 32px, 56px) !important;
+        }
+    }
+
+    .maintenance-title {
+        // Fluid: 1.5rem → 2rem
+        font-size: clamp(1.5rem, 2vw + 1rem, 2rem) !important;
+    }
+
+    .maintenance-message {
+        // Fluid: 0.875rem → 0.9375rem
+        font-size: clamp(0.875rem, 0.5vw + 0.75rem, 0.9375rem) !important;
+    }
+
+    .maintenance-submessage {
+        // Fluid: 0.75rem → 0.8125rem
+        font-size: clamp(0.75rem, 0.3vw + 0.65rem, 0.8125rem) !important;
+    }
+
+    .maintenance-retry-btn {
+        // Touch-friendly: min 48px height on mobile
+        min-height: 48px;
+        // Fluid font: 0.875rem → 0.9375rem
+        font-size: clamp(0.875rem, 0.5vw + 0.75rem, 0.9375rem) !important;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+
+        @media (min-width: 768px) {
+            min-height: 44px;
+        }
+    }
+}

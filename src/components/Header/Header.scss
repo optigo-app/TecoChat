@@ -1,0 +1,140 @@
+@use "@/src/global.scss" as *;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Header — fixed top bar (mobile-first responsive)
+//
+// Mobile-first: styles target xs (0px) first, then enhance at md (768px)
+// and lg (1024px). Uses safe-area insets, fluid spacing, and 44px min
+// touch targets per the project conventions in AGENTS.md.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Responsive header height: 56px on mobile, 64px on desktop.
+$header-height-mobile: 56px;
+$header-height-desktop: 64px;
+
+.header_mainDiv {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    // Fluid horizontal padding (mobile-first) + safe-area insets for notched
+    // devices. Vertical padding is absorbed into the fixed height below.
+    padding-left: calc(var(--space-xs) + var(--safe-left));
+    padding-right: calc(var(--space-xs) + var(--safe-right));
+    padding-top: var(--safe-top);
+    background: $sidebar-Bgcolor;
+    border-bottom: 1px solid $sidebar-borderColor;
+    // Height includes the status-bar safe area so content sits below the notch.
+    height: calc(#{$header-height-mobile} + var(--safe-top));
+    backdrop-filter: blur(10px);
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+
+    // ── md (768px)+: wider horizontal padding ──────────────────────────────
+    @media (min-width: 768px) {
+        padding-left: calc(var(--space-sm) + var(--safe-left));
+        padding-right: calc(var(--space-sm) + var(--safe-right));
+        height: calc(#{$header-height-desktop} + var(--safe-top));
+    }
+
+    // ── lg (1024px)+: even more breathing room ─────────────────────────────
+    @media (min-width: 1024px) {
+        padding-left: calc(var(--space-md) + var(--safe-left));
+        padding-right: calc(var(--space-md) + var(--safe-right));
+    }
+
+    .header_main {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        height: $header-height-mobile;
+
+        @media (min-width: 768px) {
+            height: $header-height-desktop;
+        }
+    }
+}
+
+// ── Left: hamburger + logo + username ────────────────────────────────────────
+.header_left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+
+    @media (min-width: 768px) {
+        gap: var(--space-sm);
+    }
+
+    // Hamburger button — 44x44px min touch target on mobile (enforced via the
+    // .tap-target helper class in TSX). Remove the default MUI small padding
+    // so the icon centers inside the 44px box.
+    .header-hamburger {
+        color: $text2ndColor;
+        flex-shrink: 0;
+        // Ensure the full 44x44 area is tappable even though size="small".
+        padding: 8px;
+        border-radius: $header-radius;
+
+        &:hover {
+            background-color: $hover-bg;
+        }
+    }
+
+    .header_brand {
+        display: flex;
+        align-items: center;
+        gap: var(--space-xs);
+        min-width: 0;
+        padding: 4px var(--space-xs);
+        border-radius: $header-radius;
+        cursor: pointer;
+        overflow: hidden;
+        transition: background-color $transition-duration ease;
+        -webkit-tap-highlight-color: transparent;
+
+        &:hover {
+            background-color: $hover-bg;
+        }
+
+        @media (min-width: 768px) {
+            gap: var(--space-sm);
+            padding: 4px var(--space-sm);
+        }
+    }
+
+    // Logo — fluid size: smaller on mobile, larger on desktop.
+    .header_left_logo {
+        height: 22px;
+        width: auto;
+        flex: 0 0 auto;
+
+        @media (min-width: 768px) {
+            height: 28px;
+        }
+
+        @media (min-width: 1024px) {
+            height: 30px;
+        }
+    }
+}
+
+// ── Right: profile ───────────────────────────────────────────────────────────
+.header_right {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-xs);
+    min-width: 0;
+
+    @media (min-width: 768px) {
+        gap: var(--space-sm);
+    }
+}

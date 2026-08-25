@@ -1,0 +1,143 @@
+@use "@/src/global.scss" as *;
+
+.lexical-editor-container {
+    border: none;
+    min-height: 24px;
+    max-height: 120px;
+    overflow-y: auto;
+    position: relative;
+    padding: 6px 4px;
+    box-sizing: border-box;
+    font-family: $font-family;
+    width: 100%;
+    // Use block instead of flex to avoid Chrome's "unwanted focusing behavior"
+    // warning when content editable is inside a flex container.
+    display: block;
+
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: rgba($text2ndColor, 0.3);
+        border-radius: 2px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .lexical-content-editable {
+        outline: none;
+        width: 100%;
+        min-height: 20px;
+        font-size: clamp(0.9rem, 0.5vw + 0.8rem, 0.95rem);
+        line-height: 1.5;
+        tab-size: 1;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: $titleColor;
+
+        // Selection highlight — visible in both light and dark mode.
+        // Uses a solid color that contrasts against both light and dark
+        // editor backgrounds. CSS variable in rgba() doesn't work in SCSS,
+        // so we use the primary color hex directly.
+        ::selection {
+            background: #7367f0;
+            color: #fff;
+        }
+
+        p {
+            margin: 0;
+        }
+
+        .editor-text-bold {
+            font-weight: bold;
+        }
+
+        .editor-text-italic {
+            font-style: italic;
+        }
+
+        .editor-text-strikethrough {
+            text-decoration: line-through;
+        }
+
+        .editor-text-code {
+            font-family: monospace;
+            background: $hover-bg;
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+
+        .editor-quote {
+            border-left: 4px solid $sidebar-borderColor;
+            padding-left: 8px;
+            margin-left: 0;
+            color: $text2ndColor;
+        }
+
+        .editor-list-ol {
+            padding: 0;
+            margin: 0 0 0 24px;
+        }
+
+        .editor-list-ul {
+            padding: 0;
+            margin: 0 0 0 24px;
+        }
+
+        .editor-listitem {
+            margin: 0;
+        }
+    }
+
+    .lexical-placeholder {
+        color: $text2ndColor;
+        opacity: 0.7;
+        overflow: hidden;
+        position: absolute;
+        text-overflow: ellipsis;
+        top: 50%;
+        transform: translateY(-50%);
+        left: 8px;
+        right: 8px;
+        font-size: clamp(0.9rem, 0.5vw + 0.8rem, 0.95rem);
+        font-family: $font-family;
+        user-select: none;
+        display: inline-block;
+        pointer-events: none;
+        line-height: 1.5;
+        white-space: nowrap;
+    }
+
+    // ── Mention chip in editor ──────────────────────────────────────────────
+    .editor-mention-chip {
+        color: var(--color-mention-text);
+        background-color: var(--color-mention-bg, rgba(115, 103, 240, 0.1));
+        padding: 1px 4px;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+        user-select: all;
+        display: inline;
+        transition: background-color 0.15s ease, color 0.15s ease;
+
+        &:hover {
+            background-color: var(--color-primary);
+            color: #fff;
+        }
+    }
+}
+
+// ── Mention dropdown animation (used by MUI Popper) ──────────────────────────
+@keyframes mentionDropdownIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

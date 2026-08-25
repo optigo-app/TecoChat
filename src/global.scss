@@ -1,0 +1,137 @@
+// SCSS variables mapped to CSS custom properties so the entire app
+// (MUI + SCSS) switches between light and dark mode via [data-theme].
+// Derived rgba() values are pre-computed as their own CSS variables
+// since SCSS color functions can't operate on runtime CSS vars.
+
+$button-Bgcolor: var(--color-button-bg);
+$button-color: var(--color-button-color);
+$button-color-hover: var(--color-button-hover);
+$button-Bordercolor: var(--color-button-border);
+$button-DangerBgcolor: var(--color-button-danger-bg);
+$button-DangerBgcolor-hover: #c20225;
+$button-Dangercolor: var(--color-button-danger-color);
+
+$sidebar-Activebg: var(--color-primary-gradient) !important;
+$sidebar-Bgcolor: var(--color-sidebar-bg);
+$sidebar-borderColor: var(--color-sidebar-border);
+$side-bar-boxShadow: var(--shadow-box);
+$hover-bg: var(--color-hover-bg);
+$hover-bg-strong: var(--color-hover-bg-strong);
+$sidebar-padding: 16px;
+$sidebar-section-gap: 12px;
+$sidebar-item-gap: 10px;
+$sidebar-item-padding-y: 10px;
+$sidebar-item-padding-x: 12px;
+$sidebar-item-radius: 12px;
+$sidebar-icon-size: 20px;
+$sidebar-icon-stroke: 2;
+$sidebar-header-icon-size: 40px;
+$sidebar-tag-gap: 10px;
+$sidebar-tag-dot-size: 10px;
+
+$header-height: 3.2rem;
+$header-padding-x: 12px;
+$header-padding-y: 8px;
+$header-radius: 14px;
+
+$font-family: var(--font-family);
+$titleColor: var(--color-title);
+$secondaryColor: var(--color-text-secondary);
+$text2ndColor: var(--color-text-2nd);
+$placeholderColor: var(--color-placeholder);
+$text-white: var(--color-text-white);
+$text-light: var(--color-text-light);
+$bg-light: var(--color-text-light);
+
+$box-shadow-value: var(--shadow-box);
+$paper-shadow-value: var(--shadow-paper);
+$transition-duration: 200ms;
+
+// Primary Colors
+$primary-main: var(--color-primary);
+$primary-light: var(--color-primary-light);
+$primary-light-bg: var(--color-primary-light);
+
+$success-main: var(--color-success);
+$success-light: #c8e6c9;
+$success-light-bg: rgba(40, 199, 111, 0.16);
+
+// Error Colors
+$error-main: var(--color-error);
+$error-light: #ffcdd2;
+$error-light-bg: rgba(211, 47, 47, 0.16);
+
+// Warning Colors
+$warning-main: var(--color-warning);
+$warning-light: #ffe0b2;
+$warning-light-bg: rgba(245, 124, 0, 0.16);
+
+// Info Colors
+$info-main: var(--color-info);
+$info-light: #b3e5fc;
+$info-light-bg: rgba(0, 207, 232, 0.16);
+
+$new-main: #a6a2d18a;
+$new-light: #33299f;
+$support-bg: #e3e3e3;
+$support-main: $titleColor;
+$support-light: #e3e3e3;
+
+$dark-bg: #6788f394;
+$dark-main: #fff;
+$dark-light: #fff;
+
+// WhatsApp-style surface colors (theme-aware via CSS variables)
+$wa-surface: var(--color-wa-surface);
+$wa-surface-2: var(--color-wa-surface-2);
+$wa-surface-3: var(--color-wa-surface-3);
+$wa-chip-bg: var(--color-wa-chip-bg);
+$wa-text-primary: var(--color-wa-text-primary);
+$wa-text-secondary: var(--color-wa-text-secondary);
+$wa-text-tertiary: var(--color-wa-text-tertiary);
+$wa-border-light: var(--color-wa-border-light);
+$wa-hover: var(--color-wa-hover);
+$wa-disabled-bg: var(--color-wa-disabled-bg);
+$wa-overlay-bg: var(--color-wa-overlay-bg);
+$wa-icon-bg: var(--color-wa-icon-bg);
+$wa-icon-bg-hover: var(--color-wa-icon-bg-hover);
+$wa-modal-bg: var(--color-wa-modal-bg);
+$wa-modal-text: var(--color-wa-modal-text);
+$wa-modal-header-border: var(--color-wa-modal-header-border);
+$wa-danger: var(--color-wa-danger);
+$wa-danger-hover: var(--color-wa-danger-hover);
+$wa-success: var(--color-wa-success);
+$wa-input-bg: var(--color-wa-input-bg);
+$wa-chip-delete: var(--color-wa-chip-delete);
+$wa-chip-delete-hover: var(--color-wa-chip-delete-hover);
+
+
+.secondaryBtnClassname {
+    font-family: $font-family !important;
+    background: #ebebed !important;
+    color: $secondaryColor !important;
+    border-color: #ebebed !important;
+    text-transform: capitalize !important;
+    border-radius: 16px !important;
+
+    &:hover {
+        background-color: $button-color-hover;
+        border-color: $button-Bordercolor;
+        transition: all $transition-duration ease-in-out !important;
+    }
+}
+
+.primaryBtnClassname {
+    font-family: $font-family !important;
+    background: $button-Bgcolor !important;
+    color: $button-color !important;
+    border-color: $button-Bordercolor !important;
+    text-transform: capitalize !important;
+    border-radius: 16px !important;
+
+    &:hover {
+        background-color: $button-color-hover;
+        border-color: $button-Bordercolor;
+        transition: all $transition-duration ease-in-out !important;
+    }
+}
