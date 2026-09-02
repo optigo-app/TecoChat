@@ -35,7 +35,7 @@ import {
 import { formatDateTime } from "../../../utils/dateUtils";
 import { Emoji, EmojiStyle } from "emoji-picker-react";
 import { charToUnified, parseReactions } from "../../../utils/EmojiUtils";
-import PersonIcon from "@mui/icons-material/Person";
+import { User } from "lucide-react";
 import QuickReactionMenu from "./QuickReactionMenu";
 import ReactionDetailsMenu from "./ReactionDetailsMenu";
 import type { MediaViewerItem } from "../CoreLogic/uiReducer";
@@ -289,7 +289,7 @@ const MediaViewerComponent = ({
                   <Avatar
                     {...getWhatsAppAvatarConfig(getCustomerAvatarSeed(selectedCustomer), 32)}
                   >
-                    <PersonIcon fontSize="small" />
+                    <User size={20} />
                   </Avatar>
                 ) : (
                   <Avatar {...getWhatsAppAvatarConfig(getCustomerDisplayName(selectedCustomer), 32)} />

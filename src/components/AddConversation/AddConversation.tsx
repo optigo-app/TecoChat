@@ -12,14 +12,7 @@ import {
   Skeleton,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import {
-  Search,
-  Clear,
-  Person as PersonIcon,
-  ChatBubbleOutlined,
-  ArrowBack,
-} from "@mui/icons-material";
-import { X } from "lucide-react";
+import { Search, X, User, MessageSquare, ArrowLeft } from "lucide-react";
 import { usePathname } from "next/navigation";
 import "./AddConversation.scss";
 import {
@@ -309,7 +302,7 @@ const AddConversation = ({
         <Box className="add_conv_box">
           {onBack && (
             <IconButton onClick={onBack} size="small" className="add_conv">
-              <ArrowBack sx={{ fontSize: 20 }} />
+              <ArrowLeft size={20} />
             </IconButton>
           )}
           <Typography variant="h6" className="header_title">
@@ -336,7 +329,7 @@ const AddConversation = ({
             input: {
               startAdornment: (
                 <InputAdornment position="start">
-                  <Search fontSize="small" />
+                  <Search size={18} />
                 </InputAdornment>
               ),
               endAdornment: searchTerm ? (
@@ -348,7 +341,7 @@ const AddConversation = ({
                     loadMembers(1, true, "");
                   }}
                 >
-                  <Clear fontSize="small" />
+                  <X size={18} />
                 </InputAdornment>
               ) : null,
             },
@@ -467,7 +460,7 @@ const AddConversation = ({
                           <Avatar
                             {...getWhatsAppAvatarConfig(getCustomerAvatarSeed(member))}
                           >
-                            <PersonIcon fontSize="small" />
+                            <User size={20} />
                           </Avatar>
                         ) : (
                           <Avatar {...member.avatarConfig} />
@@ -500,7 +493,7 @@ const AddConversation = ({
                       gap: 8,
                     }}
                   >
-                    <ChatBubbleOutlined sx={{ fontSize: 34, color: "rgba(0,0,0,0.35)" }} />
+                    <MessageSquare size={34} style={{ color: "rgba(0,0,0,0.35)" }} />
                     <Typography variant="body2" color="textSecondary">
                       No conversations found.
                     </Typography>

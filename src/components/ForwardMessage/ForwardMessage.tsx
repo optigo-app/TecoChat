@@ -24,11 +24,7 @@ import {
   InputAdornment,
   useTheme,
 } from "@mui/material";
-import {
-  Close as CloseIcon,
-  Send as SendIcon,
-  Search as SearchIcon,
-} from "@mui/icons-material";
+import { X, Send, Search } from "lucide-react";
 import { useLoginContext } from "../../context/LoginData";
 import { getForwardListApi } from "../../API/SendMessage/forwardlistApi";
 import { getWhatsAppAvatarConfig } from "../../utils/globalFunc";
@@ -260,7 +256,7 @@ const ForwardMessage = ({
       <div className="fm-header">
         <div className="fm-headerLeft">
           <IconButton size="small" onClick={onClose} className="fm-closeBtn">
-            <CloseIcon fontSize="small" />
+            <X size={20} />
           </IconButton>
           <Typography className="fm-title">Forward message to</Typography>
         </div>
@@ -278,7 +274,7 @@ const ForwardMessage = ({
             input: {
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
+                  <Search size={18} />
                 </InputAdornment>
               ),
             },
@@ -405,7 +401,7 @@ const ForwardMessage = ({
             {selectedSummaryText}
           </div>
           <IconButton className="fm-sendFab" onClick={handleSend}>
-            <SendIcon fontSize="small" />
+            <Send size={20} />
           </IconButton>
         </div>
       )}

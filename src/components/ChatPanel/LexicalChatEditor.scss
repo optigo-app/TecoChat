@@ -114,10 +114,10 @@
     // ── Mention chip in editor ──────────────────────────────────────────────
     .editor-mention-chip {
         color: var(--color-mention-text);
-        background-color: var(--color-mention-bg, rgba(115, 103, 240, 0.1));
+        background-color: var(--color-mention-hover-bg);
         padding: 1px 4px;
         border-radius: 4px;
-        font-weight: 600;
+        font-weight: 700;
         cursor: pointer;
         user-select: all;
         display: inline;

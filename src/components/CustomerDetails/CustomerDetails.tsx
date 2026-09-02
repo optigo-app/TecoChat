@@ -119,7 +119,9 @@ interface CustomerDetailsProps {
   messages?: ChatMessage[];
   scrollToMessage?: (
     messageId: string | number,
-    containerRef: React.MutableRefObject<HTMLElement | null>
+    containerRef: React.MutableRefObject<HTMLElement | null>,
+    attachmentId?: string | null,
+    searchQuery?: string | null
   ) => void;
   searchResults?: ChatMessage[];
   isSearching?: boolean;

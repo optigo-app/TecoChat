@@ -157,6 +157,7 @@ export function useMessageLoader({
           dispatchMsg({ type: MSG.SET_PAGE_SIZE, value: initialPageSize });
           dispatchMsg({ type: MSG.SET_OLDER_ERROR, value: false });
           dispatchMsg({ type: MSG.SET_NEWER_ERROR, value: false });
+          dispatchMsg({ type: MSG.SET_UNREAD_ANCHOR, messageId: null, count: 0 });
           cursorRef.current = { before: fallbackResponse.beforeCursor, after: null };
           return;
         }
@@ -166,6 +167,40 @@ export function useMessageLoader({
           msgDataRef.current,
           selectedId
         );
+
+        // ── Unread anchor: scroll to first unread message instead of bottom ──
+        // When opening a conversation with UnreadCount > 0, compute the first
+        // unread message ID so MessageList can scroll to it (WhatsApp-style).
+        // The latest N messages are the unread ones, where N = UnreadCount.
+        //
+        // IMPORTANT: This MUST be dispatched BEFORE MSG.LOAD so that the
+        // unreadAnchorMessageId is available in state when the rows first
+        // render and the initial scroll effect runs. Otherwise the effect
+        // sees null anchor, scrolls to bottom, and sets didInitialScroll=true
+        // before the anchor arrives.
+        const unreadCount = Number(selectedCustomer?.UnreadCount) || Number(selectedCustomer?.UnReadMsgCount) || 0;
+        if (unreadCount > 0 && merged.length > 0) {
+          if (unreadCount >= merged.length) {
+            // All loaded messages are unread — anchor is the first (oldest) message.
+            // More older messages exist; the user can scroll up to see them.
+            const firstMsg = merged[0];
+            const anchorId = firstMsg.MessageId ?? firstMsg.Id;
+            if (anchorId != null) {
+              dispatchMsg({ type: MSG.SET_UNREAD_ANCHOR, messageId: anchorId, count: unreadCount });
+            }
+          } else {
+            // First unread message is at index (length - unreadCount)
+            const anchorIndex = merged.length - unreadCount;
+            const anchorMsg = merged[anchorIndex];
+            const anchorId = anchorMsg?.MessageId ?? anchorMsg?.Id;
+            if (anchorId != null) {
+              dispatchMsg({ type: MSG.SET_UNREAD_ANCHOR, messageId: anchorId, count: unreadCount });
+            }
+          }
+        } else {
+          // No unread messages — clear any previous anchor
+          dispatchMsg({ type: MSG.SET_UNREAD_ANCHOR, messageId: null, count: 0 });
+        }
 
         dispatchMsg({ type: MSG.LOAD, data: merged, total: response.total });
         dispatchMsg({

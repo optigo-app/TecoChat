@@ -15,13 +15,9 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Skeleton,
+  Tooltip,
 } from "@mui/material";
-import AccountCircleIcon from "@mui/icons-material/AccountCircle";
-import LogoutIcon from "@mui/icons-material/Logout";
-import LightModeIcon from "@mui/icons-material/LightMode";
-import DarkModeIcon from "@mui/icons-material/DarkMode";
-import SettingsBrightnessIcon from "@mui/icons-material/SettingsBrightness";
-import { LogOut as LogOutIcon } from "lucide-react";
+import { LogOut as LogOutIcon, User, Sun, Moon, Monitor } from "lucide-react";
 import { useLoginContext } from "@/src/context/LoginData";
 import { useColorMode } from "@/src/theme/ThemeRegistry";
 import type { ColorMode } from "@/src/theme/themes";
@@ -375,7 +371,7 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
           >
             <ListItemIcon>
               <span className="glass-icon">
-                <AccountCircleIcon fontSize="small" />
+                <User size={18} />
               </span>
             </ListItemIcon>
             <ListItemText primary="Profile" />
@@ -417,7 +413,10 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
             exclusive
             value={mode}
             onChange={(_, value) => {
-              if (value !== null) setMode(value as ColorMode);
+              if (value !== null) {
+                setMode(value as ColorMode);
+                handleClose();
+              }
             }}
             size="small"
             sx={{
@@ -447,7 +446,7 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
                 color: "text.secondary",
                 bgcolor: "transparent",
                 transition: "all 180ms ease",
-                "& .MuiSvgIcon-root": {
+                "& svg": {
                   fontSize: "1.05rem",
                   transition: "transform 200ms ease",
                 },
@@ -456,7 +455,7 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
                     t.palette.mode === "dark"
                       ? "rgba(255,255,255,0.08)"
                       : "rgba(0,0,0,0.04)",
-                  "& .MuiSvgIcon-root": {
+                  "& svg": {
                     transform: "scale(1.15)",
                   },
                 },
@@ -473,22 +472,28 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
                         ? "rgba(115,103,240,0.28)"
                         : "rgba(115,103,240,0.18)",
                   },
-                  "& .MuiSvgIcon-root": {
+                  "& svg": {
                     color: "primary.main",
                   },
                 },
               },
             }}
           >
-            <ToggleButton value="light" aria-label="Light theme">
-              <LightModeIcon />
-            </ToggleButton>
-            <ToggleButton value="dark" aria-label="Dark theme">
-              <DarkModeIcon />
-            </ToggleButton>
-            <ToggleButton value="system" aria-label="System theme">
-              <SettingsBrightnessIcon />
-            </ToggleButton>
+            <Tooltip title="Light" arrow placement="top">
+              <ToggleButton value="light" aria-label="Light theme">
+                <Sun size={18} />
+              </ToggleButton>
+            </Tooltip>
+            <Tooltip title="Dark" arrow placement="top">
+              <ToggleButton value="dark" aria-label="Dark theme">
+                <Moon size={18} />
+              </ToggleButton>
+            </Tooltip>
+            <Tooltip title="System" arrow placement="top">
+              <ToggleButton value="system" aria-label="System theme">
+                <Monitor size={18} />
+              </ToggleButton>
+            </Tooltip>
           </ToggleButtonGroup>
         </Box>
 
@@ -522,7 +527,7 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
           >
             <ListItemIcon sx={{ color: "error.main !important" }}>
               <span className="glass-icon">
-                <LogoutIcon fontSize="small" />
+                <LogOutIcon size={18} />
               </span>
             </ListItemIcon>
             <ListItemText primary="Log out" />

@@ -15,7 +15,17 @@ const highlightQueryInText = (text: string, query?: string): React.ReactNode => 
     const parts = text.split(new RegExp(`(${escaped})`, "gi"));
     return parts.map((part, i) =>
       part.toLowerCase() === query.toLowerCase() ? (
-        <span key={`hl-${i}`} style={{ color: "#685dd8", fontWeight: 600 }}>
+        <span
+          key={`hl-${i}`}
+          className="search-highlight"
+          style={{
+            color: "var(--color-search-highlight)",
+            backgroundColor: "var(--color-search-highlight-bg)",
+            fontWeight: 600,
+            borderRadius: "3px",
+            padding: "0 2px",
+          }}
+        >
           {part}
         </span>
       ) : (
@@ -103,7 +113,7 @@ const formatChatText = (text: string, highlightQuery?: string): React.ReactNode 
           href={linkMatch[2]}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ textDecoration: "underline", wordBreak: "break-word" }}
+          style={{ color: "var(--color-bubble-link)", textDecoration: "underline", wordBreak: "break-word" }}
         >
           {linkMatch[1]}
         </a>
@@ -350,6 +360,9 @@ const highlightMentions = (text: string, mentions: MentionInfo[], highlightQuery
     const mention = sorted.find((m) => m.MentionText === part);
     if (mention) {
       const isAllMention = mention.MentionType === 2 || String(mention.MentionedUserId) === "";
+      // WhatsApp-style: separate @ from the name, @ is dimmer
+      const atSymbol = part.startsWith("@") ? "@" : "";
+      const nameText = atSymbol ? part.slice(1) : part;
       return (
         <span
           key={`mention-${index}`}
@@ -358,26 +371,19 @@ const highlightMentions = (text: string, mentions: MentionInfo[], highlightQuery
           data-mention-type={mention.MentionType}
           style={{
             color: "var(--color-mention-text)",
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: "pointer",
             borderRadius: "4px",
-            padding: "0 3px",
-            margin: "0 -1px",
-            display: "inline-block",
-            backgroundColor: "var(--color-mention-bg, transparent)",
-            transition:
-              "background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
-            willChange: "transform, background-color",
+            padding: "0 2px",
+            display: "inline",
+            backgroundColor: "transparent",
+            transition: "background-color 0.15s ease",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--color-primary)";
-            e.currentTarget.style.color = "#fff";
-            e.currentTarget.style.transform = "scale(1.06)";
+            e.currentTarget.style.backgroundColor = "var(--color-mention-hover-bg)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--color-mention-bg, transparent)";
-            e.currentTarget.style.color = "var(--color-mention-text)";
-            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.backgroundColor = "transparent";
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -408,7 +414,12 @@ const highlightMentions = (text: string, mentions: MentionInfo[], highlightQuery
             }
           }}
         >
-          {part}
+          {atSymbol && (
+            <span className="at-symbol" style={{ color: "var(--color-mention-at)" }}>
+              {atSymbol}
+            </span>
+          )}
+          {nameText}
         </span>
       );
     }
@@ -492,7 +503,7 @@ export const renderMessageText = (
 
       nodes.push(
         <React.Fragment key={`u-${lineIndex}-${matchIndex}`}>
-          <a href={href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline", wordBreak: "break-word" }}>
+          <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--color-bubble-link)", textDecoration: "underline", wordBreak: "break-word" }}>
             {urlPart}
           </a>
           {trailing}
@@ -565,7 +576,17 @@ export const highlightText = (text: string, query: string): React.ReactNode => {
     const parts = text.split(new RegExp(`(${query})`, "gi"));
     return parts.map((part, i) =>
       part.toLowerCase() === query.toLowerCase() ? (
-        <span key={i} style={{ color: "#685dd8", fontWeight: 600 }}>
+        <span
+          key={i}
+          className="search-highlight"
+          style={{
+            color: "var(--color-search-highlight)",
+            backgroundColor: "var(--color-search-highlight-bg)",
+            fontWeight: 600,
+            borderRadius: "3px",
+            padding: "0 2px",
+          }}
+        >
           {renderEmojiText(part)}
         </span>
       ) : (

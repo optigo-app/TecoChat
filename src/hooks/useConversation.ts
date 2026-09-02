@@ -585,7 +585,8 @@ export const useConversation = ({
     async (
       messageId: string | number,
       containerRef: React.MutableRefObject<HTMLElement | null>,
-      _attachmentId?: string | null
+      _attachmentId?: string | null,
+      searchQuery?: string | null
     ) => {
       if (!containerRef.current || !messageId) return;
       const sid = String(messageId);
@@ -593,7 +594,11 @@ export const useConversation = ({
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         dispatchUI({ type: UI.SET_BLINK, value: sid });
-        setTimeout(() => dispatchUI({ type: UI.SET_BLINK, value: null }), 3000);
+        if (searchQuery) dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: searchQuery, messageId: sid } });
+        // Blink clears on 3s timeout; search highlight clears on user interaction
+        setTimeout(() => {
+          dispatchUI({ type: UI.SET_BLINK, value: null });
+        }, 3000);
         return;
       }
 
@@ -609,6 +614,7 @@ export const useConversation = ({
       dispatchMsg({ type: MSG.SET_LOADING, value: true });
       // Set blink BEFORE loading so MessageList knows to skip auto-scroll
       dispatchUI({ type: UI.SET_BLINK, value: sid });
+      if (searchQuery) dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: searchQuery, messageId: sid } });
       try {
         const response = await conversationViewCursor(
           convId,
@@ -643,8 +649,10 @@ export const useConversation = ({
             if (target) {
               target.scrollIntoView({ behavior: "smooth", block: "center" });
             }
-            // Keep blink for 3s total, then clear
-            setTimeout(() => dispatchUI({ type: UI.SET_BLINK, value: null }), 3000);
+            // Keep blink for 3s total, then clear (highlight clears on user interaction)
+            setTimeout(() => {
+              dispatchUI({ type: UI.SET_BLINK, value: null });
+            }, 3000);
           });
         });
       } catch (err) {
@@ -655,6 +663,30 @@ export const useConversation = ({
     },
     [dispatchUI, dispatchMsg, auth]
   );
+
+  // ── Clear search highlight on user interaction ────────────────────────────
+  // The blink animation clears on its 3s timeout, but the search keyword
+  // highlight stays until the user interacts with the chat (scroll, click,
+  // keydown, touch). This mirrors WhatsApp — the highlight persists so the
+  // user can read the matched word, then disappears once they start doing
+  // something else.
+  useEffect(() => {
+    const clearHighlight = () => {
+      dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: null, messageId: null } });
+    };
+    // Use passive listeners so we don't block scrolling
+    const opts: AddEventListenerOptions = { passive: true };
+    window.addEventListener("scroll", clearHighlight, opts);
+    window.addEventListener("click", clearHighlight);
+    window.addEventListener("keydown", clearHighlight);
+    window.addEventListener("touchstart", clearHighlight, opts);
+    return () => {
+      window.removeEventListener("scroll", clearHighlight, opts);
+      window.removeEventListener("click", clearHighlight);
+      window.removeEventListener("keydown", clearHighlight);
+      window.removeEventListener("touchstart", clearHighlight, opts);
+    };
+  }, [dispatchUI]);
 
   const refresh = useCallback(() => {
     // Use LastMessageId from the conversation list as the cursor (same as
@@ -769,6 +801,8 @@ export const useConversation = ({
     forwardMessage: uiState.forwardMessage,
     forwardAnchorEl: uiState.forwardAnchorEl,
     blinkMessageId: uiState.blinkMessageId,
+    searchHighlightQuery: uiState.searchHighlightQuery,
+    searchHighlightMessageId: uiState.searchHighlightMessageId,
     mediaViewerOpen: uiState.mediaViewerOpen,
     mediaViewerItems: uiState.mediaViewerItems,
     mediaViewerIndex: uiState.mediaViewerIndex,

@@ -988,12 +988,18 @@ export const useConversationList = ({
   // ── Real-time: CHAT_DRAFTS_UPDATED + storage sync ─────────────────────────
   useEffect(() => {
     const storageKey = auth?.id ? `chat_drafts_${auth.id}` : "chat_drafts";
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        setDrafts(JSON.parse(saved));
+      }
+    } catch {
+      setDrafts({});
+    }
 
     const handleDraftsUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail) {
-        // Spread to guarantee a new reference — if the dispatcher mutated
-        // an object in place, React's bailout would skip the re-render.
         setDrafts({ ...detail });
       }
     };

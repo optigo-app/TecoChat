@@ -189,30 +189,76 @@ export const getClientIpAddress = async (): Promise<string> => {
   }
 };
 
-// ── Message text helpers (ported from old globalFunc.js) ────────────────────
-
-/**
- * Normalize escaped characters in message text.
- * - Converts actual \r\n and \r characters to \n (line breaks)
- * - Converts literal "\r\n" and "\n" strings to actual \n
- * - Unescapes Markdown escape sequences (\* → *, \_ → _, etc.)
- */
 export const normalizeMessageText = (text: string | null | undefined): string => {
   if (!text || typeof text !== "string") return text || "";
   return text
-    // Convert actual carriage return + newline to newline
     .replace(/\r\n/g, "\n")
-    // Convert standalone carriage returns to newline
     .replace(/\r/g, "\n")
-    // Convert literal "\r\n" string to newline
     .replace(/\\r\\n/g, "\n")
-    // Convert literal "\n" string to newline
     .replace(/\\n/g, "\n")
-    // Unescape Markdown escape sequences: \* → *, \_ → _, \[ → [, etc.
     .replace(/\\([\\*_[\]()~`>#+\-=|.!])/g, "$1");
 };
 
-// ── File download helper ─────────────────────────────────────────────────────
+export const stripMarkdownFormatting = (text: string | null | undefined): string => {
+  if (!text || typeof text !== "string") return text || "";
+
+  // Same capture order as messageTextRenderer: longest/most-specific first.
+  const regex =
+    /(```[\s\S]*?```|`[^`]+`|\*\*\*\S(?:.*?\S)?\*\*\*|\*\*\S(?:.*?\S)?\*\*|\*_\S(?:.*?\S)?_\*|___\S(?:.*?\S)?___|__\S(?:.*?\S)?__|_\*\S(?:.*?\S)?\*_|\*\S(?:.*?\S)?\*|_\S(?:.*?\S)?_|~~\S(?:.*?\S)?~~|~\S(?:.*?\S)?~|\[[^\]]+\]\([^)]+\))/g;
+
+  return text
+    .split(regex)
+    .map((part) => {
+      if (!part) return "";
+
+      // Code blocks / inline code — keep literal content only
+      if (part.startsWith("```") && part.endsWith("```")) {
+        return part.slice(3, -3);
+      }
+      if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+        return part.slice(1, -1);
+      }
+
+      // Links — show link text only
+      const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) return linkMatch[1];
+
+      // Nested/recursive inline formatting
+      if (part.startsWith("***") && part.endsWith("***")) {
+        return stripMarkdownFormatting(part.slice(3, -3));
+      }
+      if (part.startsWith("___") && part.endsWith("___")) {
+        return stripMarkdownFormatting(part.slice(3, -3));
+      }
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return stripMarkdownFormatting(part.slice(2, -2));
+      }
+      if (part.startsWith("__") && part.endsWith("__")) {
+        return stripMarkdownFormatting(part.slice(2, -2));
+      }
+      if (part.startsWith("*_") && part.endsWith("_*")) {
+        return stripMarkdownFormatting(part.slice(2, -2));
+      }
+      if (part.startsWith("_\*") && part.endsWith("*_")) {
+        return stripMarkdownFormatting(part.slice(2, -2));
+      }
+      if (part.startsWith("*") && part.endsWith("*")) {
+        return stripMarkdownFormatting(part.slice(1, -1));
+      }
+      if (part.startsWith("_") && part.endsWith("_")) {
+        return stripMarkdownFormatting(part.slice(1, -1));
+      }
+      if (part.startsWith("~~") && part.endsWith("~~")) {
+        return stripMarkdownFormatting(part.slice(2, -2));
+      }
+      if (part.startsWith("~") && part.endsWith("~")) {
+        return stripMarkdownFormatting(part.slice(1, -1));
+      }
+
+      return part;
+    })
+    .join("");
+};
 
 export const isMessageEditable = (message: { Date?: string; Time?: string } | null | undefined, timeLimit = 15): boolean => {
   if (!message?.Date || !message?.Time) return false;
@@ -222,12 +268,6 @@ export const isMessageEditable = (message: { Date?: string; Time?: string } | nu
   return diffInMinutes <= timeLimit;
 };
 
-// ── File download (mirrors old CRA handleDownloadFile) ───────────────────────
-// Supports:
-//   1. Simple string URL → single file download
-//   2. Message object with mediaItems[]:
-//      - ≤4 items: download each file individually
-//      - >4 items: zipped into a single .zip download
 const DOWNLOAD_ZIP_THRESHOLD = 4;
 
 interface DownloadMessage {

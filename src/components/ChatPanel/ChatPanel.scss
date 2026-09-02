@@ -444,7 +444,7 @@
     margin-bottom: 6px;
     padding: 6px 8px;
     border-radius: 8px;
-    background: rgba($primary-main, 0.06);
+    background: var(--color-bubble-incoming-reply, rgba($primary-main, 0.06));
     cursor: pointer;
 
     &-line {
@@ -501,7 +501,8 @@
     .message-time {
         font-family: $font-family;
         font-size: clamp(10px, 0.3vw + 9px, 11px);
-        opacity: 0.7;
+        color: var(--color-bubble-timestamp, inherit);
+        opacity: 0.85;
         line-height: 1;
     }
 
@@ -916,13 +917,21 @@
         &.outgoing {
             border-bottom-right-radius: 0;
             background-color: var(--color-bubble-outgoing);
-            color: var(--color-text-primary, #333);
+            color: var(--color-bubble-outgoing-text, #fff);
+
+            &:hover {
+                background-color: var(--color-bubble-outgoing-hover, var(--color-bubble-outgoing));
+            }
         }
 
         &.incoming {
             border-bottom-left-radius: 0;
             background-color: var(--color-bubble-incoming);
-            color: var(--color-text-primary, #333);
+            color: var(--color-bubble-incoming-text, #111b21);
+
+            &:hover {
+                background-color: var(--color-bubble-incoming-hover, var(--color-bubble-incoming));
+            }
         }
 
         // ── Starred message effect ───────────────────────────────────────────
@@ -936,6 +945,30 @@
                 rgba(255, 165, 0, 0.1) 30%,
                 transparent 60%
             );
+        }
+
+        // ── Outgoing bubble: override mention + search highlight colors ──────
+        // The outgoing bubble is solid purple, so blue mentions and purple
+        // search highlights won't be visible. Use light lavender for mentions
+        // and gold for search highlights instead.
+        &.outgoing {
+            .message-mention-highlight {
+                color: var(--color-mention-text-outgoing) !important;
+
+                .at-symbol {
+                    color: var(--color-mention-at-outgoing) !important;
+                }
+
+                &:hover {
+                    background-color: var(--color-mention-hover-bg-outgoing) !important;
+                }
+            }
+
+            // Search highlight: gold on purple bubble for contrast
+            .search-highlight {
+                color: var(--color-search-highlight-outgoing) !important;
+                background-color: var(--color-search-highlight-bg-outgoing) !important;
+            }
         }
     }
 }

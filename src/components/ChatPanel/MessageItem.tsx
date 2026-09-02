@@ -13,6 +13,8 @@ interface MessageItemProps {
   index: number;
   selectedCustomer: ConversationListEntry | null;
   blinkMessageId: string | null;
+  searchHighlightQuery?: string | null;
+  searchHighlightMessageId?: string | null;
   getMessageStatusIcon: (msg: ChatMessage) => "sent" | "delivered" | "read" | null;
   onContextMenu?: (e: React.MouseEvent, msg: ChatMessage) => void;
   onMenuClick?: (e: React.MouseEvent, msg: ChatMessage) => void;
@@ -41,6 +43,8 @@ const MessageItemComponent = ({
   index,
   selectedCustomer,
   blinkMessageId,
+  searchHighlightQuery,
+  searchHighlightMessageId,
   getMessageStatusIcon,
   onContextMenu,
   onMenuClick,
@@ -64,6 +68,10 @@ const MessageItemComponent = ({
 
   const messageDomId = msg.Id ?? msg.MessageId;
   const isBlinking = blinkMessageId === messageDomId;
+  // Highlight stays even after blink ends — cleared only on user interaction.
+  // Checks the message ID match, not isBlinking, so the highlight persists
+  // after the 3s blink animation finishes.
+  const isSearchHighlighted = searchHighlightMessageId === String(messageDomId);
 
   const handleMouseEnter = useCallback(() => {
     if (hoverTimeoutRef.current) {
@@ -141,6 +149,7 @@ const MessageItemComponent = ({
         isExpanded={isExpanded}
         onToggleExpand={onToggleExpand}
         auth={auth}
+        highlightQuery={isSearchHighlighted ? searchHighlightQuery : undefined}
       />
     </Box>
   );

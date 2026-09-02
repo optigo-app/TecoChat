@@ -14,15 +14,7 @@ import {
   Popover,
   Divider,
 } from "@mui/material";
-import {
-  Clear,
-  ArrowBack,
-  ArrowForward,
-  Check,
-  SentimentSatisfiedAlt as EmojiIcon,
-  Person as PersonIcon,
-} from "@mui/icons-material";
-import { ChevronRight, X } from "lucide-react";
+import { X, ArrowLeft, ArrowRight, Check, Smile, User, ChevronRight } from "lucide-react";
 import EmojiPicker from "emoji-picker-react";
 import "./AddConversation.scss";
 import "./CreateGroup.scss";
@@ -442,7 +434,7 @@ const CreateGroup = ({ onBack, onClose, onContinue }: CreateGroupProps) => {
       <div className="customer_lists_header">
         <Box className="add_conv_box">
           <IconButton onClick={handleBack} size="small" className="add_conv">
-            <ArrowBack sx={{ fontSize: 20 }} />
+            <ArrowLeft size={20} />
           </IconButton>
           <Typography variant="h6" className="header_title">
             {step === 1
@@ -506,7 +498,7 @@ const CreateGroup = ({ onBack, onClose, onContinue }: CreateGroupProps) => {
                                 loadMembers(1, true, "");
                               }}
                             >
-                              <Clear fontSize="small" />
+                              <X size={18} />
                             </IconButton>
                           )}
                           <Button
@@ -561,7 +553,7 @@ const CreateGroup = ({ onBack, onClose, onContinue }: CreateGroupProps) => {
                                 getCustomerAvatarSeed(member)
                               )}
                             >
-                              <PersonIcon fontSize="small" />
+                              <User size={20} />
                             </Avatar>
                           ) : (
                             <Avatar {...member.avatarConfig} />
@@ -596,7 +588,7 @@ const CreateGroup = ({ onBack, onClose, onContinue }: CreateGroupProps) => {
                     setStep(2);
                   }}
                 >
-                  <ArrowForward />
+                  <ArrowRight size={20} />
                 </Button>
               </Box>
             )}
@@ -657,7 +649,7 @@ const CreateGroup = ({ onBack, onClose, onContinue }: CreateGroupProps) => {
                             size="small"
                             sx={{ mb: 0.5 }}
                           >
-                            <EmojiIcon />
+                            <Smile size={20} />
                           </IconButton>
                         </InputAdornment>
                       ),
@@ -774,7 +766,7 @@ const CreateGroup = ({ onBack, onClose, onContinue }: CreateGroupProps) => {
                 {loading ? (
                   <CircularProgress size={24} color="inherit" />
                 ) : (
-                  <Check />
+                  <Check size={20} />
                 )}
               </Button>
             </Box>

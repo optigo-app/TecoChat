@@ -22,6 +22,21 @@ import TypingIndicator from "./messages/TypingIndicator";
 import ScrollToBottomButton from "./messages/ScrollToBottomButton";
 import DragDropOverlay from "../DragDropOverlay/DragDropOverlay";
 import type { TypingStatus } from "../../types/message";
+import {
+  scrollToBottomInstant,
+  scrollToBottomSmooth,
+  scrollToMessageElement,
+  getDistanceFromBottom,
+  captureScrollAnchor,
+  restoreScrollAnchor,
+  restoreScrollPosition,
+  saveScrollPosition,
+  doubleRequestAnimationFrame,
+  performInitialScroll,
+  correctInitialScrollDrift,
+  autoScrollOnNewMessage,
+  type ScrollAnchor,
+} from "./CoreLogic/scrollUtils";
 
 export interface MessageListRef {
   scrollToMessage: (messageId: string | number, attachmentId?: string | null) => void;
@@ -34,6 +49,8 @@ interface MessageListProps {
   loadingOlder: boolean;
   selectedCustomer: ConversationListEntry | null;
   blinkMessageId: string | null;
+  searchHighlightQuery?: string | null;
+  searchHighlightMessageId?: string | null;
   typingStatus: TypingStatus | null;
   getMessageStatusIcon: (msg: ChatMessage) => "sent" | "delivered" | "read" | null;
   onContextMenu?: (e: React.MouseEvent, msg: ChatMessage) => void;
@@ -90,6 +107,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       loadingNewer,
       selectedCustomer,
       blinkMessageId,
+      searchHighlightQuery,
+      searchHighlightMessageId,
       typingStatus,
       getMessageStatusIcon,
       onContextMenu,
@@ -144,40 +163,25 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
 
     const dragCounter = useRef(0);
     const distanceFromBottomRef = useRef(0);
-    const scrollAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+    const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
     const wasLoadingOlderRef = useRef(false);
     const prevConvIdRef = useRef<string | number | null | undefined>(null);
     const didInitialScroll = useRef(false);
     const convLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevMsgCountRef = useRef(0);
     const blinkRef = useRef<string | null>(null);
-    // Suppress scroll-triggered loads after programmatic scrolls / loads.
-    // Cleared by a timeout once scrolling settles.
     const suppressScrollLoadRef = useRef(true);
     const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Track pending new message count via ref so scroll handler doesn't
-    // need to depend on the pendingNewMessages prop
     const pendingNewCountRef = useRef(0);
 
-    // Sentinel refs for IntersectionObserver-based pagination
     const topSentinelRef = useRef<HTMLDivElement | null>(null);
     const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
 
-    // Scroll position restoration per conversation
     const scrollRestoreRef = useRef<{ key: string | number; scrollTop: number; scrollHeight: number } | null>(null);
 
-    // Track when auto-load-newer finishes so we can scroll to the actual bottom
     const wasAutoLoadingNewerRef = useRef(false);
-    // Track when a user-triggered newer load finishes so we can SKIP the
-    // auto-scroll-to-bottom (preserve user's scroll position instead).
-    // Without this, scrolling near bottom to trigger the sentinel would
-    // cause isNearBottom=true → auto-scroll to actual bottom after append.
     const wasLoadingNewerRef = useRef(false);
-    // Track progressive scroll-to-bottom: user clicked the scroll-to-bottom
-    // button while in a historical (BETWEEN) view. Instead of jumping directly
-    // to the latest (which replaces all messages), we progressively load
-    // newer pages via Direction 1 and scroll through them — WhatsApp-like.
     const isScrollingToBottomRef = useRef(false);
 
     useEffect(() => {
@@ -187,13 +191,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     useEffect(() => {
       pendingNewCountRef.current = pendingNewMessages.length;
     }, [pendingNewMessages]);
-
-    // ── Sentinel-based pagination via IntersectionObserver ──────────────────
-    // TOP sentinel: auto-load older messages when scrolling near top
-    // BOTTOM sentinel: auto-load newer messages when scrolling near bottom
-    //   (only fires in historical view where hasMoreAfter=true)
-    // Both are protected by suppressScrollLoadRef to prevent loops from
-    // programmatic scrolls.
+    
     useEffect(() => {
       const outer = outerRef.current;
       if (!outer) return;
@@ -237,11 +235,11 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       if (!scrollRestoreKey) return;
       const outer = outerRef.current;
       if (!outer) return;
-      // Save current scroll state
+      const saved = saveScrollPosition(outer);
       scrollRestoreRef.current = {
         key: scrollRestoreKey,
-        scrollTop: outer.scrollTop,
-        scrollHeight: outer.scrollHeight,
+        scrollTop: saved.scrollTop,
+        scrollHeight: saved.scrollHeight,
       };
     }, [scrollRestoreKey]);
 
@@ -254,8 +252,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       if (saved && saved.key === scrollRestoreKey && saved.scrollHeight > 0) {
         // Only restore if we're not in initial load
         if (didInitialScroll.current && rows.length > 2) {
-          const heightRatio = outer.scrollHeight / saved.scrollHeight;
-          outer.scrollTop = saved.scrollTop * heightRatio;
+          restoreScrollPosition(outer, saved.scrollTop, saved.scrollHeight);
         }
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -298,15 +295,10 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       // revealed content stays visible (WhatsApp behavior). Wait a frame
       // for the DOM to re-render with the expanded height before scrolling.
       if (willExpand) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const outer = outerRef.current;
-            if (!outer) return;
-            const el = outer.querySelector(`[data-message-id="${key}"]`);
-            if (el) {
-              el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            }
-          });
+        doubleRequestAnimationFrame(() => {
+          const outer = outerRef.current;
+          if (!outer) return;
+          scrollToMessageElement(outer, key);
         });
       }
     }, []);
@@ -316,10 +308,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       if (loadingOlder && !scrollAnchorRef.current) {
         const outer = outerRef.current;
         if (!outer) return;
-        scrollAnchorRef.current = {
-          scrollHeight: outer.scrollHeight,
-          scrollTop: outer.scrollTop,
-        };
+        scrollAnchorRef.current = captureScrollAnchor(outer);
       }
     }, [loadingOlder]);
 
@@ -328,13 +317,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       const outer = outerRef.current;
       if (!outer || !scrollAnchorRef.current) return;
 
-      const prev = scrollAnchorRef.current;
-      const heightDiff = outer.scrollHeight - prev.scrollHeight;
-      outer.style.scrollBehavior = "auto";
-      outer.scrollTop = prev.scrollTop + heightDiff;
-      outer.style.scrollBehavior = "";
-      distanceFromBottomRef.current =
-        outer.scrollHeight - outer.clientHeight - outer.scrollTop;
+      restoreScrollAnchor(outer, scrollAnchorRef.current);
+      distanceFromBottomRef.current = getDistanceFromBottom(outer);
       scrollAnchorRef.current = null;
     }, [rows]);
 
@@ -391,83 +375,63 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         }
         return;
       }
-
-      // After initial auto-load-newer OR progressive scroll-to-bottom
-      // finishes, scroll to the actual bottom.
-      // For user-triggered newer loads (scrolling down in history), DON'T
-      // scroll to bottom — just let the new content appear below naturally.
       if (wasAutoLoadingNewerRef.current) {
         wasAutoLoadingNewerRef.current = false;
         wasLoadingNewerRef.current = false;
-        outer.style.scrollBehavior = "auto";
-        outer.scrollTop = outer.scrollHeight;
-        outer.style.scrollBehavior = "";
+        scrollToBottomInstant(outer);
         distanceFromBottomRef.current = 0;
         if (isAtBottomRef) isAtBottomRef.current = true;
         setShowScrollBtn(false);
         suppressScrollLoadsTemporarily(500);
         prevMsgCountRef.current = msgRowCount;
-
-        // ── Progressive scroll-to-bottom: if we're still in a historical
-        // view (hasMoreAfter=true), keep loading the next page of newer
-        // messages. This gives a smooth scroll-through effect instead of
-        // a jarring jump to the latest. Stops when hasMoreAfter=false.
         if (isScrollingToBottomRef.current) {
           if (hasMoreAfter) {
-            // More pages to load — continue progressive scroll
             onLoadNewer?.();
           } else {
-            // Reached the actual latest — done
             isScrollingToBottomRef.current = false;
           }
         }
         return;
       }
-
-      // Skip auto-scroll when a blink is pending (search redirect) —
-      // scrollToMessage will handle positioning via requestAnimationFrame
       if (blinkRef.current) {
         prevMsgCountRef.current = msgRowCount;
         return;
       }
 
-      // 1. Initial scroll-to-bottom on conversation open
       if (!didInitialScroll.current) {
         if (!rows || rows.length <= 2) {
           if (convLoadTimerRef.current) clearTimeout(convLoadTimerRef.current);
           convLoadTimerRef.current = setTimeout(() => setListVisible(true), 200);
           return;
         }
-        // Use requestAnimationFrame to scroll after the DOM is painted.
-        // This ensures scrollHeight is correct after the rows render,
-        // avoiding a race where the scroll position is stale.
-        const scrollToBottom = () => {
-          outer.style.scrollBehavior = "auto";
-          outer.scrollTop = outer.scrollHeight;
-          outer.style.scrollBehavior = "";
-          distanceFromBottomRef.current = 0;
+
+        const performInitialScrollFn = () => {
+          const mode = performInitialScroll(outer, unreadAnchorMessageId);
+
+          if (mode === "anchor") {
+            distanceFromBottomRef.current = getDistanceFromBottom(outer);
+            if (isAtBottomRef) isAtBottomRef.current = false;
+          } else {
+            distanceFromBottomRef.current = 0;
+            if (isAtBottomRef) isAtBottomRef.current = true;
+          }
+
           didInitialScroll.current = true;
           suppressScrollLoadsTemporarily(500);
-          if (isAtBottomRef) isAtBottomRef.current = true;
           if (convLoadTimerRef.current) clearTimeout(convLoadTimerRef.current);
-          // Make the list visible AFTER scroll is set, then do a second
-          // rAF pass to correct any drift from media/layout changes.
           setListVisible(true);
+
+          // Second rAF pass to correct any drift from media/layout changes
           requestAnimationFrame(() => {
             const o = outerRef.current;
-            if (o) {
-              o.style.scrollBehavior = "auto";
-              o.scrollTop = o.scrollHeight;
-              o.style.scrollBehavior = "";
-            }
+            if (!o) return;
+            correctInitialScrollDrift(o, mode, unreadAnchorMessageId);
           });
         };
-        // Double rAF: first frame paints the rows, second frame has correct height
-        requestAnimationFrame(() => requestAnimationFrame(scrollToBottom));
+        doubleRequestAnimationFrame(performInitialScrollFn);
         return;
       }
 
-      // 3. Auto-scroll on new messages
       const prev = prevMsgCountRef.current;
       const curr = msgRowCount;
       prevMsgCountRef.current = curr;
@@ -476,38 +440,20 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         wasLoadingOlderRef.current = false;
         return;
       }
-      // Skip auto-scroll if we just finished a user-triggered newer load
-      // (sentinel-triggered). The new rows were appended at the bottom;
-      // we want to preserve the user's scroll position, NOT jump to the
-      // actual bottom. The user was "near bottom" only because that's what
-      // triggered the sentinel — that doesn't mean they want to jump to
-      // the very last message.
       if (wasLoadingNewerRef.current) {
         wasLoadingNewerRef.current = false;
-        // Recompute distance from bottom after the new rows rendered so
-        // subsequent scroll state is accurate.
-        distanceFromBottomRef.current =
-          outer.scrollHeight - outer.clientHeight - outer.scrollTop;
+        distanceFromBottomRef.current = getDistanceFromBottom(outer);
         return;
       }
       const lastMsgRow = [...rows].reverse().find((r) => r.type === "message");
       const isOutgoing = (lastMsgRow as { msg?: ChatMessage })?.msg?.Direction === 1;
-      const isNearBottom = distanceFromBottomRef.current <= 100;
-      if (isOutgoing || isNearBottom) {
-        outer.style.scrollBehavior = "auto";
-        outer.scrollTop = outer.scrollHeight;
-        outer.style.scrollBehavior = "";
+      if (autoScrollOnNewMessage(outer, isOutgoing, distanceFromBottomRef.current)) {
+        distanceFromBottomRef.current = 0;
         setShowScrollBtn(false);
-        // Suppress scroll loads after programmatic scroll-to-bottom
-        // (prevents loadNewerMessages loop when hasMoreAfter is true)
         suppressScrollLoadsTemporarily(500);
       }
-    }, [rows, msgRowCount, loadingOlder, loadingNewer, hasMoreAfter, onLoadNewer, suppressScrollLoadsTemporarily]);
+    }, [rows, msgRowCount, loadingOlder, loadingNewer, hasMoreAfter, onLoadNewer, suppressScrollLoadsTemporarily, unreadAnchorMessageId]);
 
-    // ── ResizeObserver: keep at bottom when content height changes ───────────
-    // When images/media load or lazy content renders, the scrollHeight grows.
-    // If the user was at the bottom, we need to scroll down to stay at the
-    // bottom — otherwise messages appear "not at the bottom".
     useEffect(() => {
       const outer = outerRef.current;
       if (!outer) return;
@@ -515,11 +461,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       if (!inner) return;
 
       const resizeObserver = new ResizeObserver(() => {
-        // Only auto-correct if user is at/near the bottom
         if (distanceFromBottomRef.current <= 100 && didInitialScroll.current) {
-          outer.style.scrollBehavior = "auto";
-          outer.scrollTop = outer.scrollHeight;
-          outer.style.scrollBehavior = "";
+          scrollToBottomInstant(outer);
           distanceFromBottomRef.current = 0;
         }
       });
@@ -527,30 +470,21 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       return () => resizeObserver.disconnect();
     }, []);
 
-    // ── Expose scroll container (only when ref changes, not every render) ────
     useEffect(() => {
       containerRef.current = outerRef.current;
       onContainerRef?.(outerRef.current);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // ── Scroll handler ──────────────────────────────────────────────────────
-    // Pagination is handled by IntersectionObserver sentinels, not by scroll
-    // threshold checks. This handler only tracks bottom state and flush.
     const onListScroll = useCallback(() => {
       const outer = outerRef.current;
       if (!outer) return;
-      const { scrollTop, scrollHeight, clientHeight } = outer;
-      const dist = scrollHeight - clientHeight - scrollTop;
+      const dist = getDistanceFromBottom(outer);
       distanceFromBottomRef.current = dist;
       setShowScrollBtn(dist > 300);
 
-      // Track whether user is at/near bottom for socket message buffering
       const atBottom = dist <= 100;
       if (isAtBottomRef) isAtBottomRef.current = atBottom;
 
-      // If user scrolls back to bottom and there are pending new messages,
-      // flush them automatically (WhatsApp behavior)
       if (atBottom && pendingNewCountRef.current > 0 && onFlushNewMessages) {
         onFlushNewMessages();
       }
@@ -562,10 +496,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         if (!messageId) return;
         const outer = outerRef.current;
         if (outer) {
-          const el = outer.querySelector(`[data-message-id="${String(messageId)}"]`);
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
+          scrollToMessageElement(outer, messageId);
         }
         if (scrollToMessageProp) {
           return scrollToMessageProp(messageId, containerRef, attachmentId);
@@ -576,7 +507,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
 
     const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
       const outer = outerRef.current;
-      if (outer) outer.scrollTo({ top: outer.scrollHeight, behavior });
+      if (outer) scrollToBottomSmooth(outer, behavior);
     }, []);
 
     useImperativeHandle(
@@ -694,6 +625,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               index={msgIndex}
               selectedCustomer={selectedCustomer}
               blinkMessageId={blinkMessageId}
+              searchHighlightQuery={searchHighlightQuery}
+              searchHighlightMessageId={searchHighlightMessageId}
               getMessageStatusIcon={getMessageStatusIcon}
               onContextMenu={onContextMenu}
               onMenuClick={onMenuClick}
@@ -721,6 +654,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         typingStatus,
         selectedCustomer,
         blinkMessageId,
+        searchHighlightQuery,
+        searchHighlightMessageId,
         getMessageStatusIcon,
         onContextMenu,
         onMenuClick,
@@ -907,42 +842,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             )}
 
             {rows.map((row, index) => {
-              // ── Unread separator: insert before the anchor message ──
-              const showUnreadSeparator =
-                unreadAnchorMessageId != null &&
-                row.type === "message" &&
-                String((row as { msg?: ChatMessage }).msg?.MessageId ??
-                       (row as { msg?: ChatMessage }).msg?.Id ?? "") ===
-                  String(unreadAnchorMessageId);
-
               return (
                 <React.Fragment key={`row-${index}`}>
-                  {showUnreadSeparator && (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        px: 2,
-                        py: 1,
-                        my: 0.5,
-                      }}
-                    >
-                      <Box sx={{ flex: 1, height: 1, backgroundColor: "primary.main", opacity: 0.5 }} />
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontSize: "0.7rem",
-                          fontWeight: 600,
-                          color: "primary.main",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {unreadCount > 0 ? `${unreadCount} unread messages` : "Unread messages"}
-                      </Typography>
-                      <Box sx={{ flex: 1, height: 1, backgroundColor: "primary.main", opacity: 0.5 }} />
-                    </Box>
-                  )}
                   {renderRow(row, index)}
                 </React.Fragment>
               );

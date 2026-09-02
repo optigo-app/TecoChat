@@ -14,6 +14,7 @@ interface ReadMoreTextProps {
   onToggle?: () => void;
   sx?: object;
   mentionUsers?: string | null;
+  highlightQuery?: string | null;
 }
 
 const ReadMoreTextComponent = ({
@@ -24,6 +25,7 @@ const ReadMoreTextComponent = ({
   onToggle,
   sx = {},
   mentionUsers,
+  highlightQuery,
 }: ReadMoreTextProps) => {
   const textRef = useRef<HTMLDivElement | null>(null);
   const [needsToggle, setNeedsToggle] = useState(false);
@@ -91,7 +93,7 @@ const ReadMoreTextComponent = ({
           ...sx,
         }}
       >
-        {renderMessageText(content, mentionUsers)}
+        {renderMessageText(content, mentionUsers, highlightQuery ?? undefined)}
       </Box>
       {needsToggle && (
         <Typography

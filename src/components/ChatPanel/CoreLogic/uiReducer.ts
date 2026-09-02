@@ -13,6 +13,7 @@ export const UI = {
   SET_FORWARD: "SET_FORWARD",
   SET_FORWARD_ANCHOR: "SET_FORWARD_ANCHOR",
   SET_BLINK: "SET_BLINK",
+  SET_SEARCH_HIGHLIGHT: "SET_SEARCH_HIGHLIGHT",
   SET_VIEWER: "SET_VIEWER",
   SET_SEARCHING: "SET_SEARCHING",
   SET_SEARCH_RESULTS: "SET_SEARCH_RESULTS",
@@ -58,6 +59,7 @@ export type UIAction =
   | { type: "SET_FORWARD"; value: ChatMessage | null }
   | { type: "SET_FORWARD_ANCHOR"; value: HTMLElement | null }
   | { type: "SET_BLINK"; value: string | null }
+  | { type: "SET_SEARCH_HIGHLIGHT"; value: { query: string | null; messageId: string | null } }
   | {
       type: "SET_VIEWER";
       open?: boolean;
@@ -79,6 +81,8 @@ export interface UIState {
   forwardMessage: ChatMessage | null;
   forwardAnchorEl: HTMLElement | null;
   blinkMessageId: string | null;
+  searchHighlightQuery: string | null;
+  searchHighlightMessageId: string | null;
   mediaViewerOpen: boolean;
   mediaViewerItems: MediaViewerItem[];
   mediaViewerIndex: number;
@@ -98,6 +102,8 @@ export const uiInitialState: UIState = {
   forwardMessage: null,
   forwardAnchorEl: null,
   blinkMessageId: null,
+  searchHighlightQuery: null,
+  searchHighlightMessageId: null,
   mediaViewerOpen: false,
   mediaViewerItems: [],
   mediaViewerIndex: 0,
@@ -145,6 +151,18 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
       return state.blinkMessageId === action.value
         ? state
         : { ...state, blinkMessageId: action.value };
+
+    case UI.SET_SEARCH_HIGHLIGHT:
+      if (
+        state.searchHighlightQuery === action.value.query &&
+        state.searchHighlightMessageId === action.value.messageId
+      )
+        return state;
+      return {
+        ...state,
+        searchHighlightQuery: action.value.query,
+        searchHighlightMessageId: action.value.messageId,
+      };
 
     case UI.SET_SEARCHING:
       return state.isSearching === action.value

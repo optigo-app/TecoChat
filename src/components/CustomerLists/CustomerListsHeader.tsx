@@ -46,26 +46,30 @@ export const CustomerListsHeader = ({
         </Box>
 
         <div className="add_conv_box">
-          <Tooltip title="New Chat" arrow placement="top">
-            <IconButton
-              size="small"
-              className="add_conv"
-              onClick={onNewChat}
-              aria-label="New chat"
-            >
-              <MessageSquarePlus size={20} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Create Group" arrow placement="top">
-            <IconButton
-              size="small"
-              className="add_conv"
-              onClick={onCreateGroup}
-              aria-label="Create group"
-            >
-              <Users size={20} />
-            </IconButton>
-          </Tooltip>
+          {!isArchiveOpen && (
+            <>
+              <Tooltip title="New Chat" arrow placement="top">
+                <IconButton
+                  size="small"
+                  className="add_conv"
+                  onClick={onNewChat}
+                  aria-label="New chat"
+                >
+                  <MessageSquarePlus size={20} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Create Group" arrow placement="top">
+                <IconButton
+                  size="small"
+                  className="add_conv"
+                  onClick={onCreateGroup}
+                  aria-label="Create group"
+                >
+                  <Users size={20} />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
         </div>
       </div>
 
@@ -74,7 +78,7 @@ export const CustomerListsHeader = ({
         <TextField
           fullWidth
           size="small"
-          placeholder="Search chats..."
+          placeholder={isArchiveOpen ? "Search archived..." : "Search chats..."}
           value={searchTerm}
           onChange={handleSearchChange}
           onKeyDown={handleKeyDown}

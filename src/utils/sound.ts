@@ -4,6 +4,14 @@
 const POP_SOUND_URL = "/pop_sound.mp3";
 let isAudioUnlocked = false;
 
+// ── Global sound throttle ──────────────────────────────────────────────────
+// Prevents notification sound spam when many messages arrive in rapid
+// succession (e.g. a user sending 10-20 messages in 1 second). Only one
+// sound plays per SOUND_THROTTLE_MS window, regardless of how many messages
+// arrive or which conversation they come from. Matches WhatsApp Web behavior.
+let lastSoundPlayedAt = 0;
+const SOUND_THROTTLE_MS = 1500;
+
 // Shared Audio instance for playing the notification sound
 let sharedAudio: HTMLAudioElement | null = null;
 
@@ -57,6 +65,14 @@ export const unlockAudio = () => {
 
 export const playNotificationSound = () => {
   if (typeof window === "undefined") return;
+
+  // Throttle: skip if we already played within the throttle window.
+  // This coalesces rapid-fire messages into a single audible alert.
+  const now = Date.now();
+  if (now - lastSoundPlayedAt < SOUND_THROTTLE_MS) {
+    return;
+  }
+  lastSoundPlayedAt = now;
 
   try {
     const audio = getSharedAudio();

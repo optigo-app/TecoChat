@@ -2,9 +2,7 @@
 
 import { memo } from "react";
 import { Menu, MenuItem, ListItemIcon, ListItemText, Typography } from "@mui/material";
-import ImageIcon from "@mui/icons-material/Image";
-import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import { Image, Video, FileText } from "lucide-react";
 
 interface AttachmentMenuProps {
   anchorEl: HTMLElement | null;
@@ -57,7 +55,7 @@ const AttachmentMenuComponent = ({
         sx={{ py: 1.2, px: 2.5, mx: 0.8, borderRadius: 1.5 }}
       >
         <ListItemIcon sx={{ minWidth: "38px", color: "#0046FF" }}>
-          <ImageIcon fontSize="small" />
+          <Image size={18} />
         </ListItemIcon>
         <ListItemText>
           <Typography variant="body2" sx={{ fontWeight: 500 }}>Photo</Typography>
@@ -69,7 +67,7 @@ const AttachmentMenuComponent = ({
         sx={{ py: 1.2, px: 2.5, mx: 0.8, borderRadius: 1.5 }}
       >
         <ListItemIcon sx={{ minWidth: "38px", color: "#FF8040" }}>
-          <VideoLibraryIcon fontSize="small" />
+          <Video size={18} />
         </ListItemIcon>
         <ListItemText>
           <Typography variant="body2" sx={{ fontWeight: 500 }}>Video</Typography>
@@ -81,7 +79,7 @@ const AttachmentMenuComponent = ({
         sx={{ py: 1.2, px: 2.5, mx: 0.8, borderRadius: 1.5 }}
       >
         <ListItemIcon sx={{ minWidth: "38px", color: "#9929EA" }}>
-          <InsertDriveFileIcon fontSize="small" />
+          <FileText size={18} />
         </ListItemIcon>
         <ListItemText>
           <Typography variant="body2" sx={{ fontWeight: 500 }}>Document</Typography>

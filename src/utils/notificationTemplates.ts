@@ -95,6 +95,19 @@ export const NOTIFICATION_TEMPLATES: Record<string, TemplateFn> = {
 const recentNotifications = new Map<string, number>();
 const NOTIFICATION_DEDUPE_MS = 3000;
 
+// ── Per-conversation coalescing for rapid messages ─────────────────────────
+// When a user sends many messages in rapid succession (10-20/sec), instead
+// of firing a notification for each one, we coalesce them into a single
+// notification per conversation within COALESCE_WINDOW_MS. The browser
+// replaces the previous notification (same `tag`), and the body updates to
+// show the count. Matches WhatsApp Web behavior.
+interface CoalesceState {
+  count: number;
+  lastShownAt: number;
+}
+const conversationCoalesce = new Map<string, CoalesceState>();
+const COALESCE_WINDOW_MS = 3000;
+
 const getNotificationKey = (templateId: string, data: any): string => {
   const conversationId =
     data?.conversationId ?? data?.ConversationId ?? "";
@@ -132,6 +145,15 @@ export const notify = (data: any, templateId: string, user?: any): void => {
     }
   }
 
+  // Cleanup stale coalesce entries
+  if (conversationCoalesce.size > 50) {
+    for (const [k, s] of conversationCoalesce) {
+      if (now - s.lastShownAt > COALESCE_WINDOW_MS * 2) {
+        conversationCoalesce.delete(k);
+      }
+    }
+  }
+
   const notificationOptions = templateFn(data, user);
 
   let typeGroup = "OTHER";
@@ -146,6 +168,41 @@ export const notify = (data: any, templateId: string, user?: any): void => {
     templateId === "YOU_WERE_REMOVED"
   ) {
     typeGroup = "GROUP";
+  }
+
+  // ── Coalesce rapid NEW_MESSAGE notifications per conversation ──────────
+  // Within COALESCE_WINDOW_MS, additional messages from the same conversation
+  // replace the existing notification (same `tag`) with an updated body
+  // showing the count, instead of stacking separate notifications.
+  if (templateId === "NEW_MESSAGE") {
+    const convId = data?.conversationId ?? data?.ConversationId;
+    if (convId != null && convId !== "") {
+      const coalesceKey = String(convId);
+      const state = conversationCoalesce.get(coalesceKey);
+      if (state && now - state.lastShownAt < COALESCE_WINDOW_MS) {
+        // Within window — increment count and replace the notification
+        state.count += 1;
+        state.lastShownAt = now;
+        const count = state.count;
+        const body =
+          count > 1
+            ? `${count} new messages`
+            : notificationOptions.body;
+        showBrowserNotification({
+          ...notificationOptions,
+          body,
+          data: {
+            ...data,
+            type: templateId,
+            group: typeGroup,
+            coalescedCount: count,
+          },
+        });
+        return;
+      }
+      // Outside window (or first message) — start a fresh coalesce entry
+      conversationCoalesce.set(coalesceKey, { count: 1, lastShownAt: now });
+    }
   }
 
   showBrowserNotification({

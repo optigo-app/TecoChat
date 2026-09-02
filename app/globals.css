@@ -10,9 +10,22 @@
   --color-primary-gradient: linear-gradient(270deg, rgba(115, 103, 240, 0.7) 0%, #7367f0 100%);
   --color-primary-blue: #007bfc;
 
-  /* Mention text — readable on both light and dark bubble backgrounds */
+  /* Mention text — brand purple in light mode, no pill by default.
+     @ symbol is dimmer than the name (separate variable). */
   --color-mention-text: #6356d4;
-  --color-mention-bg: rgba(115, 103, 240, 0.08);
+  --color-mention-at: #6356d480;
+  --color-mention-bg: transparent;
+  --color-mention-hover-bg: rgba(99, 86, 212, 0.12);
+  --color-mention-text-outgoing: #6356d4;
+  --color-mention-at-outgoing: #6356d480;
+  --color-mention-hover-bg-outgoing: rgba(99, 86, 212, 0.12);
+
+  /* Search highlight — used when jumping to a message from search results.
+     Light mode: purple on translucent outgoing / white incoming. */
+  --color-search-highlight: #5b4dd6;
+  --color-search-highlight-bg: rgba(91, 77, 214, 0.18);
+  --color-search-highlight-outgoing: #5b4dd6;
+  --color-search-highlight-bg-outgoing: rgba(91, 77, 214, 0.18);
 
   /* Buttons */
   --color-button-bg: linear-gradient(270deg, rgba(115, 103, 240, 0.7) 0%, #7367f0 100%);
@@ -76,9 +89,17 @@
   --color-toggle-off: rgba(0, 0, 0, 0.22);
   --color-toggle-knob: #ffffff;
 
-  /* Chat bubble backgrounds */
+  /* Chat bubble backgrounds — light mode uses translucent style */
   --color-bubble-outgoing: rgba(115, 103, 240, 0.15);
   --color-bubble-incoming: #ffffff;
+  --color-bubble-outgoing-hover: rgba(115, 103, 240, 0.22);
+  --color-bubble-incoming-hover: #f5f6f6;
+  --color-bubble-outgoing-reply: rgba(115, 103, 240, 0.1);
+  --color-bubble-incoming-reply: rgba(115, 103, 240, 0.06);
+  --color-bubble-outgoing-text: #111b21;
+  --color-bubble-incoming-text: #111b21;
+  --color-bubble-timestamp: #667781;
+  --color-bubble-link: #6356d4;
 
   /* Chat message area background */
   --color-chat-bg: #f9fafb;
@@ -118,10 +139,22 @@
   --color-primary-gradient: linear-gradient(270deg, rgba(115, 103, 240, 0.7) 0%, #7367f0 100%);
   --color-primary-blue: #3d9bff;
 
-  /* Mention text — light pill background with dark text so it's visible
-     on both dark purple outgoing bubbles and dark incoming bubbles. */
-  --color-mention-text: #2a2a3d;
-  --color-mention-bg: rgba(232, 226, 255, 0.9);
+  /* Mention text — WhatsApp dark mode: lighter blue for visibility on dark
+     bubbles. @ symbol is dimmer. No pill by default, hover shows bg.
+     Outgoing mentions use light lavender for visibility on purple bubble. */
+  --color-mention-text: #53bdeb;
+  --color-mention-at: #8696a0;
+  --color-mention-bg: transparent;
+  --color-mention-hover-bg: rgba(83, 189, 235, 0.15);
+  --color-mention-text-outgoing: #ddd6fe;
+  --color-mention-at-outgoing: #c4b5fd;
+  --color-mention-hover-bg-outgoing: rgba(221, 214, 254, 0.18);
+
+  /* Search highlight — bright gold for dark mode visibility on dark bubbles */
+  --color-search-highlight: #ffd84d;
+  --color-search-highlight-bg: rgba(255, 216, 77, 0.22);
+  --color-search-highlight-outgoing: #ffe066;
+  --color-search-highlight-bg-outgoing: rgba(255, 224, 102, 0.3);
 
   /* Buttons */
   --color-button-bg: linear-gradient(270deg, rgba(115, 103, 240, 0.8) 0%, #7367f0 100%);
@@ -185,9 +218,17 @@
   --color-toggle-off: rgba(255, 255, 255, 0.18);
   --color-toggle-knob: #e4e4ef;
 
-  /* Chat bubble backgrounds */
-  --color-bubble-outgoing: rgba(115, 103, 240, 0.55);
+  /* Chat bubble backgrounds — solid brand colors (dark mode) */
+  --color-bubble-outgoing: #5949d6;
   --color-bubble-incoming: #2a2a3d;
+  --color-bubble-outgoing-hover: #4d3fca;
+  --color-bubble-incoming-hover: #333344;
+  --color-bubble-outgoing-reply: #4d3fca;
+  --color-bubble-incoming-reply: #333344;
+  --color-bubble-outgoing-text: #ffffff;
+  --color-bubble-incoming-text: #e4e4ef;
+  --color-bubble-timestamp: #a0a0b5;
+  --color-bubble-link: #53bdeb;
 
   /* Chat message area background */
   --color-chat-bg: #161622;

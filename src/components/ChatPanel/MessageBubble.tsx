@@ -43,6 +43,7 @@ interface MessageBubbleProps {
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   auth?: { id?: string | number; userId?: string | number } | null;
+  highlightQuery?: string | null;
 }
 
 const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
@@ -66,6 +67,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
   isExpanded = false,
   onToggleExpand,
   auth,
+  highlightQuery,
 }) => {
   const theme = useTheme();
   const isGroup = (selectedCustomer as { IsGroup?: number }).IsGroup === 1;
@@ -248,6 +250,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
             onToggle={onToggleExpand}
             sx={{ color: theme.palette.text.primary }}
             mentionUsers={msg.Mentions || msg.MentionUsers}
+            highlightQuery={highlightQuery}
           />
         ) : (
           <Box sx={{ maxWidth: msg.MessageType === "document" ? 350 : 250, width: "100%" }}>
@@ -267,6 +270,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 onToggle={onToggleExpand}
                 sx={{ mt: 0.5, color: theme.palette.text.primary }}
                 mentionUsers={msg.Mentions || msg.MentionUsers}
+                highlightQuery={highlightQuery}
               />
             )}
           </Box>

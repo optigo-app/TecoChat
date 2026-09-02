@@ -141,6 +141,8 @@ export const ChatPanel = memo(({
     forwardMessage,
     forwardAnchorEl,
     blinkMessageId,
+    searchHighlightQuery,
+    searchHighlightMessageId,
     mediaViewerOpen,
     mediaViewerItems,
     mediaViewerIndex,
@@ -540,6 +542,7 @@ export const ChatPanel = memo(({
   // ── Header menu ──────────────────────────────────────────────────────────
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; msg: ChatMessage } | null>(null);
+  const [chatAreaMenu, setChatAreaMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
 
   const handleMoreClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     setMenuAnchor(e.currentTarget);
@@ -626,6 +629,34 @@ export const ChatPanel = memo(({
     setContextMenu(null);
   }, []);
 
+  const handleChatAreaContextMenu = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest(".messages-area") || target.closest(".message-bubble-wrapper")) return;
+    e.preventDefault();
+    setChatAreaMenu({ mouseX: e.clientX + 2, mouseY: e.clientY + 2 });
+  }, []);
+
+  const handleChatAreaMenuClose = useCallback(() => {
+    setChatAreaMenu(null);
+  }, []);
+
+  const handleChatAreaClose = useCallback(() => {
+    setChatAreaMenu(null);
+    onCustomerSelect?.(null as any);
+  }, [onCustomerSelect]);
+
+  // ── Close chat on Escape ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedCustomer) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onCustomerSelect?.(null as any);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedCustomer, onCustomerSelect]);
+
   // ── Send handler with scroll ─────────────────────────────────────────────
   const handleSendWithScroll = useCallback(
     (text: string, mentions?: import("./input/MentionPlugin").MentionData[]) => {
@@ -667,7 +698,10 @@ export const ChatPanel = memo(({
   return (
     <Box className="chat-panel-wrapper">
       {/* Chat content (flex column: header + messages + input) */}
-      <Box className={`chat-panel${mediaFiles.length > 0 ? " media-preview-open" : ""}`}>
+      <Box
+        className={`chat-panel${mediaFiles.length > 0 ? " media-preview-open" : ""}`}
+        onContextMenu={handleChatAreaContextMenu}
+      >
       <ChatHeader
         selectedCustomer={selectedCustomer}
         typingStatus={typingStatus}
@@ -691,6 +725,8 @@ export const ChatPanel = memo(({
         loadingNewer={loadingNewer}
         selectedCustomer={selectedCustomer}
         blinkMessageId={blinkMessageId}
+        searchHighlightQuery={searchHighlightQuery}
+        searchHighlightMessageId={searchHighlightMessageId}
         typingStatus={typingStatus}
         getMessageStatusIcon={getMessageStatusIcon}
         onContextMenu={handleContextMenu}
@@ -935,6 +971,71 @@ export const ChatPanel = memo(({
           }
         }}
       />
+
+      {/* Chat area right-click menu */}
+      <Menu
+        open={Boolean(chatAreaMenu)}
+        onClose={handleChatAreaMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          chatAreaMenu
+            ? { top: chatAreaMenu.mouseY, left: chatAreaMenu.mouseX }
+            : undefined
+        }
+        transitionDuration={0}
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: "16px",
+              minWidth: "180px",
+              bgcolor: (t: { palette: { mode: string } }) =>
+                t.palette.mode === "dark"
+                  ? "rgba(35, 35, 51, 0.82)"
+                  : "rgba(255, 255, 255, 0.82)",
+              backdropFilter: "blur(20px) saturate(180%)",
+              WebkitBackdropFilter: "blur(20px) saturate(180%)",
+              boxShadow: (t: { palette: { mode: string } }) =>
+                t.palette.mode === "dark"
+                  ? "0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)"
+                  : "0 12px 40px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4)",
+              border: (t: { palette: { mode: string } }) =>
+                t.palette.mode === "dark"
+                  ? "1px solid rgba(255,255,255,0.08)"
+                  : "1px solid rgba(255,255,255,0.5)",
+              mt: 1.5,
+              overflow: "hidden",
+              "& .MuiMenuItem-root": {
+                px: 1.5,
+                py: 1.25,
+                mx: 1,
+                borderRadius: "10px",
+                transition: "all 0.2s ease",
+                gap: "12px",
+                minHeight: "44px",
+                "&:hover": {
+                  bgcolor: "primary.main",
+                  color: "#fff",
+                  "& .MuiListItemIcon-root": { color: "#fff" },
+                },
+              },
+              "& .MuiListItemIcon-root": {
+                color: "text.secondary",
+                transition: "all 0.2s ease",
+                minWidth: "auto !important",
+              },
+              "& .MuiTypography-root": {
+                fontWeight: 500,
+                fontSize: "0.875rem",
+              },
+            },
+          },
+        }}
+      >
+        <MenuItem onClick={handleChatAreaClose}>
+          <ListItemIcon><X size={18} /></ListItemIcon>
+          <ListItemText primary="Close chat" />
+        </MenuItem>
+      </Menu>
 
       {/* Media Viewer (fullscreen lightbox) */}
       <MediaViewer

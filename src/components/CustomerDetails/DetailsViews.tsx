@@ -112,7 +112,7 @@ interface DetailsViewsProps {
   messages: any;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  scrollToMessage?: (messageId: string | number, containerRef: React.RefObject<any>) => void;
+  scrollToMessage?: (messageId: string | number, containerRef: React.RefObject<any>, attachmentId?: string | null, searchQuery?: string | null) => void;
   groupPermissions: GroupPermissionsData;
   handlePermissionChange: (name: string, value: boolean) => void;
   onEditAdmins: () => void;
@@ -380,7 +380,7 @@ const DetailsViews = ({
               if (scrollToMessage && containerRef) {
                 const msgId = msg.MessageId ?? msg.id;
                 if (msgId !== undefined) {
-                  scrollToMessage(msgId, containerRef);
+                  scrollToMessage(msgId, containerRef, null, searchQuery || null);
                 }
               }
             }}

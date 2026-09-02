@@ -5,6 +5,8 @@ import { Box, Skeleton, Typography, Menu, MenuItem, ListItemIcon, ListItemText, 
 import { Archive, ArchiveRestore, Pin, PinOff, Star, StarOff } from "lucide-react";
 import { useLoginContext } from "../../context/LoginData";
 import { useConversationList } from "../../hooks/useConversationList";
+import { updateConversationApi } from "../../API/SendMessage/updateConversationApi";
+import { showToast } from "../../utils/toastHelper";
 import { getCustomerDisplayName } from "../../utils/globalFunc";
 import { ConversationItem } from "./ConversationItem";
 import { CustomerListsHeader } from "./CustomerListsHeader";
@@ -62,6 +64,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
 
   // Listen for OPEN_PROFILE_PANEL event from ProfileAvatar menu
   useEffect(() => {
@@ -109,8 +112,10 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
         // Search results always show
         if ((member as { isSearchResult?: boolean }).isSearchResult) return true;
 
-        // Archive filter (non-archive view: hide archived)
-        const archiveMatch = (member as { IsArchived?: number }).IsArchived !== 1;
+        // Archive filter: in archive view show ONLY archived, otherwise hide archived
+        const archiveMatch = isArchiveOpen
+          ? (member as { IsArchived?: number }).IsArchived === 1
+          : (member as { IsArchived?: number }).IsArchived !== 1;
         if (!archiveMatch) return false;
 
         // Tab filters
@@ -150,7 +155,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
         return haystack.includes(searchTerm.toLowerCase());
       })
       .sort(conversationComparator);
-  }, [chatMembers, searchTerm, tabValue]);
+  }, [chatMembers, searchTerm, tabValue, isArchiveOpen]);
 
   // ── Total unread conversations (for favicon badge) ────────────────────────
   const totalUnread = useMemo(() => {
@@ -267,6 +272,12 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
     handleMenuClose();
     if (!member) return;
 
+    const convId = (member as { ConversationId?: string | number }).ConversationId;
+    if (!convId) {
+      showToast("Missing Conversation ID.", "error");
+      return;
+    }
+
     let isPin = (member as { IsPin?: number }).IsPin ?? 0;
     let isStar = (member as { IsStar?: number }).IsStar ?? 0;
     let isArchived = (member as { IsArchived?: number }).IsArchived ?? 0;
@@ -278,13 +289,22 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
     else if (action === "Archive") isArchived = 1;
     else if (action === "UnArchive") isArchived = 0;
 
+    const actionMessages: Record<string, string> = {
+      Pin: "Conversation pinned 📌",
+      UnPin: "Conversation unpinned",
+      Star: "Conversation added to favorites ⭐",
+      UnStar: "Conversation removed from favorites",
+      Archive: "Conversation archived 🗂️",
+      UnArchive: "Conversation unarchived",
+    };
+
     // Optimistic update
     setChatMembers((prev) => {
       if (!prev?.data) return prev;
       const index = prev.data.findIndex(
         (m) =>
           Number((m as { ConversationId?: string | number }).ConversationId ?? 0) ===
-          Number((member as { ConversationId?: string | number }).ConversationId ?? 0)
+          Number(convId)
       );
       if (index === -1) return prev;
       const updatedData = [...prev.data];
@@ -298,7 +318,40 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
       return { ...prev, data: updatedData };
     });
 
-    // TODO: call updateConversationApi when it's migrated
+    // Backend sync
+    try {
+      const response = await updateConversationApi(auth, {
+        conversationId: convId,
+        isPin,
+        isStar,
+        isArchived,
+      });
+      if (response?.Status === "200" || response?.success === true) {
+        showToast(actionMessages[action] || "Conversation updated", "success");
+      } else {
+        showToast("Failed to update conversation", "error");
+        // Revert optimistic update on failure
+        setChatMembers((prev) => {
+          if (!prev?.data) return prev;
+          const index = prev.data.findIndex(
+            (m) => Number((m as { ConversationId?: string | number }).ConversationId ?? 0) === Number(convId)
+          );
+          if (index === -1) return prev;
+          const updatedData = [...prev.data];
+          updatedData[index] = {
+            ...updatedData[index],
+            IsPin: (member as { IsPin?: number }).IsPin ?? 0,
+            IsStar: (member as { IsStar?: number }).IsStar ?? 0,
+            IsArchived: (member as { IsArchived?: number }).IsArchived ?? 0,
+          } as ConversationListEntry;
+          updatedData.sort(conversationComparator);
+          return { ...prev, data: updatedData };
+        });
+      }
+    } catch (error) {
+      console.error("Error updating conversation:", error);
+      showToast("Something went wrong.", "error");
+    }
   };
 
   const menuItems = useMemo(() => {
@@ -338,29 +391,31 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
       {!isOnline && <Box className="offline-sidebar-overlay" />}
       {profileOpen && <ProfilePanel onBack={() => setProfileOpen(false)} />}
       <CustomerListsHeader
-        isArchiveOpen={false}
+        isArchiveOpen={isArchiveOpen}
         searchTerm={searchTerm}
         searchLoading={searchLoading}
         handleSearchChange={handleSearchChange}
         handleKeyDown={handleKeyDown}
-        onBack={() => {}}
+        onBack={() => setIsArchiveOpen(false)}
         onNewChat={() => setShowNewChat(true)}
         onCreateGroup={() => setShowCreateGroup(true)}
         mobileMenuTrigger={mobileMenuTrigger}
       />
 
-      {/* Tab filters */}
-      <div className="customer_lists_filters">
-        {tabs.map((tab) => (
-          <button
-            key={tab.value}
-            className={`filter-tab ${tabValue === tab.value ? "active" : ""}`}
-            onClick={() => setTabValue(tab.value)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* Tab filters — hidden in archive view */}
+      {!isArchiveOpen && (
+        <div className="customer_lists_filters">
+          {tabs.map((tab) => (
+            <button
+              key={tab.value}
+              className={`filter-tab ${tabValue === tab.value ? "active" : ""}`}
+              onClick={() => setTabValue(tab.value)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Notification permission banner */}
       <NotificationPermissionBar />
@@ -376,9 +431,9 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
         )}
 
         <ul ref={containerRef} className="app-scroll">
-          {/* Archived row */}
-          {archivedCount > 0 && !searchTerm && tabValue !== 2 && (
-            <li className="member-item archived-row">
+          {/* Archived row — only in normal view, hidden in archive view and favorite tab */}
+          {archivedCount > 0 && !searchTerm && !isArchiveOpen && tabValue !== 2 && (
+            <li className="member-item archived-row" onClick={() => setIsArchiveOpen(true)}>
               <div className="member-item">
                 <div className="member-avatar">
                   <div className="archived-icon-wrapper">

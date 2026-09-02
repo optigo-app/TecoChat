@@ -5,7 +5,7 @@ import { Typography, Badge, IconButton, Tooltip } from "@mui/material";
 import { ChevronDown, Pin, Star, CheckCheck, UploadCloud, BellOff } from "lucide-react";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
 import { highlightText } from "./CustomerListFunc";
-import { normalizeMessageText } from "../../utils/globalFunc";
+import { normalizeMessageText, stripMarkdownFormatting } from "../../utils/globalFunc";
 import { renderMessageText } from "../../utils/messageTextRenderer";
 import { queueDroppedFiles } from "../../utils/dropFileQueue";
 import { isConversationMuted } from "../../utils/mentionUtils";
@@ -173,6 +173,7 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
             <Typography
               className={unreadCount > 0 ? "member-name-unread" : "member-name"}
               component="span"
+              title={name}
             >
               {isSearchResult ? name : highlightText(name, searchTerm)}
             </Typography>
@@ -199,9 +200,15 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
                     : "typing..."}
                 </span>
               ) : showDraft ? (
-                <span>
+                <span title={stripMarkdownFormatting(draftText).replace(/\n|\r/g, " ")}>
                   <span style={{ color: "#7367f0", fontWeight: 500 }}>Draft: </span>
-                  {draftText}
+                  {typeof draftText === "string" && draftText ? (
+                    renderMessageText(
+                      normalizeMessageText(String(draftText)).replace(/\n|\r/g, " ")
+                    )
+                  ) : (
+                    draftText || "Tap to chat"
+                  )}
                 </span>
               ) : (
                 <span className="last-message-content">
@@ -215,7 +222,14 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
                       }}
                     />
                   )}
-                  <span className="last-message-text">
+                  <span
+                    className="last-message-text"
+                    title={
+                      typeof lastMessage === "string" && lastMessage
+                        ? stripMarkdownFormatting(normalizeMessageText(String(lastMessage))).replace(/\n|\r/g, " ")
+                        : ""
+                    }
+                  >
                     {typeof lastMessage === "string" && lastMessage ? (
                       renderMessageText(
                         normalizeMessageText(String(lastMessage)).replace(/\n|\r/g, " ")

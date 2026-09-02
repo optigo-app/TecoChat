@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Avatar, Skeleton } from "@mui/material";
-import PersonIcon from "@mui/icons-material/Person";
+import { User } from "lucide-react";
 import {
   getWhatsAppAvatarConfig,
   getCustomerAvatarSeed,
@@ -55,7 +55,7 @@ export const ConversationAvatar = ({ member, size = 40 }: ConversationAvatarProp
         sx={{ ...cfg.sx, width: size, height: size }}
         slotProps={{ img: { draggable: false } }}
       >
-        <PersonIcon fontSize="small" />
+        <User size={20} />
       </Avatar>
     );
   }

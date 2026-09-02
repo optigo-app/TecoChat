@@ -159,7 +159,9 @@ const ReplyPreviewComponent = ({
         display: "flex",
         gap: 1,
         padding: "8px",
-        backgroundColor: alpha(theme.palette.primary.main, isOutgoing ? 0.12 : 0.08),
+        backgroundColor: isOutgoing
+          ? "var(--color-bubble-outgoing-reply)"
+          : "var(--color-bubble-incoming-reply)",
         borderRadius: "8px",
         marginBottom: "8px",
         borderLeft: `3px solid ${theme.palette.primary.main}`,
