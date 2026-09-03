@@ -36,6 +36,8 @@ import type {
   TypingState,
 } from "../types/conversation";
 import type { AuthData } from "../context/LoginData";
+import { getConversations, putConversations, upsertConversation } from "../db/conversationCache";
+import { getAllDrafts } from "../db/draftCache";
 
 interface UseConversationListOptions {
   auth: AuthData | null;
@@ -131,6 +133,19 @@ export const useConversationList = ({
       if (isSearchRequest) setSearchLoading(true);
       else setLoading(true);
 
+      // Cache-first: on a non-search reset, render the cached conversation
+      // list instantly from IndexedDB, then reconcile with the API below.
+      if (reset && !isSearchRequest) {
+        try {
+          const cached = await getConversations(auth);
+          if (cached.length > 0) {
+            setChatMembers({ data: cached, total: cached.length });
+          }
+        } catch {
+          /* ignore cache read errors */
+        }
+      }
+
       try {
         const response = await fetchConversationLists(
           page,
@@ -143,7 +158,7 @@ export const useConversationList = ({
         if (response.serviceDown) {
           setServiceDown(true);
           setServiceMessage(response.serviceMessage);
-          setChatMembers({ data: [], total: 0 });
+          setChatMembers((prev) => prev ?? { data: [], total: 0 });
           setHasMore(false);
           window.dispatchEvent(
             new CustomEvent("SERVICE_DOWN", {
@@ -213,6 +228,13 @@ export const useConversationList = ({
         const moreAvailable = response?.hasMore ?? sortedConversations.length > 0;
         setHasMore(moreAvailable);
         if (moreAvailable) setCurrentPage(page);
+
+        // Persist the fresh conversation list to IndexedDB (best-effort).
+        if (!isSearchRequest && sortedConversations.length > 0) {
+          putConversations(auth, sortedConversations).catch(() => {
+            /* ignore */
+          });
+        }
       } catch (error) {
         if (error instanceof Error && error.message === "AbortError") return;
         console.error("Error loading members:", error);
@@ -466,6 +488,15 @@ export const useConversationList = ({
         }
 
         updatedData.sort(conversationComparator);
+        // Write-through: persist the updated conversation to IndexedDB.
+        const updatedEntry = updatedData.find(
+          (m) => Number((m as any).ConversationId) === Number(conversationId)
+        );
+        if (updatedEntry) {
+          upsertConversation(auth, updatedEntry).catch(() => {
+            /* ignore */
+          });
+        }
         return { ...prev, data: updatedData };
       });
     },
@@ -985,17 +1016,18 @@ export const useConversationList = ({
     };
   }, []);
 
-  // ── Real-time: CHAT_DRAFTS_UPDATED + storage sync ─────────────────────────
+  // ── Real-time: CHAT_DRAFTS_UPDATED + IndexedDB hydration ──────────────────
   useEffect(() => {
-    const storageKey = auth?.id ? `chat_drafts_${auth.id}` : "chat_drafts";
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        setDrafts(JSON.parse(saved));
+    // Hydrate drafts from IndexedDB on mount/auth change.
+    let cancelled = false;
+    (async () => {
+      try {
+        const all = await getAllDrafts(auth);
+        if (!cancelled) setDrafts(all as Record<number, string>);
+      } catch {
+        /* ignore */
       }
-    } catch {
-      setDrafts({});
-    }
+    })();
 
     const handleDraftsUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -1004,24 +1036,12 @@ export const useConversationList = ({
       }
     };
 
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === storageKey) {
-        try {
-          const parsed = e.newValue ? JSON.parse(e.newValue) : {};
-          setDrafts(parsed);
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-
     window.addEventListener("CHAT_DRAFTS_UPDATED", handleDraftsUpdate as EventListener);
-    window.addEventListener("storage", handleStorage);
     return () => {
+      cancelled = true;
       window.removeEventListener("CHAT_DRAFTS_UPDATED", handleDraftsUpdate as EventListener);
-      window.removeEventListener("storage", handleStorage);
     };
-  }, [auth?.id]);
+  }, [auth]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   useEffect(() => {

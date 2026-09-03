@@ -66,34 +66,35 @@
     .media-viewer-toolbar {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
 
         .toolbar-btn {
-            color: var(--color-text-secondary);
+            color: $text2ndColor;
             padding: 8px;
             border-radius: 10px;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            background: var(--color-hover-bg);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            // Soft, slightly slower easing for an app-like feel.
+            transition: color $transition-duration ease,
+                background-color $transition-duration ease,
+                transform $transition-duration cubic-bezier(0.34, 1.56, 0.64, 1);
 
             &:hover {
                 color: $primary-main;
-                background: var(--color-hover-bg-strong);
+                background-color: $hover-bg;
                 transform: scale(1.08);
             }
 
             &:active {
                 transform: scale(0.95);
+                transition-duration: 80ms;
             }
 
             svg {
                 stroke-width: 1.8;
-                transition: transform 0.2s ease;
+                transition: transform $transition-duration cubic-bezier(0.34, 1.56, 0.64, 1);
             }
 
             &:hover svg {
-                transform: scale(1.1);
+                transform: scale(1.12);
             }
         }
 
@@ -101,7 +102,7 @@
             width: 1px;
             height: 20px;
             background: var(--color-border);
-            margin: 0 6px;
+            margin: 0 8px;
         }
 
         .media-viewer-close {
@@ -154,6 +155,14 @@
     justify-content: center;
     padding: 40px;
     position: relative;
+
+    // PDF viewer needs to fill the entire slide and scroll internally,
+    // so override the centering/padding for PDF slides.
+    // The PdfViewer root uses negative margin to counteract this padding.
+    > div {
+        max-width: 100%;
+        max-height: 100%;
+    }
 }
 
 // ── Reaction overlay (bottom-left of slide) ──────────────────────────────────
@@ -459,6 +468,20 @@
     }
 }
 
+// ── PDF Viewer Dialog — thumbnail sidebar ────────────────────────────────────
+// Hide scrollbar but keep scrolling (vertical only)
+.pdf-thumb-sidebar {
+    // Firefox
+    scrollbar-width: none;
+    // IE / Edge
+    -ms-overflow-style: none;
+
+    // WebKit (Chrome, Safari, Edge Chromium)
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
 // ── Caption ──────────────────────────────────────────────────────────────────
 .media-viewer-caption {
     padding: 12px 20px;
@@ -480,10 +503,10 @@
         padding: 10px;
 
         .media-viewer-toolbar {
-            gap: 0;
+            gap: 4px;
 
             .toolbar-divider {
-                margin: 0 4px;
+                margin: 0 6px;
             }
 
             .toolbar-btn {

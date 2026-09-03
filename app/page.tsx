@@ -1,28 +1,47 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Box } from "@mui/material";
+import { Box, IconButton } from "@mui/material";
+import { Menu } from "lucide-react";
 import { AuthGuard } from "@/src/components/AuthGuard";
 import { AppLayout } from "@/src/components/AppLayout/AppLayout";
 import { CustomerLists } from "@/src/components/CustomerLists/CustomerLists";
 import { ChatPanel } from "@/src/components/ChatPanel/ChatPanel";
 import { NotificationPermissionModal } from "@/src/components/ReusableComponent/NotificationPermissionModal";
 import UpdateNotification from "@/src/components/UpdateNotification/UpdateNotification";
+import { getConversations } from "@/src/db/conversationCache";
+import { useLoginContext } from "@/src/context/LoginData";
 import MaintenancePage from "@/src/components/MaintenancePage/MaintenancePage";
 import { useVersionCheck } from "@/src/hooks/useVersionCheck";
 import { useServiceRetry } from "@/src/hooks/useServiceRetry";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
-import { IconButton } from "@mui/material";
-import { Menu } from "lucide-react";
 import type { ConversationListEntry } from "@/src/types/conversation";
 
 function HomeContent() {
+  const { auth } = useLoginContext();
   const [selectedCustomer, setSelectedCustomer] = useState<ConversationListEntry | null>(null);
   const [detailsPanelOpen, setDetailsPanelOpen] = useState(false);
   const [serviceMessage, setServiceMessage] = useState("");
   const [isConversationRead, setIsConversationRead] = useState(false);
+  const [hasCachedData, setHasCachedData] = useState(false);
   const selectedCustomerRef = useRef<ConversationListEntry | null>(null);
   const isMobile = useIsMobile();
+
+  // Check if we have cached conversations in IndexedDB.
+  // If we do, we can show an offline banner instead of the full maintenance page.
+  useEffect(() => {
+    if (!auth) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const cached = await getConversations(auth);
+        if (!cancelled) setHasCachedData(cached.length > 0);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [auth]);
 
   // ── Service down retry (phased: silent → auto-1 → auto-5 → stopped) ────────
   const {
@@ -242,7 +261,7 @@ function HomeContent() {
       <NotificationPermissionModal />
 
       {/* Maintenance / service-down overlay */}
-      {serviceDown && (
+      {serviceDown && !hasCachedData && (
         <Box
           sx={{
             position: "fixed",
@@ -278,7 +297,7 @@ function HomeContent() {
         onDismiss={dismissUpdate}
       />
     </AppLayout>
-  );
+  );  
 }
 
 export default function Home() {

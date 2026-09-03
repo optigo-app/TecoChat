@@ -1,9 +1,6 @@
 "use client";
 
-// ─── useSocketHandlers ──────────────────────────────────────────────────────
-// Ported from OldChatReactCode/.../CoreLogic/useSocketHandlers.js
-// Registers socket event listeners for incoming messages, status changes,
-// reactions, and deletions.
+
 
 import { useEffect, useRef, useCallback } from "react";
 import {
@@ -15,6 +12,7 @@ import {
 import { MSG, type MsgAction } from "./conversationReducer";
 import { getMessageId, resolveStatus, normalizeSocketMessage } from "./messageHelpers";
 import { normalizeServerMessages } from "../../../utils/messageUtils";
+import { upsertMessage, updateMessageStatus, deleteMessage, updateMessageReaction } from "../../../db/messageCache";
 import type { AuthData } from "../../../context/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
@@ -47,10 +45,11 @@ export function useSocketHandlers({
   const addUniqueMessage = useCallback(
     (rawData: Record<string, unknown>) => {
       if (!rawData || typeof rawData !== "object") return;
+      const socketConvId = rawData.ConversationId as string | number | undefined;
       const normalized = normalizeSocketMessage(
         rawData,
         auth,
-        (arr, a) => normalizeServerMessages(arr, a) as ChatMessage[]
+        (arr, a) => normalizeServerMessages(arr, a, socketConvId) as ChatMessage[]
       );
       if (!normalized) return;
 
@@ -58,6 +57,10 @@ export function useSocketHandlers({
       if (!id) return;
 
       dispatchRef.current({ type: MSG.UPSERT, msg: normalized, id });
+      // Write-through to IndexedDB so the cache stays consistent in realtime.
+      upsertMessage(auth, normalized).catch(() => {
+        /* ignore */
+      });
     },
     [auth]
   );
@@ -92,6 +95,18 @@ export function useSocketHandlers({
           status: resolveStatus(data.MessageStatus ?? data.status ?? data.Status),
           extra,
         });
+        // Write-through status update to IndexedDB.
+        if (messageId && conversationId) {
+          updateMessageStatus(
+            auth,
+            conversationId,
+            messageId,
+            resolveStatus(data.MessageStatus ?? data.status ?? data.Status),
+            extra as Partial<ChatMessage>
+          ).catch(() => {
+            /* ignore */
+          });
+        }
       });
     };
 
@@ -118,6 +133,11 @@ export function useSocketHandlers({
           reactions: incomingReactions,
           senderId: data.SenderId as string | number,
         });
+        const convId = data.ConversationId as string | number | undefined;
+        const reactionMsgId = messageId as string | number | undefined;
+        if (convId && reactionMsgId) {
+          updateMessageReaction(auth, convId, reactionMsgId, incomingReactions).catch(() => {});
+        }
       });
     };
 
@@ -151,7 +171,7 @@ export function useSocketHandlers({
             const normalized = normalizeSocketMessage(
               data,
               auth,
-              (arr, a) => normalizeServerMessages(arr, a) as ChatMessage[]
+              (arr, a) => normalizeServerMessages(arr, a, incomingConvId) as ChatMessage[]
             );
             if (normalized) {
               dispatchRef.current({ type: MSG.BUFFER_NEW, msg: normalized });
@@ -171,6 +191,14 @@ export function useSocketHandlers({
           messageId: data.MessageId as string | number,
           deletedInfo: data as Partial<ChatMessage>,
         });
+        // Write-through deletion to IndexedDB.
+        const convId = data.ConversationId as string | number | undefined;
+        const msgId = data.MessageId as string | number | undefined;
+        if (convId && msgId) {
+          deleteMessage(auth, convId, msgId, data as Partial<ChatMessage>).catch(() => {
+            /* ignore */
+          });
+        }
       });
     };
 

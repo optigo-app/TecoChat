@@ -1,10 +1,5 @@
 "use client";
 
-// ─── useConversation (main orchestrator) ────────────────────────────────────
-// Ported from OldChatReactCode/.../useConversation.js
-// Composes all sub-hooks (loader, socket, read receipt, media, actions, forward)
-// and exposes a unified API for the ChatPanel component.
-
 import { useReducer, useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { useLoginContext } from "../context/LoginData";
 import {
@@ -39,6 +34,15 @@ import type { ChatMessage, FlattenedRow } from "../types/message";
 import type { ConversationListEntry } from "../types/conversation";
 import { formatDateTime } from "../utils/dateUtils";
 import { getAndClearDroppedFiles } from "../utils/dropFileQueue";
+import { getDraft, setDraft, getAllDrafts } from "../db/draftCache";
+import { getMembers, putMembers } from "../db/groupMembersCache";
+import { getSearchCache, setSearchCache } from "../db/searchCache";
+import { useOutboxSync } from "../components/ChatPanel/CoreLogic/useOutboxSync";
+import { useReconnectSync } from "../components/ChatPanel/CoreLogic/useReconnectSync";
+import { useSocketContext } from "../context/SocketContext";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
+import { liveQuery } from "dexie";
+import { getDb } from "../db/tecoDb";
 
 interface UseConversationProps {
   selectedCustomer: ConversationListEntry | null;
@@ -89,8 +93,8 @@ export const useConversation = ({
   // ── Group members cache (for typing, reactions, read receipts) ───────────
   type GroupMember = { UserId?: number; userId?: number; id?: number; MemberName?: string; ProfileImage?: string; IsGroupAdmin?: number };
   type GroupMembersResult = { members: GroupMember[]; groupDetails: unknown };
-  // Cache is keyed by conversationId so switching groups doesn't leak members
-  // from the previous group into mention dropdowns, typing indicators, etc.
+  // Two-tier cache: in-memory ref for instant reads, IndexedDB for persistence
+  // across refresh. On a cache miss we try IDB first, then fall back to the API.
   const groupMembersCacheRef = useRef<Record<string, GroupMember[]>>({});
   const groupMembersPromiseRef = useRef<Promise<GroupMembersResult> | null>(null);
   const groupMembersConvIdRef = useRef<string | number | null>(null);
@@ -99,20 +103,33 @@ export const useConversation = ({
     async (conversationId: string | number, _force = false): Promise<GroupMembersResult> => {
       if (!conversationId || !auth) return { members: [], groupDetails: null };
       const cacheKey = String(conversationId);
-      // Return cached members ONLY for the same conversation
+      // Return in-memory cached members ONLY for the same conversation
       if (!_force && groupMembersConvIdRef.current === conversationId && groupMembersCacheRef.current[cacheKey]?.length > 0) {
         return { members: groupMembersCacheRef.current[cacheKey], groupDetails: null };
       }
-      // If there's an in-flight promise for a DIFFERENT conversation, discard it
+      // If there's an in-flight promise for the SAME conversation, reuse it
       if (!_force && groupMembersPromiseRef.current && groupMembersConvIdRef.current === conversationId) {
         return groupMembersPromiseRef.current;
       }
       const promise: Promise<GroupMembersResult> = (async () => {
         try {
+          // Try IndexedDB first (unless forced refresh).
+          if (!_force) {
+            const cached = await getMembers(auth, conversationId);
+            if (cached.length > 0) {
+              groupMembersCacheRef.current[cacheKey] = cached;
+              groupMembersConvIdRef.current = conversationId;
+              return { members: cached, groupDetails: null };
+            }
+          }
+          // IDB miss — fetch from API and persist.
           const groupData = await fetchGroupDetails(conversationId, auth);
           const members = (groupData?.members || []) as GroupMember[];
           groupMembersCacheRef.current[cacheKey] = members;
           groupMembersConvIdRef.current = conversationId;
+          putMembers(auth, conversationId, members).catch(() => {
+            /* ignore */
+          });
           return { members, groupDetails: groupData?.groupDetails };
         } catch {
           return { members: [], groupDetails: null };
@@ -124,23 +141,59 @@ export const useConversation = ({
       groupMembersConvIdRef.current = conversationId;
       return promise;
     },
-    [auth?.token, auth?.userId]
+    [auth?.token, auth?.userId, auth]
   );
 
-  // ── Drafts (localStorage) ────────────────────────────────────────────────
+  // ── Drafts (IndexedDB) ───────────────────────────────────────────────────
+  // Drafts are persisted in IndexedDB (per-user DB) for cross-tab sync and
+  // survival across refresh. An in-memory mirror (draftsRef) is kept so the
+  // CHAT_DRAFTS_UPDATED event can fire synchronously for the list hook.
   const draftsRef = useRef<Record<string, string>>({});
   useEffect(() => {
-    try {
-      const storageKey = auth?.id ? `chat_drafts_${auth.id}` : "chat_drafts";
-      const saved = localStorage.getItem(storageKey);
-      draftsRef.current = saved ? JSON.parse(saved) : {};
-    } catch {
-      draftsRef.current = {};
-    }
-  }, [auth?.id]);
+    if (!auth) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const all = await getAllDrafts(auth);
+        if (cancelled) return;
+        draftsRef.current = all;
+        window.dispatchEvent(
+          new CustomEvent("CHAT_DRAFTS_UPDATED", { detail: draftsRef.current })
+        );
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [auth]);
+
+  // Cross-tab draft sync: subscribe to IDB changes so drafts edited in
+  // another tab reflect here in realtime via Dexie liveQuery.
+  useEffect(() => {
+    if (!auth) return;
+    const db = getDb(auth.id ?? auth.userId);
+    if (!db) return;
+    const sub = liveQuery(() => db.drafts.toArray()).subscribe({
+      next: (rows) => {
+        const map: Record<string, string> = {};
+        for (const r of rows) {
+          const text = (r as { text?: string }).text;
+          if (text) map[String(r.conversationId)] = text;
+        }
+        draftsRef.current = map;
+        window.dispatchEvent(
+          new CustomEvent("CHAT_DRAFTS_UPDATED", { detail: draftsRef.current })
+        );
+      },
+      error: () => {},
+    });
+    return () => sub.unsubscribe();
+  }, [auth]);
 
   const saveDraft = useCallback(
-    (convoId: string | number, text: string) => {
+    (convoId: string | number, text: string, notify = true) => {
       if (!convoId) return;
       const cleanText = text?.trim();
       // Create a NEW object so React detects the state change in
@@ -153,41 +206,45 @@ export const useConversation = ({
         delete next[convoId];
       }
       draftsRef.current = next;
-      try {
-        const storageKey = auth?.id ? `chat_drafts_${auth.id}` : "chat_drafts";
-        localStorage.setItem(storageKey, JSON.stringify(draftsRef.current));
+      // Persist to IndexedDB (best-effort, non-blocking).
+      setDraft(auth, convoId, cleanText ?? "").catch(() => {
+        /* ignore */
+      });
+      if (notify) {
         window.dispatchEvent(
           new CustomEvent("CHAT_DRAFTS_UPDATED", { detail: draftsRef.current })
         );
-      } catch (e) {
-        console.error("Error saving drafts:", e);
       }
     },
-    [auth?.id]
+    [auth]
   );
 
-  // Load draft when switching conversations — always read fresh from localStorage
+  // Load draft when switching conversations — read fresh from IndexedDB
   useEffect(() => {
     if (!selectedCustomer?.ConversationId) return;
-    try {
-      const storageKey = auth?.id ? `chat_drafts_${auth.id}` : "chat_drafts";
-      const saved = localStorage.getItem(storageKey);
-      const drafts = saved ? JSON.parse(saved) : {};
-      const draft = drafts[selectedCustomer.ConversationId] || "";
-      if (draft !== uiState.inputValue) {
-        dispatchUI({ type: UI.SET_INPUT, value: draft });
+    let cancelled = false;
+    (async () => {
+      try {
+        const draft = await getDraft(auth, selectedCustomer.ConversationId);
+        if (cancelled) return;
+        if (draft !== uiState.inputValue) {
+          dispatchUI({ type: UI.SET_INPUT, value: draft });
+        }
+      } catch {
+        if (!cancelled) dispatchUI({ type: UI.SET_INPUT, value: "" });
       }
-    } catch {
-      dispatchUI({ type: UI.SET_INPUT, value: "" });
-    }
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCustomer?.ConversationId]);
+  }, [selectedCustomer?.ConversationId, auth?.id]);
 
   // Save draft on tab close
   useEffect(() => {
     const handleBeforeUnload = () => {
       const currentId = selectedCustomerRef.current?.ConversationId;
-      if (currentId) saveDraft(currentId, latestInputValueRef.current);
+      if (currentId) saveDraft(currentId, latestInputValueRef.current, false);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -214,6 +271,69 @@ export const useConversation = ({
     fetchAndCacheGroupMembers,
   });
 
+  useOutboxSync(auth);
+  useReconnectSync(auth, selectedCustomer?.ConversationId, dispatchMsg);
+  const { status: socketStatus } = useSocketContext();
+  const isOnline = useOnlineStatus();
+  const isOffline = !isOnline || socketStatus === "disconnected" || socketStatus === "error";
+
+  // When an outbox message is successfully sent on reconnect, update the
+  // React state so the "Failed" icon changes to the normal sent status.
+  useEffect(() => {
+    const handleOutboxSent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.tempId) return;
+      dispatchMsg({
+        type: MSG.UPSERT,
+        id: detail.tempId,
+        msg: {
+          Id: detail.serverId ?? detail.tempId,
+          MessageId: detail.serverId ?? detail.tempId,
+          Status: "sent",
+          ...(detail.MessageType ? {
+            Message: detail.Message,
+            MessageType: detail.MessageType,
+            mediaItems: detail.mediaItems,
+            previewUrl: detail.previewUrl,
+            Time: detail.Time,
+            Date: detail.Date,
+            DateTime: detail.DateTime,
+            ConversationId: detail.conversationId,
+            SenderId: detail.SenderId,
+            Direction: detail.Direction,
+            isUploading: false,
+          } : {}),
+        },
+      });
+    };
+    const handleOutboxRetrying = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.tempId) return;
+      dispatchMsg({
+        type: MSG.UPSERT,
+        id: detail.tempId,
+        msg: { Status: "pending" },
+      });
+    };
+    const handleOutboxFailed = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.tempId) return;
+      dispatchMsg({
+        type: MSG.UPSERT,
+        id: detail.tempId,
+        msg: { Status: 4, isUploading: false },
+      });
+    };
+    window.addEventListener("OUTBOX_MESSAGE_SENT", handleOutboxSent as EventListener);
+    window.addEventListener("OUTBOX_MESSAGE_RETRYING", handleOutboxRetrying as EventListener);
+    window.addEventListener("OUTBOX_MESSAGE_FAILED", handleOutboxFailed as EventListener);
+    return () => {
+      window.removeEventListener("OUTBOX_MESSAGE_SENT", handleOutboxSent as EventListener);
+      window.removeEventListener("OUTBOX_MESSAGE_RETRYING", handleOutboxRetrying as EventListener);
+      window.removeEventListener("OUTBOX_MESSAGE_FAILED", handleOutboxFailed as EventListener);
+    };
+  }, [dispatchMsg]);
+
   const { addUniqueMessage } = useSocketHandlers({
     auth,
     selectedCustomerRef,
@@ -228,6 +348,8 @@ export const useConversation = ({
     handleFileChange,
     handleMediaClick,
     handleClosePreview,
+    handleClosePdfViewer,
+    handleCloseTxtViewer,
     uploadAndSendMedia,
   } = useMediaHandlers({
     auth,
@@ -239,6 +361,7 @@ export const useConversation = ({
     tempConversationId: msgState.tempConversationId,
     fetchAndCacheGroupMembers,
     onCustomerSelect,
+    isOffline,
   });
 
   const {
@@ -248,6 +371,7 @@ export const useConversation = ({
     handleStarMessage,
     handleReply,
     handleCancelReply,
+    retryFailedMessage,
   } = useMessageActions({
     auth,
     selectedCustomer,
@@ -264,6 +388,7 @@ export const useConversation = ({
     tempConversationId: msgState.tempConversationId,
     uploadAndSendMedia,
     fetchAndCacheGroupMembers,
+    isOffline,
   });
 
   const { handleForward, handleCloseForward, handleSendForward } =
@@ -370,21 +495,19 @@ export const useConversation = ({
     dispatchUI({ type: UI.SET_STAR_FILTER, value: false });
     // Clear any buffered new messages from previous conversation
     dispatchMsg({ type: MSG.CLEAR_BUFFER });
-    // Show loading overlay on top of existing messages — don't clear
-    // the old messages yet to avoid a blink. The loader overlay covers
-    // them while the new conversation's messages load. When the new
-    // messages arrive, MSG.LOAD replaces them in one frame.
-    dispatchMsg({ type: MSG.SET_LOADING, value: true });
+    // NOTE: Do NOT set SET_LOADING here — loadConversation handles it.
+    // If we set loading=true here, the overlay covers cached messages
+    // that loadConversation renders instantly from IndexedDB. The loader
+    // is only shown inside loadConversation when there is NO cache.
 
     // Pass LastMessageId as the initial cursor so the API anchors the
     // initial page around the last known message for that conversation.
-    // ignoreCache=true: skip showing cached messages on conversation
-    // switch. Showing cache first then fresh data causes a visible
-    // double-render (content swap underneath the loader). Instead, keep
-    // the loader overlay until the single API response arrives, then
-    // render the fresh data in one frame.
+    // ignoreCache=false: cache-first. The loader renders cached messages
+    // instantly (no spinner) and the API reconciles in the background via
+    // an ID-based merge — only new/updated rows change, so there is no
+    // visible content swap.
     const lastMsgId = Number(selectedCustomer?.LastMessageId) || 0;
-    loadConversationRef.current(1, true, true, lastMsgId);
+    loadConversationRef.current(1, true, false, lastMsgId);
     handleReadMessageRef.current(nextId, null);
 
     prevConvIdRef.current = nextId;
@@ -455,13 +578,13 @@ export const useConversation = ({
     if (!id || !msgState.data.length) return;
     if (cacheWriteTimer.current) clearTimeout(cacheWriteTimer.current);
     cacheWriteTimer.current = setTimeout(
-      () => saveConversationToCache(id, msgState.data),
+      () => saveConversationToCache(id, msgState.data, auth),
       800
     );
     return () => {
       if (cacheWriteTimer.current) clearTimeout(cacheWriteTimer.current);
     };
-  }, [msgState.data, selectedCustomer?.ConversationId]);
+  }, [msgState.data, selectedCustomer?.ConversationId, auth]);
 
   // ── Derived state ────────────────────────────────────────────────────────
   // Note: groupMessagesByDate was removed — flattenedRows already does
@@ -705,8 +828,14 @@ export const useConversation = ({
       }
       dispatchUI({ type: UI.SET_SEARCHING, value: true });
       try {
+        const convId = selectedCustomer.ConversationId;
+        const cached = await getSearchCache(auth, convId, query);
+        if (cached) {
+          dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: cached });
+          return;
+        }
         const response = await conversationView(
-          selectedCustomer.ConversationId,
+          convId,
           1,
           100,
           auth,
@@ -714,6 +843,7 @@ export const useConversation = ({
           query
         );
         const results = (response.data as ChatMessage[]) || [];
+        setSearchCache(auth, convId, query, results).catch(() => {});
         dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: results });
       } catch {
         dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
@@ -807,6 +937,10 @@ export const useConversation = ({
     mediaViewerItems: uiState.mediaViewerItems,
     mediaViewerIndex: uiState.mediaViewerIndex,
     mediaViewerMessage: uiState.mediaViewerMessage,
+    pdfViewerOpen: uiState.pdfViewerOpen,
+    pdfViewerItem: uiState.pdfViewerItem,
+    txtViewerOpen: uiState.txtViewerOpen,
+    txtViewerItem: uiState.txtViewerItem,
     flattenedRows,
     messageById,
     typingStatus,
@@ -833,9 +967,12 @@ export const useConversation = ({
     processFiles,
     handleMediaClick,
     handleClosePreview,
+    handleClosePdfViewer,
+    handleCloseTxtViewer,
     handleSendMessage,
     handleReply,
     handleCancelReply,
+    retryFailedMessage,
     handleForward,
     handleCloseForward,
     handleSendForward,

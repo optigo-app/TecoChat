@@ -33,7 +33,7 @@ export const conversationView = async (
     const total = response?.Data?.total || rd.length || 0;
 
     // Normalize and sort messages (oldest first)
-    const normalized = normalizeServerMessages(rd, auth as AuthLike);
+    const normalized = normalizeServerMessages(rd, auth as AuthLike, conversationId);
     const sorted = sortMessagesByDate(normalized) as ChatMessage[];
 
     return {
@@ -105,7 +105,7 @@ export const conversationViewCursor = async (
     const rd1 = response?.Data?.rd1?.[0] || {};
     const total = response?.Data?.total || rd.length || 0;
 
-    const normalized = normalizeServerMessages(rd, auth as AuthLike);
+    const normalized = normalizeServerMessages(rd, auth as AuthLike, conversationId);
     const sorted = sortMessagesByDate(normalized) as ChatMessage[];
 
     return {
@@ -122,14 +122,6 @@ export const conversationViewCursor = async (
       throw error;
     }
     console.error("conversationViewCursor error:", error);
-    return {
-      data: [],
-      total: 0,
-      beforeCursor: null,
-      afterCursor: null,
-      currentCursor: null,
-      hasMoreBefore: false,
-      hasMoreAfter: false,
-    };
+    throw error;
   }
 };

@@ -4,6 +4,8 @@
 
 import { formatDateTime } from "../../../utils/dateUtils";
 import type { ChatMessage } from "../../../types/message";
+import { putMessages, getMessagesAround } from "../../../db/messageCache";
+import type { AuthData } from "../../../context/LoginData";
 
 /** Stable string ID for any message shape. */
 export const getMessageId = (msg: ChatMessage | null | undefined): string => {
@@ -150,37 +152,28 @@ export const groupMessagesByDateHelper = (
   return grouped;
 };
 
-/** Save messages to sessionStorage cache (truncated to last 1000). */
+/** Save messages to IndexedDB cache (now async). */
 export const saveConversationToCache = (
   conversationId: string | number,
-  messages: ChatMessage[]
-): void => {
-  if (!conversationId || !Array.isArray(messages) || messages.length === 0) return;
-  const cacheKey = `chat_cache_${conversationId}`;
-  try {
-    const truncated = messages.slice(-1000);
-    sessionStorage.setItem(cacheKey, JSON.stringify(truncated));
-  } catch (e) {
-    console.error("Error saving chat cache:", e);
+  messages: ChatMessage[],
+  auth: AuthData | null,
+  limit = 2000
+): Promise<void> => {
+  if (!conversationId || !Array.isArray(messages) || messages.length === 0) {
+    return Promise.resolve();
   }
+  const truncated = messages.slice(-limit);
+  return putMessages(auth, conversationId, truncated);
 };
 
-/** Get messages from sessionStorage cache. */
-export const getConversationFromCache = (
-  conversationId: string | number
-): ChatMessage[] => {
+/** Get the latest cached messages for a conversation from IndexedDB. */
+export const getConversationFromCache = async (
+  conversationId: string | number,
+  auth: AuthData | null,
+  limit = 2000
+): Promise<ChatMessage[]> => {
   if (!conversationId) return [];
-  const cacheKey = `chat_cache_${conversationId}`;
-  try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {
-    /* ignore */
-  }
-  return [];
+  return getMessagesAround(auth, conversationId, limit);
 };
 
 /** Normalize a single socket message and determine direction. */

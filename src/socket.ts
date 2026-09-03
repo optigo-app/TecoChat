@@ -1,17 +1,4 @@
-// Socket.IO client module — real implementation.
-// Ported from OldChatReactCode/src/socket.js with full TypeScript types.
-//
-// This module is browser-only (socket.io-client uses browser APIs).
-// It must only be called from client components or inside useEffect.
-
 import { io, type Socket } from "socket.io-client";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Configuration — all URLs from .env (NEXT_PUBLIC_*)
-// IMPORTANT: Next.js only inlines NEXT_PUBLIC_* vars when accessed with a
-// LITERAL key (e.g. process.env.NEXT_PUBLIC_SOCKET_URL_LOCAL). Dynamic access
-// like process.env[key] is NOT inlined and returns undefined in the browser.
-// ─────────────────────────────────────────────────────────────────────────────
 
 const LOCAL_HOSTNAMES = (process.env.NEXT_PUBLIC_LOCAL_HOSTS || "localhost,nzen,tecochat.web,web")
   .split(",")
@@ -29,10 +16,6 @@ const API_SOCKET_BASE_URL = isLocal()
 
 const getSocketURL = (): string => API_SOCKET_BASE_URL;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
 export type SocketStatus = "connected" | "disconnected" | "error" | "connecting";
 
 export interface SocketMessageData {
@@ -47,17 +30,11 @@ export interface SocketStoreData {
 type Handler = (data: any) => void;
 type Unsubscribe = () => void;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Module state (singleton — mirrors the old app's global socket instance)
-// ─────────────────────────────────────────────────────────────────────────────
-
 let socketInstance: Socket | null = null;
 let isAuthenticated = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
-// Handler Sets — the old app uses Sets so multiple components can register
-// for the same event and all get called. Each add* function returns an
 // unsubscribe function.
 const messageReactionHandlers = new Set<Handler>();
 const internalMessageHandlers = new Set<Handler>();
@@ -69,10 +46,6 @@ const groupMemberHandlers = new Set<Handler>();
 const groupPermissionHandlers = new Set<Handler>();
 const internalMessageDeletionHandlers = new Set<Handler>();
 const appVersionUpdateHandlers = new Set<Handler>();
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal dispatchers
-// ─────────────────────────────────────────────────────────────────────────────
 
 const dispatch = (handlers: Set<Handler>, data: any, label?: string) => {
   handlers.forEach((handler) => {
@@ -101,10 +74,6 @@ const dispatchGroupMemberEvent = (data: any) =>
 const dispatchGroupPermissionEvent = (data: any) =>
   dispatch(groupPermissionHandlers, data, "group permission");
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Restore connection from sessionStorage (called on module load)
-// ─────────────────────────────────────────────────────────────────────────────
-
 const restoreConnection = () => {
   if (typeof window === "undefined") return;
   const savedState = sessionStorage.getItem("socketState");
@@ -121,14 +90,9 @@ const restoreConnection = () => {
   }
 };
 
-// Run restore on module load (browser only)
 if (typeof window !== "undefined") {
   restoreConnection();
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Initialize socket connection
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function initializeSocket(token: string): Socket | null {
   if (typeof window === "undefined") return null;
@@ -137,12 +101,10 @@ export function initializeSocket(token: string): Socket | null {
     sessionStorage.setItem("socketState", JSON.stringify({ token }));
   }
 
-  // Already connected and authenticated — return existing instance
   if (socketInstance?.connected && isAuthenticated) {
     return socketInstance;
   }
 
-  // Clean up any existing instance before creating a new one
   if (socketInstance) {
     socketInstance.disconnect();
     socketInstance = null;
@@ -156,7 +118,6 @@ export function initializeSocket(token: string): Socket | null {
     reconnection: true,
   });
 
-  // ── Connection lifecycle handlers ──────────────────────────────────────
   socketInstance.on("connect", () => {
     isAuthenticated = true;
     reconnectAttempts = 0;
@@ -178,7 +139,6 @@ export function initializeSocket(token: string): Socket | null {
     // no-op (matches old app)
   });
 
-  // ── Session logout ─────────────────────────────────────────────────────
   socketInstance.on("sessionLogout", (data: any) => {
     dispatch(sessionLogoutHandlers, data, "session logout");
   });
@@ -223,10 +183,6 @@ export function initializeSocket(token: string): Socket | null {
   return socketInstance;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Getters / state checks
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const getSocket = (): Socket | null => socketInstance;
 
 export const isSocketConnected = (): boolean => {
@@ -249,10 +205,6 @@ export const isSocketConnected = (): boolean => {
 };
 
 export const isSocketAuthenticated = (): boolean => isAuthenticated;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Handler registration — each returns an unsubscribe function
-// ─────────────────────────────────────────────────────────────────────────────
 
 export const addSessionLogoutHandler = (handler: Handler): Unsubscribe => {
   sessionLogoutHandlers.add(handler);
@@ -304,14 +256,9 @@ export const addGroupPermissionHandler = (handler: Handler): Unsubscribe => {
   return () => groupPermissionHandlers.delete(handler);
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Emit functions
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const emitInternalMessageSend = (payload: Record<string, unknown>): boolean => {
   if (!socketInstance) return false;
   socketInstance.emit("internal:msg_send", { ...payload, receiveEvent: "internal:msg_receive" });
-  // Also dispatch locally so the sender sees their own message immediately
   dispatch(internalMessageHandlers, payload, "local send");
   return true;
 };
@@ -397,7 +344,6 @@ export const emitInternalTyping = (payload: Record<string, unknown>): boolean =>
 export const emitInternalMessageDelete = (payload: Record<string, unknown>): boolean => {
   if (!socketInstance) return false;
   socketInstance.emit("internal:delete_message", { ...payload, receiveEvent: "internal:delete_message" });
-  // Also dispatch locally so the deleter sees the message removed immediately
   dispatch(internalMessageDeletionHandlers, payload, "local delete");
   return true;
 };
@@ -420,10 +366,6 @@ export const emitGroupInfoRequest = (payload: Record<string, unknown>): boolean 
   return true;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Disconnect
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const disconnectSocket = (permanent = false): void => {
   if (socketInstance) {
     socketInstance.disconnect();
@@ -444,10 +386,6 @@ export const disconnectSocket = (permanent = false): void => {
     sessionStorage.removeItem("socketState");
   }
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Version helper (lazy import to avoid circular dependency)
-// ─────────────────────────────────────────────────────────────────────────────
 
 function getAppVersion(): string {
   try {

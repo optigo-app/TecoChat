@@ -746,6 +746,14 @@
         color: $text2ndColor;
         transform: none;
     }
+
+    &.offline {
+        background-color: var(--color-error, #d32f2f);
+
+        &:hover {
+            background-color: var(--color-error, #d32f2f);
+        }
+    }
 }
 
 // ── Emoji / attach panels (placeholders) ─────────────────────────────────────

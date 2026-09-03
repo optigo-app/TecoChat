@@ -12,7 +12,7 @@ import {
   alpha,
 } from "@mui/material";
 import { Emoji, EmojiStyle } from "emoji-picker-react";
-import { charToUnified } from "../../../utils/EmojiUtils";
+import { charToUnified } from "../../../../utils/EmojiUtils";
 
 interface ReactionUser {
   Id?: string | number;

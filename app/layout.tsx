@@ -16,6 +16,7 @@ import { TagsProvider } from "@/src/contexts/TagsContexts";
 import { ArchieveProvider } from "@/src/contexts/ArchieveContext";
 import PreHydrationLoaderMount from "@/src/components/PreHydrationLoader/PreHydrationLoaderMount";
 import { preHydrationLoaderHTML } from "@/src/components/PreHydrationLoader/PreHydrationLoader";
+import { DbProvider } from "@/src/db/dbContext";
 
 export const metadata: Metadata = {
   title: "TecoChat",
@@ -84,7 +85,8 @@ export default function RootLayout({
           <ThemeRegistry>
             <PreHydrationLoaderMount />
             <LoginData>
-              <SocketProvider>
+              <DbProvider>
+                <SocketProvider>
                 <FavoriteProvider>
                   <RemoveInGroupProvider>
                     <GroupAdminModeProvider>
@@ -102,6 +104,7 @@ export default function RootLayout({
                   </RemoveInGroupProvider>
                 </FavoriteProvider>
               </SocketProvider>
+              </DbProvider>
             </LoginData>
           </ThemeRegistry>
         </AppRouterCacheProvider>

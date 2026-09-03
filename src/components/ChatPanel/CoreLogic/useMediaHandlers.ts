@@ -11,6 +11,8 @@ import { validateMediaFiles, getMediaDimensions, uploadFiles, buildMediaPayload 
 import { emitMediaMessage } from "./socketHelpers";
 import { sendImageMessage, sendDocumentMessage, sendVideoMessage } from "../../../API/SendMessage/SendMessageApi";
 import { showToast } from "../../../utils/toastHelper";
+import { addToOutbox } from "../../../db/outboxCache";
+import { isTextFile } from "../../../utils/txtUtils";
 import type { AuthData } from "../../../context/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
@@ -25,6 +27,7 @@ interface UseMediaHandlersProps {
   tempConversationId: string | number | null;
   fetchAndCacheGroupMembers?: (conversationId: string | number) => Promise<{ members: Array<{ UserId?: number; userId?: number; id?: number }> } | null>;
   onCustomerSelect?: ((customer: ConversationListEntry) => void) | null;
+  isOffline?: boolean;
 }
 
 export function useMediaHandlers({
@@ -37,6 +40,7 @@ export function useMediaHandlers({
   tempConversationId,
   fetchAndCacheGroupMembers,
   onCustomerSelect,
+  isOffline = false,
 }: UseMediaHandlersProps) {
   const handleAttachClick = useCallback(() => {
     dispatchUI({ type: UI.SET_SHOW_MEDIA, value: !uiState.showMedia });
@@ -127,12 +131,35 @@ export function useMediaHandlers({
           ? "image"
           : item.mimeType?.startsWith("video/")
           ? "video"
-          : "document") as "image" | "video" | "document",
+          : item.mimeType === "application/pdf" ||
+            item.filename?.toLowerCase().endsWith(".pdf")
+          ? "pdf"
+          : isTextFile(item.filename, item.mimeType)
+          ? "text"
+          : "document") as "image" | "video" | "document" | "pdf" | "text",
         name: item.filename || "Media",
         mimeType: item.mimeType,
         size: item.size,
         attachmentId: (item as any).attachmentId,
       }));
+
+      // ── PDF → open dedicated PDF viewer dialog ──────────────────────────
+      // PDFs get their own full-screen viewer with zoom + page navigation,
+      // separate from the image/video MediaViewer.
+      const clickedItem = items[_index];
+      if (clickedItem?.type === "pdf") {
+        dispatchUI({ type: UI.SET_PDF_VIEWER, open: true, item: clickedItem });
+        return;
+      }
+
+      // ── Text files → open dedicated text viewer dialog ──────────────────
+      // .txt / .log / .csv / .json / .md etc. get a full-screen text preview
+      // instead of downloading directly.
+      if (clickedItem?.type === "text") {
+        dispatchUI({ type: UI.SET_TXT_VIEWER, open: true, item: clickedItem });
+        return;
+      }
+
       dispatchUI({ type: UI.SET_VIEWER, open: true, items, index: _index, message });
     },
     [dispatchUI]
@@ -140,6 +167,14 @@ export function useMediaHandlers({
 
   const handleClosePreview = useCallback(() => {
     dispatchUI({ type: UI.SET_VIEWER, open: false });
+  }, [dispatchUI]);
+
+  const handleClosePdfViewer = useCallback(() => {
+    dispatchUI({ type: UI.SET_PDF_VIEWER, open: false });
+  }, [dispatchUI]);
+
+  const handleCloseTxtViewer = useCallback(() => {
+    dispatchUI({ type: UI.SET_TXT_VIEWER, open: false });
   }, [dispatchUI]);
 
   const handleClearMediaFiles = useCallback(() => {
@@ -179,6 +214,52 @@ export function useMediaHandlers({
           .map((m) => Number(m.UserId || m.userId || m.id))
           .filter(Boolean);
         const convId = customer?.ConversationId || tempConversationId;
+        const receiverId = (customer as { CustomerId?: string | number })?.CustomerId ||
+          (customer as { UserId?: string | number })?.UserId;
+
+        if (isOffline) {
+          await addToOutbox(
+            auth,
+            {
+              Id: tempId,
+              MessageId: tempId,
+              Message: caption,
+              ConversationId: convId,
+              Direction: 1,
+              Status: "pending",
+              MessageType: type,
+            } as ChatMessage,
+            caption,
+            null,
+            null,
+            {
+              type,
+              receiverId,
+              isGroup,
+              memberIds,
+              time,
+              date,
+              dateTime,
+              conversationName: String(
+                customer?.ConversationName || customer?.name || customer?.MemberName || customer?.UserName || ""
+              ).trim() || undefined,
+              files: safeFiles.map((file) => {
+                const withDimensions = file as File & { width?: number; height?: number };
+                return {
+                  name: file.name,
+                  type: file.type,
+                  size: file.size,
+                  lastModified: file.lastModified,
+                  blob: file,
+                  ...(withDimensions.width ? { width: withDimensions.width } : {}),
+                  ...(withDimensions.height ? { height: withDimensions.height } : {}),
+                };
+              }),
+            }
+          );
+          dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { isUploading: false, Status: "pending" } });
+          return;
+        }
 
         const uploadedUrls = await uploadFiles({
           files: safeFiles,
@@ -216,8 +297,6 @@ export function useMediaHandlers({
           };
         });
 
-        const receiverId = (customer as { CustomerId?: string | number })?.CustomerId ||
-          (customer as { UserId?: string | number })?.UserId;
         const sendFn =
           type === "image"
             ? sendImageMessage
@@ -308,10 +387,10 @@ export function useMediaHandlers({
       } catch (err) {
         console.error("uploadAndSendMedia error:", err);
         showToast("Failed to send media", "error");
-        dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 3, isUploading: false } });
+        dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4, isUploading: false } });
       }
     },
-    [auth, selectedCustomerRef, selectedCustomer, tempConversationId, dispatchMsg, fetchAndCacheGroupMembers, onCustomerSelect]
+    [auth, selectedCustomerRef, selectedCustomer, tempConversationId, dispatchMsg, fetchAndCacheGroupMembers, onCustomerSelect, isOffline]
   );
 
   return {
@@ -320,6 +399,8 @@ export function useMediaHandlers({
     handleFileChange,
     handleMediaClick,
     handleClosePreview,
+    handleClosePdfViewer,
+    handleCloseTxtViewer,
     handleClearMediaFiles,
     uploadAndSendMedia,
   };

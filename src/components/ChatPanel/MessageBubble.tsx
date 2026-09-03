@@ -1,8 +1,8 @@
 "use client";
 
 import { memo, useState, useMemo } from "react";
-import { Box, Typography, IconButton, Avatar, useTheme, alpha } from "@mui/material";
-import { CheckCheck, CircleMinus, ChevronDown, Forward, Clock, Star } from "lucide-react";
+import { Box, Typography, IconButton, Avatar, Tooltip, useTheme, alpha } from "@mui/material";
+import { CheckCheck, CircleMinus, ChevronDown, Forward, Clock, Star, RotateCcw } from "lucide-react";
 import { Emoji, EmojiStyle } from "emoji-picker-react";
 import type { ChatMessage } from "../../types/message";
 import type { ConversationListEntry } from "../../types/conversation";
@@ -10,11 +10,8 @@ import { formatDateTime } from "../../utils/dateUtils";
 import { normalizeMessageText, getSoftAvatarColors } from "../../utils/globalFunc";
 import { renderMessageText } from "../../utils/messageTextRenderer";
 import { charToUnified, parseReactions } from "../../utils/EmojiUtils";
-import ReplyPreview from "./messages/ReplyPreview";
-import MessageActions from "./messages/MessageActions";
-import MediaMessage from "./messages/MediaMessage";
-import ReadMoreText from "./messages/ReadMoreText";
-import ReactionDetailsMenu from "./messages/ReactionDetailsMenu";
+import { ReplyPreview, MediaMessage, ReadMoreText } from "./messages/bubble";
+import { MessageActions, ReactionDetailsMenu } from "./messages/interactions";
 
 interface MessageBubbleProps {
   msg: ChatMessage;
@@ -27,6 +24,7 @@ interface MessageBubbleProps {
   onQuickReaction?: (emoji: string, msg: ChatMessage) => void;
   onRemoveReaction?: (reaction: { Emoji?: string; Reaction?: string; UserId?: number | string }, msg: ChatMessage) => void;
   onMediaClick?: (msg: ChatMessage, index: number) => void;
+  onRetry?: (msg: ChatMessage) => void;
 
   getMediaKey: (msg: ChatMessage, index: number) => string;
   loadedMedia: Record<string, boolean>;
@@ -57,6 +55,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
   onQuickReaction,
   onRemoveReaction,
   onMediaClick,
+  onRetry,
   getMediaKey,
   loadedMedia,
   markLoaded,
@@ -341,9 +340,23 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
             </Box>
           )}
           {isFailed && (
-            <Typography variant="caption" sx={{ fontSize: 11, color: theme.palette.error.main }}>
-              Failed
-            </Typography>
+            <Tooltip title="Message failed. Retry" arrow>
+              <IconButton
+                size="small"
+                aria-label="Retry sending message"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRetry?.(msg);
+                }}
+                sx={{
+                  p: 0.25,
+                  color: theme.palette.error.main,
+                  "&:hover": { backgroundColor: alpha(theme.palette.error.main, 0.12) },
+                }}
+              >
+                <RotateCcw size={14} />
+              </IconButton>
+            </Tooltip>
           )}
         </Box>
 

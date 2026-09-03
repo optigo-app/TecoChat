@@ -18,6 +18,7 @@ import CreateGroup from "../AddConversation/CreateGroup";
 import { NotificationPermissionBar } from "../ReusableComponent/NotificationPermissionBar";
 import { useFaviconBadge } from "../../hooks/useFaviconBadge";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
+
 import ProfilePanel from "../ProfileAvatar/ProfilePanel";
 import { useMobileTrigger } from "../AppLayout/AppLayout";
 import type { ConversationListEntry } from "../../types/conversation";
@@ -38,6 +39,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
 }) => {
   const mobileMenuTrigger = useMobileTrigger();
   const { auth } = useLoginContext();
+  const isOnline = useOnlineStatus();
   const {
     chatMembers,
     loading,
@@ -170,9 +172,6 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
   }, [chatMembers?.data]);
 
   useFaviconBadge(totalUnread);
-
-  // ── Online status ─────────────────────────────────────────────────────────
-  const isOnline = useOnlineStatus();
 
   // ── Reset keyboard selection on filter/search changes ─────────────────────
   useEffect(() => {
@@ -388,7 +387,6 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="customer_lists_mainDiv">
-      {!isOnline && <Box className="offline-sidebar-overlay" />}
       {profileOpen && <ProfilePanel onBack={() => setProfileOpen(false)} />}
       <CustomerListsHeader
         isArchiveOpen={isArchiveOpen}
@@ -400,6 +398,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
         onNewChat={() => setShowNewChat(true)}
         onCreateGroup={() => setShowCreateGroup(true)}
         mobileMenuTrigger={mobileMenuTrigger}
+        isOffline={!isOnline || serviceDown}
       />
 
       {/* Tab filters — hidden in archive view */}

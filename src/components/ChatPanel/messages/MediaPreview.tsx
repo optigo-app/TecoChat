@@ -1,13 +1,7 @@
 "use client";
 
-import { memo, useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { Box, Skeleton, IconButton, Tooltip, useTheme, alpha } from "@mui/material";
-import { X, Trash2, Plus, SendHorizontal, ChevronLeft, ChevronRight, FileText, Smile } from "lucide-react";
-import type { MediaFileItem } from "../CoreLogic/uiReducer";
-import { getDocumentMeta } from "../../../utils/globalFunc";
-import { LexicalChatEditor } from "../LexicalChatEditor";
-import EmojiPickerPopper from "../input/EmojiPickerPopper";
-import FormattingToolbar from "../input/FormattingToolbar";
+import { memo, useState, useCallback, useEffect, useRef } from "react";
+import { useTheme } from "@mui/material";
 import {
   CLEAR_EDITOR_COMMAND,
   $getSelection,
@@ -17,29 +11,57 @@ import {
   $createTextNode,
   type LexicalEditor,
 } from "lexical";
+import type { MediaFileItem } from "../CoreLogic/uiReducer";
+import { getDocumentMeta } from "../../../utils/globalFunc";
 
-interface MediaPreviewProps {
-  open: boolean;
-  mediaFiles: MediaFileItem[];
-  onClose: () => void;
-  onSend: (caption: string) => void;
-  onRemoveMedia: (index: number) => void;
-  onAddMore?: (files: File[]) => void;
-  syncKey?: string | number;
-}
-
-const formatSize = (bytes?: number) => {
-  if (!bytes) return "";
-  const kb = bytes / 1024;
-  if (kb > 1024) return `${(kb / 1024).toFixed(1)} MB`;
-  return `${kb.toFixed(1)} KB`;
-};
-
-const getExt = (name: string) => {
-  const parts = (name || "").toLowerCase().split(".");
-  if (parts.length < 2) return "";
-  return parts.pop() || "";
-};
+import type {
+  TextBgMode,
+  TextElement,
+  EmojiElement,
+  CropRect,
+  FilterType,
+  ImageEditState,
+  MediaPreviewProps,
+  ToolMode,
+  ShapeElement,
+} from "./MediaPreviewEditor/types";
+export type {
+  DrawingPath,
+  ShapeElement,
+  TextBgMode,
+  TextElement,
+  BlurRegion,
+  EmojiElement,
+  CropRect,
+  FilterType,
+  ImageEditState,
+  MediaPreviewProps,
+  ToolMode,
+} from "./MediaPreviewEditor/types";
+import {
+  WA_COLORS,
+  STROKE_SIZES,
+  formatSize,
+  getExt,
+} from "./MediaPreviewEditor/constants";
+export { FILTERS } from "./MediaPreviewEditor/constants";
+import { useMediaEditHistory, useKeyboardShortcuts } from "./MediaPreviewEditor/hooks";
+import {
+  applyInteractiveBlur,
+  applyInteractiveBlurPath,
+  applyPixelateBox,
+  applyPixelatePath,
+  intensityToBlockSize,
+  renderEditedImage,
+  hasImageEdits,
+  drawArrowOnCanvas,
+} from "./MediaPreviewEditor/canvasRender";
+import MediaPreviewHeader from "./MediaPreviewEditor/MediaPreviewHeader";
+import { MediaPreviewFilterBar, MediaPreviewToolControls } from "./MediaPreviewEditor/MediaPreviewToolBars";
+import MediaPreviewPopovers from "./MediaPreviewEditor/MediaPreviewPopovers";
+import MediaPreviewStage from "./MediaPreviewEditor/MediaPreviewStage";
+import MediaPreviewThumbnails from "./MediaPreviewEditor/MediaPreviewThumbnails";
+import MediaPreviewCaptionBar from "./MediaPreviewEditor/MediaPreviewCaptionBar";
 
 const MediaPreviewComponent = ({
   open,
@@ -47,25 +69,84 @@ const MediaPreviewComponent = ({
   onClose,
   onSend,
   onRemoveMedia,
+  onUpdateMedia,
   onAddMore,
   syncKey,
 }: MediaPreviewProps) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
+
+  // Navigation & Caption State
   const [currentIndex, setCurrentIndex] = useState(0);
   const [caption, setCaption] = useState("");
   const [loadedVideos, setLoadedVideos] = useState<Set<string>>(new Set());
-  const [loadedThumbs, setLoadedThumbs] = useState<Set<string>>(new Set());
-  const [showEmoji, setShowEmoji] = useState(false);
+  const [showCaptionEmoji, setShowCaptionEmoji] = useState(false);
   const [showFormattingToolbar, setShowFormattingToolbar] = useState(false);
   const [toolbarPosition, setToolbarPosition] = useState({ top: 0, left: 0 });
+  const [isExporting, setIsExporting] = useState(false);
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [copiedFeedback, setCopiedFeedback] = useState(false);
+  const [hoveredFilter, setHoveredFilter] = useState<FilterType | null>(null);
+
+  // Active Tool & Settings
+  const [activeTool, setActiveTool] = useState<ToolMode>("none");
+  const [activeColor, setActiveColor] = useState("#000000");
+  const [activeFillColor, setActiveFillColor] = useState<string | null>(null);
+  const [activeStrokeSize, setActiveStrokeSize] = useState(STROKE_SIZES[1].value);
+  const [activeShapeType, setActiveShapeType] = useState<"rect" | "circle" | "line" | "arrow">("rect");
+  const [activeFontFamily, setActiveFontFamily] = useState<TextElement["fontFamily"]>("system");
+  const [activeTextBgMode, setActiveTextBgMode] = useState<TextBgMode>("solid");
+  const [activeBlurMode, setActiveBlurMode] = useState<"path" | "box">("path");
+  const [activeBlurSize, setActiveBlurSize] = useState(50);
+  const [selectedCropAspect, setSelectedCropAspect] = useState<string>("free");
+
+  // Selection & Interactive Dragging
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+
+  // Popover Anchors
+  const [shapesAnchorEl, setShapesAnchorEl] = useState<HTMLElement | null>(null);
+  const [canvasEmojiAnchorEl, setCanvasEmojiAnchorEl] = useState<HTMLElement | null>(null);
+  const [textInputActive, setTextInputActive] = useState(false);
+  const [textInputValue, setTextInputValue] = useState("");
+  const [textInputPos, setTextInputPos] = useState({ x: 0.5, y: 0.5 });
+  const [selectedBlurId, setSelectedBlurId] = useState<string | null>(null);
+
+  // Refs
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<LexicalEditor | null>(null);
   const textRef = useRef("");
-  const emojiButtonRef = useRef<HTMLButtonElement | null>(null);
+  const captionEmojiBtnRef = useRef<HTMLButtonElement | null>(null);
   const editorWrapperRef = useRef<HTMLDivElement | null>(null);
   const thumbsScrollRef = useRef<HTMLDivElement | null>(null);
   const thumbItemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const mediaStageRef = useRef<HTMLDivElement | null>(null);
+  const annotationCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const imgElementRef = useRef<HTMLImageElement | null>(null);
+
+  // Pointer drag tracking
+  const pointerDragRef = useRef<{
+    isDown: boolean;
+    startPoint: { x: number; y: number };
+    currentPoint: { x: number; y: number };
+    dragType: "draw" | "shape" | "blur" | "move-element" | "crop-handle" | "crop-move" | "shape-handle" | "blur-move" | "blur-resize" | null;
+    elementId?: string;
+    cropHandle?: string;
+    blurHandle?: string;
+    initialCrop?: CropRect;
+    initialShape?: { start: { x: number; y: number }; end: { x: number; y: number } };
+    initialBlur?: { start: { x: number; y: number }; end: { x: number; y: number } };
+    tempPath?: Array<{ x: number; y: number }>;
+  }>({
+    isDown: false,
+    startPoint: { x: 0, y: 0 },
+    currentPoint: { x: 0, y: 0 },
+    dragType: null,
+  });
+
+  // Current media and per-item edit history are isolated in a dedicated hook.
+  const currentMedia = mediaFiles[currentIndex];
+  const { editStates, currentState, updateCurrentState, canUndo, canRedo, handleUndo, handleRedo, reset: resetEditHistory, resetCurrent } = useMediaEditHistory(currentIndex);
 
   // Reset state when opening or switching conversation
   useEffect(() => {
@@ -74,21 +155,31 @@ const MediaPreviewComponent = ({
       setCaption("");
       textRef.current = "";
       setLoadedVideos(new Set());
-      setLoadedThumbs(new Set());
-      // Clear the Lexical editor when opening
+      setActiveTool("none");
+      setSelectedElementId(null);
+      setEditingTextId(null);
+      setHoveredFilter(null);
+      resetEditHistory();
       if (editorRef.current) {
         editorRef.current.dispatchCommand(CLEAR_EDITOR_COMMAND, undefined);
       }
     }
-  }, [open, syncKey]);
+  }, [open, syncKey, resetEditHistory]);
 
-  // Track caption text from Lexical editor (markdown output)
+  // Reset tool selection when switching thumbnail
+  useEffect(() => {
+    setSelectedElementId(null);
+    setEditingTextId(null);
+    setHoveredFilter(null);
+  }, [currentIndex]);
+
+  // Track caption text from Lexical editor
   const handleEditorChange = useCallback((val: string) => {
     textRef.current = val;
     setCaption(val);
   }, []);
 
-  // Focus editor when overlay opens
+  // Focus editor on open
   useEffect(() => {
     if (open) {
       const id = requestAnimationFrame(() => editorRef.current?.focus());
@@ -96,7 +187,7 @@ const MediaPreviewComponent = ({
     }
   }, [open]);
 
-  // Auto-scroll thumbnail strip to the active item (matches old Swiper Thumbs behavior)
+  // Auto-scroll thumbnail strip
   useEffect(() => {
     const el = thumbItemRefs.current[currentIndex];
     if (!el || !thumbsScrollRef.current) return;
@@ -112,7 +203,7 @@ const MediaPreviewComponent = ({
     }
   }, [currentIndex]);
 
-  // Mouse wheel → horizontal scroll (since scrollbar is hidden)
+  // Mouse wheel scroll for thumbnails
   useEffect(() => {
     const container = thumbsScrollRef.current;
     if (!container) return;
@@ -127,71 +218,758 @@ const MediaPreviewComponent = ({
   }, []);
 
   // Keyboard shortcuts
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      } else if (e.key === "ArrowLeft" && !isEditorFocused()) {
-        setCurrentIndex((i) => Math.max(0, i - 1));
-      } else if (e.key === "ArrowRight" && !isEditorFocused()) {
-        setCurrentIndex((i) => Math.min(mediaFiles.length - 1, i + 1));
-      }
-    };
-    const isEditorFocused = () => {
-      const editorContainer = document.querySelector(".media-caption-editor .lexical-editor-container");
-      return editorContainer && editorContainer.contains(document.activeElement);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, mediaFiles.length, onClose]);
+  const handleSendRef = useRef<() => void>(() => {});
+  const handleCopyRef = useRef<() => void>(() => {});
+  const handleApplyCropRef = useRef<() => void>(() => {});
+  useKeyboardShortcuts({
+    open,
+    activeTool,
+    textInputActive,
+    selectedElementId,
+    showKeyboardHelp,
+    mediaFilesLength: mediaFiles.length,
+    onClose,
+    handleUndo,
+    handleRedo,
+    onSend: () => handleSendRef.current(),
+    onApplyCrop: () => handleApplyCropRef.current(),
+    updateCurrentState,
+    setActiveTool,
+    setSelectedElementId,
+    setShowKeyboardHelp,
+    setCurrentIndex,
+    setCanvasEmojiAnchorEl,
+    mediaStageRef,
+    onCopy: () => handleCopyRef.current(),
+  });
 
-  const currentMedia = mediaFiles[currentIndex];
+  // ── Normalized coordinate calculation ──
+  const getNormalizedPoint = useCallback((event: React.PointerEvent) => {
+    const stage = mediaStageRef.current;
+    const img = imgElementRef.current;
+    if (!stage || !img) return null;
 
-  const currentFileMeta = useMemo(() => {
-    if (!currentMedia) return { sizeText: "", extText: "", iconUrl: undefined as string | undefined };
-    const sizeText = formatSize(currentMedia.size);
-    const extText = getExt(currentMedia.name || "").toUpperCase();
-    const meta = getDocumentMeta(currentMedia.name || "");
-    return { sizeText, extText, iconUrl: meta.iconUrl };
-  }, [currentMedia]);
+    const imgRect = img.getBoundingClientRect();
+    if (!imgRect.width || !imgRect.height) return null;
 
-  const totalSizeMB = useMemo(() => {
-    const total = mediaFiles.reduce((acc, item) => acc + (item.size || 0), 0);
-    return (total / (1024 * 1024)).toFixed(1);
-  }, [mediaFiles]);
+    // Visual-space normalized coordinates (relative to the rotated image's visual bounding box)
+    const vx = (event.clientX - imgRect.left) / imgRect.width;
+    const vy = (event.clientY - imgRect.top) / imgRect.height;
 
-  const handleSend = useCallback(() => {
-    const text = textRef.current.trim();
-    onSend(text);
-    textRef.current = "";
-    setCaption("");
-    if (editorRef.current) {
-      editorRef.current.dispatchCommand(CLEAR_EDITOR_COMMAND, undefined);
-    }
-  }, [onSend]);
-
-  const handleVideoLoad = useCallback((id: string) => {
-    setLoadedVideos((prev) => new Set(prev).add(id));
-  }, []);
-
-  const handleThumbLoad = useCallback((id: string) => {
-    setLoadedThumbs((prev) => new Set(prev).add(id));
-  }, []);
-
-  const handleRemoveCurrent = useCallback(() => {
-    if (mediaFiles.length === 0) return;
-    onRemoveMedia(currentIndex);
-    if (mediaFiles.length === 1) {
-      onClose();
+    // Transform visual-space coordinates to unrotated-space coordinates
+    // based on the current rotation (0, 90, 180, 270 degrees CW)
+    const rotation = currentState.rotation;
+    let nx: number, ny: number;
+    if (rotation === 90) {
+      nx = vy;
+      ny = 1 - vx;
+    } else if (rotation === 180) {
+      nx = 1 - vx;
+      ny = 1 - vy;
+    } else if (rotation === 270) {
+      nx = 1 - vy;
+      ny = vx;
     } else {
-      setCurrentIndex((i) => Math.min(i, mediaFiles.length - 2));
+      nx = vx;
+      ny = vy;
     }
-  }, [currentIndex, mediaFiles, onRemoveMedia, onClose]);
+
+    return {
+      x: Math.max(0, Math.min(1, nx)),
+      y: Math.max(0, Math.min(1, ny)),
+    };
+  }, [currentState.rotation]);
+
+  // ── Canvas Real-time Rendering ──
+  const drawCanvas = useCallback(() => {
+    const canvas = annotationCanvasRef.current;
+    const img = imgElementRef.current;
+    if (!canvas || !img) return;
+
+    const width = Math.round(img.offsetWidth);
+    const height = Math.round(img.offsetHeight);
+    if (width <= 0 || height <= 0) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    // 1. Draw Mosaic Blur — pixelate with per-region intensity
+    for (const blur of currentState.blurRegions) {
+      const intensity = blur.intensity ?? 50;
+      const blockSize = intensityToBlockSize(intensity, width);
+      if (blur.type === "box" && blur.start && blur.end) {
+        const bx = Math.min(blur.start.x, blur.end.x) * width;
+        const by = Math.min(blur.start.y, blur.end.y) * height;
+        const bw = Math.abs(blur.end.x - blur.start.x) * width;
+        const bh = Math.abs(blur.end.y - blur.start.y) * height;
+        applyPixelateBox(ctx, bx, by, bw, bh, blockSize, img);
+      } else if (blur.type === "path" && blur.points) {
+        const bSize = (blur.size || 24) * (width / 800);
+        applyPixelatePath(ctx, blur.points, width, height, bSize, Math.max(4, Math.round(bSize / 2.5)), img);
+      }
+    }
+
+    // 2. Completed Drawings (Pen & Marker)
+    for (const draw of currentState.drawings) {
+      if (draw.points.length < 2) continue;
+      ctx.save();
+      if (draw.isMarker) {
+        ctx.globalAlpha = 0.45;
+        ctx.lineCap = "square";
+        ctx.lineJoin = "bevel";
+      } else {
+        ctx.globalAlpha = 1.0;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+      }
+      ctx.strokeStyle = draw.color;
+      ctx.lineWidth = Math.max(2, draw.size * (width / 800));
+      ctx.beginPath();
+      draw.points.forEach((pt, idx) => {
+        const px = pt.x * width;
+        const py = pt.y * height;
+        if (idx === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // In-progress drawing
+    if (
+      pointerDragRef.current.isDown &&
+      pointerDragRef.current.dragType === "draw" &&
+      pointerDragRef.current.tempPath &&
+      pointerDragRef.current.tempPath.length > 1
+    ) {
+      ctx.save();
+      const isM = activeTool === "marker";
+      if (isM) {
+        ctx.globalAlpha = 0.45;
+        ctx.lineCap = "square";
+        ctx.lineJoin = "bevel";
+      } else {
+        ctx.globalAlpha = 1.0;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+      }
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = Math.max(2, activeStrokeSize * (width / 800));
+      ctx.beginPath();
+      pointerDragRef.current.tempPath.forEach((pt, idx) => {
+        const px = pt.x * width;
+        const py = pt.y * height;
+        if (idx === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 3. Completed Shapes
+    for (const shape of currentState.shapes) {
+      const sx = shape.start.x * width;
+      const sy = shape.start.y * height;
+      const ex = shape.end.x * width;
+      const ey = shape.end.y * height;
+      const sWidth = Math.max(2, shape.strokeWidth * (width / 800));
+
+      ctx.strokeStyle = shape.color;
+      ctx.lineWidth = sWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      if (shape.type === "rect") {
+        const x = Math.min(sx, ex);
+        const y = Math.min(sy, ey);
+        const w = Math.abs(ex - sx);
+        const h = Math.abs(ey - sy);
+        if (shape.fillColor) {
+          ctx.fillStyle = shape.fillColor;
+          ctx.fillRect(x, y, w, h);
+        }
+        ctx.strokeRect(x, y, w, h);
+      } else if (shape.type === "circle") {
+        const cx = (sx + ex) / 2;
+        const cy = (sy + ey) / 2;
+        const rx = Math.max(1, Math.abs(ex - sx) / 2);
+        const ry = Math.max(1, Math.abs(ey - sy) / 2);
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+        if (shape.fillColor) {
+          ctx.fillStyle = shape.fillColor;
+          ctx.fill();
+        }
+        ctx.stroke();
+      } else if (shape.type === "line") {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      } else if (shape.type === "arrow") {
+        drawArrowOnCanvas(ctx, sx, sy, ex, ey, shape.color, sWidth, shape.fillColor ?? undefined);
+      }
+    }
+
+    // In-progress shape
+    if (
+      pointerDragRef.current.isDown &&
+      pointerDragRef.current.dragType === "shape"
+    ) {
+      const sx = pointerDragRef.current.startPoint.x * width;
+      const sy = pointerDragRef.current.startPoint.y * height;
+      const ex = pointerDragRef.current.currentPoint.x * width;
+      const ey = pointerDragRef.current.currentPoint.y * height;
+      const sWidth = Math.max(2, activeStrokeSize * (width / 800));
+
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = sWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      if (activeShapeType === "rect") {
+        const x = Math.min(sx, ex);
+        const y = Math.min(sy, ey);
+        const w = Math.abs(ex - sx);
+        const h = Math.abs(ey - sy);
+        if (activeFillColor) {
+          ctx.fillStyle = activeFillColor;
+          ctx.fillRect(x, y, w, h);
+        }
+        ctx.strokeRect(x, y, w, h);
+      } else if (activeShapeType === "circle") {
+        const cx = (sx + ex) / 2;
+        const cy = (sy + ey) / 2;
+        const rx = Math.max(1, Math.abs(ex - sx) / 2);
+        const ry = Math.max(1, Math.abs(ey - sy) / 2);
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+        if (activeFillColor) {
+          ctx.fillStyle = activeFillColor;
+          ctx.fill();
+        }
+        ctx.stroke();
+      } else if (activeShapeType === "line") {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      } else if (activeShapeType === "arrow") {
+        drawArrowOnCanvas(ctx, sx, sy, ex, ey, activeColor, sWidth, activeFillColor ?? undefined);
+      }
+    }
+
+    // In-progress path blur: render one clipped source-image pass per frame.
+    if (
+      pointerDragRef.current.isDown &&
+      pointerDragRef.current.dragType === "blur" &&
+      activeBlurMode === "path" &&
+      pointerDragRef.current.tempPath?.length
+    ) {
+      const blurSize = activeBlurSize * (width / 800);
+      applyInteractiveBlurPath(ctx, img, pointerDragRef.current.tempPath, width, height, blurSize, Math.max(4, blurSize / 2.5));
+    }
+
+    // In-progress Box Blur: live pixelation + selection outline during drag
+    if (
+      pointerDragRef.current.isDown &&
+      pointerDragRef.current.dragType === "blur" &&
+      activeBlurMode === "box"
+    ) {
+      const bsx = pointerDragRef.current.startPoint.x * width;
+      const bsy = pointerDragRef.current.startPoint.y * height;
+      const bex = pointerDragRef.current.currentPoint.x * width;
+      const bey = pointerDragRef.current.currentPoint.y * height;
+      const lx = Math.min(bsx, bex);
+      const ly = Math.min(bsy, bey);
+      const lw = Math.abs(bex - bsx);
+      const lh = Math.abs(bey - bsy);
+      if (lw > 4 && lh > 4) {
+        const blockSize = intensityToBlockSize(activeBlurSize, width);
+        applyPixelateBox(ctx, lx, ly, lw, lh, blockSize, img);
+        ctx.save();
+        ctx.strokeStyle = theme.palette.primary.main;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(lx, ly, lw, lh);
+        ctx.restore();
+      }
+    }
+  }, [currentState, activeColor, activeStrokeSize, activeShapeType, activeTool, activeBlurMode, activeBlurSize, theme]);
+
+  useEffect(() => {
+    drawCanvas();
+    const handleResize = () => drawCanvas();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [drawCanvas, currentIndex, activeTool]);
+
+  // ── Pointer Event Handlers for Image Stage ──
+  const handleStagePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (activeTool === "text" && textInputActive) return;
+      if (activeTool === "none") return;
+      const pt = getNormalizedPoint(e);
+      if (!pt) return;
+
+      e.currentTarget.setPointerCapture(e.pointerId);
+      pointerDragRef.current.isDown = true;
+      pointerDragRef.current.startPoint = pt;
+      pointerDragRef.current.currentPoint = pt;
+
+      if (activeTool === "pen" || activeTool === "marker") {
+        pointerDragRef.current.dragType = "draw";
+        pointerDragRef.current.tempPath = [pt];
+      } else if (activeTool === "shapes") {
+        // Click-to-add: create a new default shape centered at the click point,
+        // then allow dragging it on the same gesture.
+        const newShape: ShapeElement = {
+          id: `shape_${Date.now()}`,
+          type: activeShapeType,
+          start: { x: Math.max(0.05, pt.x - 0.15), y: Math.max(0.05, pt.y - 0.15) },
+          end: { x: Math.min(0.95, pt.x + 0.15), y: Math.min(0.95, pt.y + 0.15) },
+          color: activeColor,
+          strokeWidth: activeStrokeSize,
+          fillColor: activeFillColor,
+        };
+        updateCurrentState((prev) => ({
+          ...prev,
+          shapes: [...prev.shapes, newShape],
+        }));
+        setSelectedElementId(newShape.id);
+        pointerDragRef.current.dragType = "move-element";
+        pointerDragRef.current.elementId = newShape.id;
+        pointerDragRef.current.initialShape = { start: newShape.start, end: newShape.end };
+      } else if (activeTool === "blur") {
+        pointerDragRef.current.dragType = "blur";
+        if (activeBlurMode === "path") {
+          pointerDragRef.current.tempPath = [pt];
+        }
+      } else if (activeTool === "text") {
+        setTextInputPos(pt);
+        setEditingTextId(null);
+        if (!textInputActive) {
+          setTextInputValue("");
+          setTextInputActive(true);
+        }
+      }
+    },
+    [
+      activeTool,
+      activeShapeType,
+      activeColor,
+      activeFillColor,
+      activeStrokeSize,
+      getNormalizedPoint,
+      activeBlurMode,
+      textInputActive,
+      updateCurrentState,
+      setEditingTextId,
+    ]
+  );
+
+  const handleStagePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!pointerDragRef.current.isDown) return;
+      const pt = getNormalizedPoint(e);
+      if (!pt) return;
+
+      pointerDragRef.current.currentPoint = pt;
+
+      if (pointerDragRef.current.dragType === "draw") {
+        pointerDragRef.current.tempPath?.push(pt);
+        drawCanvas();
+      } else if (pointerDragRef.current.dragType === "shape") {
+        drawCanvas();
+      } else if (pointerDragRef.current.dragType === "blur") {
+        if (activeBlurMode === "path") {
+          pointerDragRef.current.tempPath?.push(pt);
+        }
+        drawCanvas();
+      } else if (pointerDragRef.current.dragType === "move-element" && pointerDragRef.current.elementId) {
+        const id = pointerDragRef.current.elementId;
+        const initShape = pointerDragRef.current.initialShape;
+        if (initShape) {
+          const dx = pt.x - pointerDragRef.current.startPoint.x;
+          const dy = pt.y - pointerDragRef.current.startPoint.y;
+          updateCurrentState((prev) => ({
+            ...prev,
+            shapes: prev.shapes.map((s) =>
+              s.id === id
+                ? {
+                    ...s,
+                    start: { x: initShape.start.x + dx, y: initShape.start.y + dy },
+                    end: { x: initShape.end.x + dx, y: initShape.end.y + dy },
+                  }
+                : s
+            ),
+          }), false);
+        } else {
+          updateCurrentState((prev) => ({
+            ...prev,
+            texts: prev.texts.map((t) => (t.id === id ? { ...t, x: pt.x, y: pt.y } : t)),
+            emojis: prev.emojis.map((m) => (m.id === id ? { ...m, x: pt.x, y: pt.y } : m)),
+          }), false);
+        }
+      } else if (
+        pointerDragRef.current.dragType === "shape-handle" &&
+        pointerDragRef.current.elementId &&
+        pointerDragRef.current.initialShape &&
+        pointerDragRef.current.cropHandle
+      ) {
+        const id = pointerDragRef.current.elementId;
+        const init = pointerDragRef.current.initialShape;
+        const handle = pointerDragRef.current.cropHandle;
+        let nx1 = init.start.x;
+        let ny1 = init.start.y;
+        let nx2 = init.end.x;
+        let ny2 = init.end.y;
+
+        if (handle.includes("w")) nx1 = Math.max(0, Math.min(nx2 - 0.05, pt.x));
+        if (handle.includes("e")) nx2 = Math.max(nx1 + 0.05, Math.min(1, pt.x));
+        if (handle.includes("n")) ny1 = Math.max(0, Math.min(ny2 - 0.05, pt.y));
+        if (handle.includes("s")) ny2 = Math.max(ny1 + 0.05, Math.min(1, pt.y));
+
+        updateCurrentState((prev) => ({
+          ...prev,
+          shapes: prev.shapes.map((s) =>
+            s.id === id ? { ...s, start: { x: nx1, y: ny1 }, end: { x: nx2, y: ny2 } } : s
+          ),
+        }), false);
+      } else if (
+        pointerDragRef.current.dragType === "crop-handle" &&
+        pointerDragRef.current.initialCrop &&
+        pointerDragRef.current.cropHandle
+      ) {
+        const handle = pointerDragRef.current.cropHandle;
+        const init = pointerDragRef.current.initialCrop;
+        const dx = pt.x - pointerDragRef.current.startPoint.x;
+        const dy = pt.y - pointerDragRef.current.startPoint.y;
+
+        let nx = init.x;
+        let ny = init.y;
+        let nw = init.width;
+        let nh = init.height;
+
+        if (handle.includes("w")) {
+          nx = Math.min(init.x + dx, init.x + init.width - 0.05);
+          nw = init.width - (nx - init.x);
+        }
+        if (handle.includes("e")) {
+          nw = Math.max(0.05, init.width + dx);
+        }
+        if (handle.includes("n")) {
+          ny = Math.min(init.y + dy, init.y + init.height - 0.05);
+          nh = init.height - (ny - init.y);
+        }
+        if (handle.includes("s")) {
+          nh = Math.max(0.05, init.height + dy);
+        }
+
+        nx = Math.max(0, Math.min(1 - nw, nx));
+        ny = Math.max(0, Math.min(1 - nh, ny));
+        nw = Math.max(0.05, Math.min(1 - nx, nw));
+        nh = Math.max(0.05, Math.min(1 - ny, nh));
+
+        updateCurrentState((prev) => ({
+          ...prev,
+          crop: { x: nx, y: ny, width: nw, height: nh },
+        }), false);
+      } else if (
+        pointerDragRef.current.dragType === "crop-move" &&
+        pointerDragRef.current.initialCrop
+      ) {
+        const init = pointerDragRef.current.initialCrop;
+        const dx = pt.x - pointerDragRef.current.startPoint.x;
+        const dy = pt.y - pointerDragRef.current.startPoint.y;
+
+        const nx = Math.max(0, Math.min(1 - init.width, init.x + dx));
+        const ny = Math.max(0, Math.min(1 - init.height, init.y + dy));
+
+        updateCurrentState((prev) => ({
+          ...prev,
+          crop: { ...init, x: nx, y: ny },
+        }), false);
+      } else if (
+        pointerDragRef.current.dragType === "blur-move" &&
+        pointerDragRef.current.elementId &&
+        pointerDragRef.current.initialBlur
+      ) {
+        const blurIdx = parseInt(pointerDragRef.current.elementId.replace("blur_", ""), 10);
+        const init = pointerDragRef.current.initialBlur;
+        const dx = pt.x - pointerDragRef.current.startPoint.x;
+        const dy = pt.y - pointerDragRef.current.startPoint.y;
+        updateCurrentState((prev) => ({
+          ...prev,
+          blurRegions: prev.blurRegions.map((b, i) =>
+            i === blurIdx
+              ? {
+                  ...b,
+                  start: { x: Math.max(0, Math.min(1, init.start.x + dx)), y: Math.max(0, Math.min(1, init.start.y + dy)) },
+                  end: { x: Math.max(0, Math.min(1, init.end.x + dx)), y: Math.max(0, Math.min(1, init.end.y + dy)) },
+                }
+              : b
+          ),
+        }), false);
+        drawCanvas();
+      } else if (
+        pointerDragRef.current.dragType === "blur-resize" &&
+        pointerDragRef.current.elementId &&
+        pointerDragRef.current.initialBlur &&
+        pointerDragRef.current.blurHandle
+      ) {
+        const blurIdx = parseInt(pointerDragRef.current.elementId.replace("blur_", ""), 10);
+        const init = pointerDragRef.current.initialBlur;
+        const handle = pointerDragRef.current.blurHandle;
+        let nx1 = init.start.x;
+        let ny1 = init.start.y;
+        let nx2 = init.end.x;
+        let ny2 = init.end.y;
+        if (handle.includes("w")) nx1 = Math.max(0, Math.min(0.95, pt.x));
+        if (handle.includes("e")) nx2 = Math.max(0.05, Math.min(1, pt.x));
+        if (handle.includes("n")) ny1 = Math.max(0, Math.min(0.95, pt.y));
+        if (handle.includes("s")) ny2 = Math.max(0.05, Math.min(1, pt.y));
+        updateCurrentState((prev) => ({
+          ...prev,
+          blurRegions: prev.blurRegions.map((b, i) =>
+            i === blurIdx ? { ...b, start: { x: nx1, y: ny1 }, end: { x: nx2, y: ny2 } } : b
+          ),
+        }), false);
+        drawCanvas();
+      }
+    },
+    [getNormalizedPoint, drawCanvas, activeBlurMode, updateCurrentState]
+  );
+
+  const handleStagePointerUp = useCallback(() => {
+    if (!pointerDragRef.current.isDown) return;
+    const { dragType, startPoint, currentPoint, tempPath } = pointerDragRef.current;
+    pointerDragRef.current.isDown = false;
+
+    if (dragType === "draw" && tempPath && tempPath.length > 1) {
+      updateCurrentState((prev) => ({
+        ...prev,
+        drawings: [
+          ...prev.drawings,
+          {
+            points: tempPath,
+            color: activeColor,
+            size: activeStrokeSize,
+            isMarker: activeTool === "marker",
+          },
+        ],
+      }));
+    } else if (dragType === "blur") {
+      if (activeBlurMode === "path" && tempPath && tempPath.length > 0) {
+        updateCurrentState((prev) => ({
+          ...prev,
+          blurRegions: [
+            ...prev.blurRegions,
+            { type: "path", points: tempPath, size: activeBlurSize, intensity: activeBlurSize },
+          ],
+        }));
+      } else if (activeBlurMode === "box") {
+        updateCurrentState((prev) => ({
+          ...prev,
+          blurRegions: [
+            ...prev.blurRegions,
+            { type: "box", start: startPoint, end: currentPoint, intensity: activeBlurSize },
+          ],
+        }));
+      }
+    } else if (dragType === "move-element" || dragType === "shape-handle" || dragType === "crop-handle" || dragType === "crop-move" || dragType === "blur-move" || dragType === "blur-resize") {
+      updateCurrentState((prev) => ({ ...prev }), true);
+    }
+
+    pointerDragRef.current.dragType = null;
+    pointerDragRef.current.tempPath = undefined;
+    pointerDragRef.current.initialShape = undefined;
+    drawCanvas();
+  }, [
+    activeColor,
+    activeFillColor,
+    activeStrokeSize,
+    activeShapeType,
+    activeTool,
+    activeBlurMode,
+    activeBlurSize,
+    drawCanvas,
+    updateCurrentState,
+  ]);
+
+  // ── Synchronous Export on Send ──
+  const exportAllEditedImages = useCallback(async (): Promise<MediaFileItem[]> => {
+    const result: MediaFileItem[] = [];
+
+    for (let i = 0; i < mediaFiles.length; i++) {
+      const item = mediaFiles[i];
+      const state = editStates[i];
+
+      if (item.type !== "image" || !hasImageEdits(state)) {
+        result.push(item);
+        continue;
+      }
+
+      try {
+        const exported = await renderEditedImage(item, state);
+        result.push(exported);
+      } catch (err) {
+        console.error(`Failed to export edited image ${i}:`, err);
+        result.push(item);
+      }
+    }
+
+    return result;
+  }, [mediaFiles, editStates]);
+
+  const handleSend = useCallback(async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const exportedMediaFiles = await exportAllEditedImages();
+      const text = textRef.current.trim();
+      onSend(text, exportedMediaFiles);
+      textRef.current = "";
+      setCaption("");
+      if (editorRef.current) {
+        editorRef.current.dispatchCommand(CLEAR_EDITOR_COMMAND, undefined);
+      }
+    } catch (err) {
+      console.error("Error during media preview export on send:", err);
+      onSend(textRef.current.trim());
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isExporting, exportAllEditedImages, onSend]);
+
+  // Apply crop to the current media file and update the preview
+  const handleApplyCrop = useCallback(async () => {
+    if (!currentMedia || currentMedia.type !== "image" || !onUpdateMedia) return;
+    try {
+      const exported = await renderEditedImage(currentMedia, currentState);
+      onUpdateMedia(currentIndex, exported.file, exported.preview);
+      resetCurrent();
+      setActiveTool("none");
+      setSelectedElementId(null);
+    } catch (err) {
+      console.error("Failed to apply crop:", err);
+    }
+  }, [currentMedia, currentState, currentIndex, onUpdateMedia, resetCurrent]);
+
+  // Keep refs in sync for keyboard shortcut handler
+  handleSendRef.current = handleSend;
+  handleApplyCropRef.current = handleApplyCrop;
+
+  // Download Current Image
+  const handleDownloadCurrent = useCallback(async () => {
+    if (!currentMedia || currentMedia.type !== "image") return;
+    try {
+      const exported = await renderEditedImage(currentMedia, currentState);
+      const a = document.createElement("a");
+      a.href = exported.preview;
+      a.download = `edited_${currentMedia.name || "image.png"}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Failed to download image:", err);
+    }
+  }, [currentMedia, currentState]);
+
+  // Copy Current Edited Image to Clipboard
+  const handleCopyCurrent = useCallback(async () => {
+    if (!currentMedia || currentMedia.type !== "image") return;
+    try {
+      const exported = await renderEditedImage(currentMedia, currentState);
+      if (!exported.file) return;
+      // ClipboardItem widely supports only image/png — re-encode to PNG
+      // regardless of the original format so the copy actually succeeds.
+      let pngBlob: Blob | null = exported.file;
+      if (exported.file.type !== "image/png") {
+        const img = new Image();
+        img.src = exported.preview;
+        await new Promise<void>((resolve, reject) => {
+          if (img.complete) return resolve();
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("Failed to load image for PNG re-encode"));
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || exported.width || 800;
+        canvas.height = img.naturalHeight || exported.height || 600;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+      if (!pngBlob) throw new Error("PNG re-encode produced null blob");
+
+      if (navigator.clipboard && "write" in navigator.clipboard && typeof ClipboardItem !== "undefined") {
+        const item = new ClipboardItem({ "image/png": pngBlob });
+        await navigator.clipboard.write([item]);
+      } else {
+        // Legacy fallback — copy via a hidden <img> + execCommand.
+        const img = document.createElement("img");
+        img.src = exported.preview;
+        img.style.position = "fixed";
+        img.style.opacity = "0";
+        document.body.appendChild(img);
+        const range = document.createRange();
+        range.selectNode(img);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        document.execCommand("copy");
+        sel?.removeAllRanges();
+        document.body.removeChild(img);
+      }
+      setCopiedFeedback(true);
+      window.setTimeout(() => setCopiedFeedback(false), 1800);
+    } catch (err) {
+      console.error("Failed to copy image:", err);
+      setCopiedFeedback(false);
+    }
+  }, [currentMedia, currentState]);
+
+  // Keep ref in sync for keyboard shortcut handler
+  handleCopyRef.current = handleCopyCurrent;
+
+  // Remove Item / Delete Selection
+  const handleDeleteOrRemove = useCallback(() => {
+    if (selectedElementId) {
+      updateCurrentState((prev) => ({
+        ...prev,
+        texts: prev.texts.filter((t) => t.id !== selectedElementId),
+        shapes: prev.shapes.filter((s) => s.id !== selectedElementId),
+        emojis: prev.emojis.filter((m) => m.id !== selectedElementId),
+      }));
+      setSelectedElementId(null);
+    } else {
+      if (mediaFiles.length === 0) return;
+      if (mediaFiles[currentIndex]?.preview?.startsWith("blob:")) {
+        URL.revokeObjectURL(mediaFiles[currentIndex].preview);
+      }
+      onRemoveMedia(currentIndex);
+      if (mediaFiles.length === 1) {
+        onClose();
+      } else {
+        setCurrentIndex((i) => Math.min(i, mediaFiles.length - 2));
+      }
+    }
+  }, [selectedElementId, updateCurrentState, mediaFiles, currentIndex, onRemoveMedia, onClose]);
 
   const handleRemoveThumb = useCallback(
     (e: React.MouseEvent, index: number) => {
       e.stopPropagation();
+      if (mediaFiles[index]?.preview?.startsWith("blob:")) {
+        URL.revokeObjectURL(mediaFiles[index].preview);
+      }
       onRemoveMedia(index);
       if (mediaFiles.length === 1) {
         onClose();
@@ -219,8 +997,106 @@ const MediaPreviewComponent = ({
     [onAddMore]
   );
 
-  // ── Emoji insertion into Lexical editor ──────────────────────────────────
-  const onEmojiClick = useCallback((emojiData: { emoji: string }) => {
+  const addDefaultShape = useCallback((type: "rect" | "circle" | "line" | "arrow" = activeShapeType) => {
+    const newShape: ShapeElement = {
+      id: `shape_${Date.now()}`,
+      type,
+      start: { x: 0.35, y: 0.35 },
+      end: { x: 0.65, y: 0.65 },
+      color: activeColor,
+      strokeWidth: activeStrokeSize,
+      fillColor: activeFillColor,
+    };
+    updateCurrentState((prev) => ({
+      ...prev,
+      shapes: [...prev.shapes, newShape],
+    }));
+    setSelectedElementId(newShape.id);
+  }, [activeShapeType, activeColor, activeStrokeSize, activeFillColor, updateCurrentState]);
+
+  // ── Tool Toggles ──
+  const toggleTool = useCallback((tool: ToolMode) => {
+    const willActivate = activeTool !== tool;
+    setActiveTool((prev) => {
+      const next = prev === tool ? "none" : tool;
+      if (next === "marker") {
+        setActiveStrokeSize(26);
+        setActiveColor((col) => (col === "#000000" || col === "#00a884" ? "#ffeb3b" : col));
+      } else if (next === "pen") {
+        setActiveStrokeSize(7);
+      } else if (next === "text") {
+        setTextInputPos({ x: 0.5, y: 0.45 });
+        setTextInputValue("");
+        setTextInputActive(true);
+      } else {
+        setTextInputActive(false);
+        setTextInputValue("");
+      }
+      return next;
+    });
+    // Initialize default crop region when entering crop mode (outside setActiveTool callback)
+    if (willActivate && tool === "crop") {
+      updateCurrentState((p) => (p.crop ? p : { ...p, crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 } }));
+    }
+    if (tool === "shapes") {
+      // Add a default centered shape when activating the shape tool.
+      requestAnimationFrame(() => addDefaultShape());
+    } else {
+      setSelectedElementId(null);
+    }
+    setSelectedBlurId(null);
+    setHoveredFilter(null);
+  }, [activeTool, addDefaultShape, updateCurrentState]);
+
+  const toggleHd = useCallback(() => {
+    updateCurrentState((prev) => ({ ...prev, isHd: !prev.isHd }));
+  }, [updateCurrentState]);
+
+  const rotateCCW = useCallback(() => {
+    updateCurrentState((prev) => ({
+      ...prev,
+      rotation: (prev.rotation - 90 + 360) % 360,
+    }));
+  }, [updateCurrentState]);
+
+  const rotateCW = useCallback(() => {
+    updateCurrentState((prev) => ({
+      ...prev,
+      rotation: (prev.rotation + 90) % 360,
+    }));
+  }, [updateCurrentState]);
+
+  const resetCropAndRotate = useCallback(() => {
+    updateCurrentState((prev) => ({
+      ...prev,
+      crop: null,
+      rotation: 0,
+    }));
+    setSelectedCropAspect("free");
+  }, [updateCurrentState]);
+
+  // Add Emoji Sticker to Canvas
+  const handleAddCanvasEmoji = useCallback(
+    (emojiStr: string) => {
+      const newEmoji: EmojiElement = {
+        id: `emoji_${Date.now()}`,
+        emoji: emojiStr,
+        x: 0.5,
+        y: 0.5,
+        size: 54,
+      };
+      updateCurrentState((prev) => ({
+        ...prev,
+        emojis: [...prev.emojis, newEmoji],
+      }));
+      setSelectedElementId(newEmoji.id);
+      setCanvasEmojiAnchorEl(null);
+    },
+    [updateCurrentState]
+  );
+
+  // ── Caption Lexical Emoji Picker ──
+  const onCaptionEmojiClick = useCallback((emojiData: { emoji: string }) => {
     const emoji = emojiData?.emoji || "";
     if (editorRef.current) {
       editorRef.current.update(() => {
@@ -241,7 +1117,6 @@ const MediaPreviewComponent = ({
     }
   }, []);
 
-  // ── Formatting toolbar: show on text selection ──────────────────────────
   const handleSelectionChange = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) {
@@ -263,36 +1138,26 @@ const MediaPreviewComponent = ({
     setShowFormattingToolbar(true);
   }, []);
 
-  // Close formatting toolbar on outside click
-  useEffect(() => {
-    if (!showFormattingToolbar) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      const toolbar = document.querySelector(".formatting-toolbar");
-      if (toolbar && toolbar.contains(target)) return;
-      const editorContainer = document.querySelector(".media-caption-editor .lexical-editor-container");
-      if (editorContainer && editorContainer.contains(target)) return;
-      setShowFormattingToolbar(false);
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [showFormattingToolbar]);
-
-  // Handle Enter key to send from Lexical editor
-  const handleEditorKeyDown = useCallback(() => {
-    handleSend();
-  }, [handleSend]);
-
   if (!open || mediaFiles.length === 0) return null;
 
-  // Helper to get preview URL for a media item
-  const getMediaUrl = (item: MediaFileItem) => item.preview || (item.file ? URL.createObjectURL(item.file) : "");
+  const getMediaUrl = (item: MediaFileItem) =>
+    item.preview || (item.file ? URL.createObjectURL(item.file) : "");
 
-  const surfaceBg = isDark ? "rgba(35, 35, 51, 0.92)" : "rgba(255, 255, 255, 0.92)";
-  const headerBg = isDark ? "rgba(26, 26, 38, 0.95)" : "#fff";
-  const borderColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+  const surfaceBg = isDark ? "rgba(22, 22, 34, 0.96)" : "rgba(255, 255, 255, 0.98)";
+  const headerBg = isDark ? "rgba(20, 20, 30, 0.98)" : "#ffffff";
+  const borderColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
   const titleColor = theme.palette.text.primary;
   const subtitleColor = theme.palette.text.secondary;
+
+  const currentFileMeta = {
+    sizeText: formatSize(currentMedia?.size),
+    extText: getExt(currentMedia?.name || "").toUpperCase(),
+    iconUrl: getDocumentMeta(currentMedia?.name || "").iconUrl,
+  };
+
+  const isImage = currentMedia?.type === "image";
+  const isVideo = currentMedia?.type === "video";
+  const isFile = currentMedia?.type === "file";
 
   return (
     <div
@@ -303,12 +1168,11 @@ const MediaPreviewComponent = ({
         zIndex: 1000,
         display: "flex",
         flexDirection: "column",
-        background: "rgba(17, 24, 39, 0.28)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
+        background: "rgba(10, 14, 23, 0.4)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
       }}
     >
-      {/* Inner overlay */}
       <div
         style={{
           width: "100%",
@@ -319,535 +1183,229 @@ const MediaPreviewComponent = ({
           background: surfaceBg,
         }}
       >
-        {/* ── Header ── */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
-            alignItems: "center",
-            gap: 12,
-            padding: "10px 16px",
-            background: headerBg,
-            borderBottom: `1px solid ${borderColor}`,
-            paddingTop: "max(10px, var(--safe-top))",
-            flexShrink: 0,
+        <MediaPreviewHeader
+          currentMedia={currentMedia}
+          isImage={isImage}
+          currentIndex={currentIndex}
+          total={mediaFiles.length}
+          activeTool={activeTool}
+          activeShapeType={activeShapeType}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          isHd={currentState.isHd}
+          copied={copiedFeedback}
+          showKeyboardHelp={showKeyboardHelp}
+          selectedElementId={selectedElementId}
+          canvasEmojiAnchorEl={canvasEmojiAnchorEl}
+          sizeText={currentFileMeta.sizeText}
+          extText={currentFileMeta.extText}
+          titleColor={titleColor}
+          subtitleColor={subtitleColor}
+          borderColor={borderColor}
+          headerBg={headerBg}
+          isDark={isDark}
+          onClose={onClose}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onToggleTool={toggleTool}
+          onOpenShapes={(el) => {
+            setShapesAnchorEl(el);
+            setActiveTool("shapes");
           }}
-        >
-          {/* Close */}
-          <button
-            onClick={onClose}
-            aria-label="Close preview"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              border: `1px solid ${borderColor}`,
-              background: isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)",
-              color: titleColor,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              transition: "all 0.2s ease",
-            }}
-          >
-            <X size={20} />
-          </button>
+          onOpenCanvasEmoji={(el) => setCanvasEmojiAnchorEl(el)}
+          onToggleKeyboardHelp={() => setShowKeyboardHelp((v) => !v)}
+          onToggleHd={toggleHd}
+          onDone={activeTool === "crop" ? () => { handleApplyCrop(); } : () => setActiveTool("none")}
+          onCopy={handleCopyCurrent}
+          onDownload={handleDownloadCurrent}
+          onDeleteOrRemove={handleDeleteOrRemove}
+        />
 
-          {/* Title + subtitle */}
-          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-            <div
-              title={currentMedia?.name || ""}
-              style={{
-                fontFamily: "inherit",
-                fontSize: 14,
-                fontWeight: 600,
-                color: titleColor,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {currentMedia?.name || "Media preview"}
-            </div>
-            {currentMedia && (
-              <div
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  color: subtitleColor,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {currentFileMeta.sizeText}
-                {currentFileMeta.extText ? ` · ${currentFileMeta.extText}` : ""}
-                {mediaFiles.length ? ` · ${currentIndex + 1} of ${mediaFiles.length}` : ""}
-                {` · Total: ${totalSizeMB} MB`}
-              </div>
-            )}
-          </div>
-
-          {/* Trash */}
-          <button
-            onClick={handleRemoveCurrent}
-            disabled={!currentMedia}
-            aria-label="Remove current item"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              border: `1px solid ${borderColor}`,
-              background: isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)",
-              color: titleColor,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: currentMedia ? "pointer" : "not-allowed",
-              opacity: currentMedia ? 1 : 0.5,
-              transition: "all 0.2s ease",
-            }}
-          >
-            <Trash2 size={20} />
-          </button>
-        </div>
-
-        {/* ── Main Media Display ── */}
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            overflow: "hidden",
-            position: "relative",
-          }}
-        >
-          {/* Navigation arrows */}
-          {mediaFiles.length > 1 && currentIndex > 0 && (
-            <button
-              onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-              style={{
-                position: "absolute",
-                left: 24,
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: 45,
-                height: 45,
-                borderRadius: "50%",
-                border: `1px solid ${borderColor}`,
-                background: isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)",
-                color: titleColor,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                zIndex: 5,
-                boxShadow: "0 14px 34px rgba(17,24,39,0.14)",
-                transition: "all 0.2s ease",
-              }}
-            >
-              <ChevronLeft size={24} />
-            </button>
-          )}
-          {mediaFiles.length > 1 && currentIndex < mediaFiles.length - 1 && (
-            <button
-              onClick={() => setCurrentIndex((i) => Math.min(mediaFiles.length - 1, i + 1))}
-              style={{
-                position: "absolute",
-                right: 24,
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: 45,
-                height: 45,
-                borderRadius: "50%",
-                border: `1px solid ${borderColor}`,
-                background: isDark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)",
-                color: titleColor,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                zIndex: 5,
-                boxShadow: "0 14px 34px rgba(17,24,39,0.14)",
-                transition: "all 0.2s ease",
-              }}
-            >
-              <ChevronRight size={24} />
-            </button>
-          )}
-
-          {/* Media stage */}
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 16,
-              overflow: "hidden",
-              background: isDark ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.55)",
-              border: `1px solid ${borderColor}`,
-              position: "relative",
-            }}
-          >
-            {currentMedia?.type === "image" && (
-              <img
-                src={getMediaUrl(currentMedia)}
-                alt={currentMedia.name || "media"}
-                style={{
-                  maxWidth: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                }}
-              />
-            )}
-
-            {currentMedia?.type === "video" && (
-              <>
-                {!loadedVideos.has(currentMedia.name) && (
-                  <Skeleton
-                    variant="rectangular"
-                    width="100%"
-                    height="100%"
-                    animation="wave"
-                    sx={{
-                      bgcolor: "rgba(0,0,0,0.05)",
-                      position: "absolute",
-                      inset: 0,
-                      borderRadius: "16px",
-                    }}
-                  />
-                )}
-                <video
-                  src={getMediaUrl(currentMedia)}
-                  controls
-                  onLoadedData={() => handleVideoLoad(currentMedia.name)}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                    opacity: loadedVideos.has(currentMedia.name) ? 1 : 0,
-                    transition: "opacity 0.3s ease",
-                  }}
-                />
-              </>
-            )}
-
-            {currentMedia?.type === "file" && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "100%",
-                  textAlign: "center",
-                  color: subtitleColor,
-                  fontFamily: "inherit",
-                  padding: 20,
-                }}
-              >
-                <div style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}>
-                  {currentFileMeta.iconUrl ? (
-                    <img src={currentFileMeta.iconUrl} alt="" style={{ width: 80, height: 80, objectFit: "contain" }} />
-                  ) : (
-                    <FileText size={80} color={theme.palette.primary.main} />
-                  )}
-                </div>
-                <div style={{ fontWeight: 600, fontSize: 16, color: titleColor, marginBottom: 4 }}>
-                  {currentMedia.name}
-                </div>
-                <div style={{ fontSize: 13, color: subtitleColor, marginBottom: 12 }}>
-                  {currentFileMeta.sizeText} · {currentFileMeta.extText}
-                </div>
-                <div style={{ fontSize: 14 }}>No preview available</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Thumbnails ── */}
-        <div
-          ref={thumbsScrollRef}
-          className="media-preview-thumbs"
-          style={{
-            flexShrink: 0,
-            padding: "12px 20px",
-            background: isDark ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.55)",
-            borderTop: `1px solid ${borderColor}`,
-            position: "relative",
-            width: "100%",
-            overflowX: "auto",
-            overflowY: "hidden",
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            scrollBehavior: "smooth",
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
-          {mediaFiles.map((item, index) => {
-            const isActive = index === currentIndex;
-            const itemId = item.name;
-            const isImage = item.type === "image";
-            const isVideo = item.type === "video";
-            const thumbSrc = isImage || isVideo ? getMediaUrl(item) : undefined;
-
-            return (
-              <div
-                key={`${itemId}-${index}`}
-                ref={(el) => { thumbItemRefs.current[index] = el; }}
-                onClick={() => setCurrentIndex(index)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  position: "relative",
-                  flexShrink: 0,
-                  width: 60,
-                  height: 60,
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  cursor: "pointer",
-                  border: isActive
-                    ? `2px solid ${theme.palette.primary.main}`
-                    : `1px solid ${borderColor}`,
-                  background: isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.75)",
-                  boxShadow: isActive
-                    ? `0 0 0 3px ${alpha(theme.palette.primary.main, 0.12)}`
-                    : "none",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                {isVideo ? (
-                  <>
-                    {!loadedThumbs.has(itemId) && (
-                      <Skeleton
-                        variant="rectangular"
-                        width="100%"
-                        height="100%"
-                        animation="wave"
-                        sx={{ position: "absolute", inset: 0 }}
-                      />
-                    )}
-                    <video
-                      src={`${thumbSrc}#t=0.5`}
-                      className="thumbnail-img is-video"
-                      preload="metadata"
-                      muted
-                      onLoadedData={() => handleThumbLoad(itemId)}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        opacity: loadedThumbs.has(itemId) ? 1 : 0,
-                        transition: "opacity 0.3s ease",
-                      }}
-                    />
-                  </>
-                ) : isImage ? (
-                  <img
-                    src={thumbSrc}
-                    alt={item.name}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {getDocumentMeta(mediaFiles[index]?.name || "").iconUrl ? (
-                      <img
-                        src={getDocumentMeta(mediaFiles[index]?.name || "").iconUrl}
-                        alt=""
-                        style={{ width: 28, height: 28, objectFit: "contain" }}
-                      />
-                    ) : (
-                      <FileText size={28} color={theme.palette.primary.main} />
-                    )}
-                  </div>
-                )}
-
-                {/* Remove button on hover */}
-                <button
-                  onClick={(e) => handleRemoveThumb(e, index)}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                    background: "rgba(0,0,0,0.7)",
-                    border: "none",
-                    color: "#fff",
-                    borderRadius: "999px",
-                    width: 24,
-                    height: 24,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    opacity: 0,
-                    transition: "opacity 0.2s",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                  className="thumb-remove-btn"
-                >
-                  <X size={14} color="white" />
-                </button>
-              </div>
-            );
-          })}
-
-          {/* Add more */}
-          <div
-            onClick={handleAddMore}
-            title="Add more files"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 60,
-              height: 60,
-              borderRadius: 14,
-              border: `2px dashed ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)"}`,
-              background: isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.6)",
-              cursor: "pointer",
-              flexShrink: 0,
-              transition: "all 0.2s ease",
-            }}
-          >
-            <Plus size={24} color={subtitleColor} />
-          </div>
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            multiple
-            style={{ display: "none" }}
-            accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.apk,.html,.htm,.py,.js,.jsx,.ts,.tsx,.css,.json,.xml,.zip,.rar,.7z,.sql,.log,.md,.rtf,.psd,.ai,.svg,.eps,.mp3,.wav,.ogg,.m4a,.flac,.aac,.wma,.mp4,.mov,.avi,.mkv,.flv,.wmv,.m4v,.webm"
+        {isImage && activeTool === "filter" && (
+          <MediaPreviewFilterBar
+            currentMedia={currentMedia}
+            selectedFilter={currentState.filter}
+            hoveredFilter={hoveredFilter}
+            titleColor={titleColor}
+            borderColor={borderColor}
+            isDark={isDark}
+            getMediaUrl={getMediaUrl}
+            onSelectFilter={(filter) => updateCurrentState((prev) => ({ ...prev, filter }))}
+            onHoverFilter={setHoveredFilter}
           />
-        </div>
+        )}
 
-        {/* ── Caption & Send ── */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            gap: 12,
-            padding: "12px 20px",
-            background: isDark ? "rgba(26,26,38,0.95)" : "rgba(255,255,255,0.95)",
-            borderTop: `1px solid ${borderColor}`,
-            paddingBottom: "max(12px, var(--safe-bottom))",
-            flexShrink: 0,
-          }}
-        >
-          {/* Caption wrapper with rich text editor */}
-          <div
-            className="media-caption-editor"
-            ref={editorWrapperRef}
-            onMouseUp={handleSelectionChange}
-            onKeyUp={handleSelectionChange}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "flex-end",
-              background: isDark ? "rgba(255,255,255,0.06)" : "rgba(245,245,245,0.95)",
-              borderRadius: 20,
-              padding: "6px 12px",
-              gap: 4,
-              border: `1px solid ${borderColor}`,
-              transition: "border-color 0.2s ease, box-shadow 0.2s ease",
-              minHeight: 44,
-              position: "relative",
+        <MediaPreviewPopovers
+          shapesAnchorEl={shapesAnchorEl}
+          canvasEmojiAnchorEl={canvasEmojiAnchorEl}
+          showKeyboardHelp={showKeyboardHelp}
+          activeShapeType={activeShapeType}
+          titleColor={titleColor}
+          subtitleColor={subtitleColor}
+          borderColor={borderColor}
+          headerBg={headerBg}
+          isDark={isDark}
+          onCloseShapes={() => setShapesAnchorEl(null)}
+          onSelectShape={setActiveShapeType}
+          onCloseCanvasEmoji={() => setCanvasEmojiAnchorEl(null)}
+          onAddCanvasEmoji={handleAddCanvasEmoji}
+          onCloseKeyboardHelp={() => setShowKeyboardHelp(false)}
+        />
+
+        <MediaPreviewStage
+          currentMedia={currentMedia}
+          currentIndex={currentIndex}
+          mediaFilesLength={mediaFiles.length}
+          isImage={isImage}
+          isVideo={isVideo}
+          isFile={isFile}
+          loadedVideos={loadedVideos}
+          activeTool={activeTool}
+          activeColor={activeColor}
+          activeFontFamily={activeFontFamily}
+          activeTextBgMode={activeTextBgMode}
+          textInputActive={textInputActive}
+          textInputValue={textInputValue}
+          textInputPos={textInputPos}
+          selectedElementId={selectedElementId}
+          editingTextId={editingTextId}
+          selectedBlurId={selectedBlurId}
+          hoveredFilter={hoveredFilter}
+          currentState={currentState}
+          titleColor={titleColor}
+          subtitleColor={subtitleColor}
+          borderColor={borderColor}
+          isDark={isDark}
+          iconUrl={currentFileMeta.iconUrl}
+          sizeText={currentFileMeta.sizeText}
+          extText={currentFileMeta.extText}
+          getMediaUrl={getMediaUrl}
+          mediaStageRef={mediaStageRef}
+          imgElementRef={imgElementRef}
+          annotationCanvasRef={annotationCanvasRef}
+          pointerDragRef={pointerDragRef}
+          onPrev={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+          onNext={() => setCurrentIndex((i) => Math.min(mediaFiles.length - 1, i + 1))}
+          onStagePointerDown={handleStagePointerDown}
+          onStagePointerMove={handleStagePointerMove}
+          onStagePointerUp={handleStagePointerUp}
+          onImageLoad={drawCanvas}
+          onVideoLoaded={(name) => setLoadedVideos((prev) => new Set(prev).add(name))}
+          drawCanvas={drawCanvas}
+          setSelectedElementId={setSelectedElementId}
+          setEditingTextId={setEditingTextId}
+          setSelectedBlurId={setSelectedBlurId}
+          setTextInputValue={setTextInputValue}
+          setTextInputActive={setTextInputActive}
+          setTextInputPos={setTextInputPos}
+          setCanvasEmojiAnchorEl={setCanvasEmojiAnchorEl}
+          setActiveTool={setActiveTool}
+          getNormalizedPoint={getNormalizedPoint}
+          updateCurrentState={updateCurrentState}
+        />
+
+        {isImage && (
+          <MediaPreviewToolControls
+            activeTool={activeTool}
+            activeColor={activeColor}
+            activeFillColor={activeFillColor}
+            activeStrokeSize={activeStrokeSize}
+            activeFontFamily={activeFontFamily}
+            activeTextBgMode={activeTextBgMode}
+            activeBlurMode={activeBlurMode}
+            activeBlurSize={activeBlurSize}
+            selectedBlurId={selectedBlurId}
+            selectedCropAspect={selectedCropAspect}
+            selectedElementId={selectedElementId}
+            titleColor={titleColor}
+            subtitleColor={subtitleColor}
+            borderColor={borderColor}
+            isDark={isDark}
+            onSetColor={setActiveColor}
+            onSetFillColor={setActiveFillColor}
+            onSetStrokeSize={setActiveStrokeSize}
+            onSetFontFamily={setActiveFontFamily}
+            onSetTextBgMode={setActiveTextBgMode}
+            onSetBlurMode={setActiveBlurMode}
+            onSetBlurSize={(val) => {
+              setActiveBlurSize(val);
+              // Update the selected blur region's intensity, or all regions if none selected
+              updateCurrentState((prev) => ({
+                ...prev,
+                blurRegions: prev.blurRegions.map((b, i) => {
+                  if (selectedBlurId) {
+                    const selIdx = parseInt(selectedBlurId.replace("blur_", ""), 10);
+                    return i === selIdx ? { ...b, intensity: val } : b;
+                  }
+                  // No selection → update all regions
+                  return { ...b, intensity: val };
+                }),
+              }), false);
             }}
-          >
-            {/* Emoji button */}
-            <Tooltip title="Emoji" arrow>
-              <span style={{ display: "inline-flex", flexShrink: 0 }}>
-                <IconButton
-                  ref={emojiButtonRef}
-                  size="small"
-                  onClick={() => setShowEmoji((v) => !v)}
-                  sx={{
-                    color: subtitleColor,
-                    width: 32,
-                    height: 32,
-                    "&:hover": { color: titleColor },
-                  }}
-                >
-                  <Smile size={18} />
-                </IconButton>
-              </span>
-            </Tooltip>
-
-            <EmojiPickerPopper
-              open={showEmoji}
-              anchorEl={emojiButtonRef.current}
-              onEmojiClick={onEmojiClick}
-              onClose={() => setShowEmoji(false)}
-              darkMode={isDark}
-            />
-
-            {/* Formatting toolbar (shows on text selection) */}
-            {showFormattingToolbar && (
-              <FormattingToolbar
-                editorRef={editorRef}
-                position={toolbarPosition}
-              />
-            )}
-
-            {/* Rich text editor */}
-            <LexicalChatEditor
-              value={caption}
-              onChange={handleEditorChange}
-              onKeyDown={handleEditorKeyDown}
-              placeholder="Add a caption..."
-              editorRef={editorRef}
-              syncKey={syncKey}
-              namespace="MediaCaptionEditor"
-              submitOnEnter={true}
-              hasDraft={caption.trim().length > 0}
-            />
-          </div>
-
-          {/* Send button */}
-          <button
-            onClick={handleSend}
-            aria-label="Send"
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              border: "none",
-              background: theme.palette.primary.main,
-              color: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              flexShrink: 0,
-              transition: "all 0.2s ease",
-              boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.25)}`,
+            onDeleteBlur={() => {
+              if (!selectedBlurId) return;
+              const idx = parseInt(selectedBlurId.replace("blur_", ""), 10);
+              updateCurrentState((prev) => ({
+                ...prev,
+                blurRegions: prev.blurRegions.filter((_, i) => i !== idx),
+              }));
+              setSelectedBlurId(null);
             }}
-          >
-            <SendHorizontal size={22} />
-          </button>
-        </div>
+            onSetCropAspect={(id, ratio) => {
+              setSelectedCropAspect(id);
+              if (ratio !== null) {
+                updateCurrentState((prev) => ({
+                  ...prev,
+                  crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 / ratio },
+                }));
+              }
+            }}
+            onRotateCCW={rotateCCW}
+            onRotateCW={rotateCW}
+            onResetCropAndRotate={resetCropAndRotate}
+            updateCurrentState={updateCurrentState}
+          />
+        )}
+
+        <MediaPreviewThumbnails
+          mediaFiles={mediaFiles}
+          editStates={editStates}
+          currentIndex={currentIndex}
+          isDark={isDark}
+          borderColor={borderColor}
+          subtitleColor={subtitleColor}
+          thumbsScrollRef={thumbsScrollRef}
+          thumbItemRefs={thumbItemRefs}
+          fileInputRef={fileInputRef}
+          getMediaUrl={getMediaUrl}
+          onSelectIndex={setCurrentIndex}
+          onRemoveThumb={handleRemoveThumb}
+          onAddMore={handleAddMore}
+          onFileSelect={handleFileSelect}
+        />
+
+        <MediaPreviewCaptionBar
+          caption={caption}
+          isExporting={isExporting}
+          showCaptionEmoji={showCaptionEmoji}
+          showFormattingToolbar={showFormattingToolbar}
+          toolbarPosition={toolbarPosition}
+          isDark={isDark}
+          borderColor={borderColor}
+          titleColor={titleColor}
+          subtitleColor={subtitleColor}
+          syncKey={syncKey}
+          editorRef={editorRef}
+          captionEmojiBtnRef={captionEmojiBtnRef}
+          editorWrapperRef={editorWrapperRef}
+          onEditorChange={handleEditorChange}
+          onKeyDown={handleSend}
+          onSend={handleSend}
+          onToggleCaptionEmoji={() => setShowCaptionEmoji((v) => !v)}
+          onCaptionEmojiClick={onCaptionEmojiClick}
+          onCloseCaptionEmoji={() => setShowCaptionEmoji(false)}
+          onSelectionChange={handleSelectionChange}
+        />
       </div>
     </div>
   );

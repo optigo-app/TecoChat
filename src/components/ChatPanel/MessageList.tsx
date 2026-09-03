@@ -18,8 +18,7 @@ import type { ConversationListEntry } from "../../types/conversation";
 import { formatDateTime } from "../../utils/dateUtils";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import MessageItem from "./MessageItem";
-import TypingIndicator from "./messages/TypingIndicator";
-import ScrollToBottomButton from "./messages/ScrollToBottomButton";
+import { TypingIndicator, ScrollToBottomButton } from "./messages/list";
 import DragDropOverlay from "../DragDropOverlay/DragDropOverlay";
 import type { TypingStatus } from "../../types/message";
 import {
@@ -59,6 +58,7 @@ interface MessageListProps {
   onQuickReaction?: (emoji: string, msg: ChatMessage) => void;
   onRemoveReaction?: (reaction: { Emoji?: string; Reaction?: string; UserId?: number | string }, msg: ChatMessage) => void;
   onMediaClick?: (msg: ChatMessage, index: number) => void;
+  onRetry?: (msg: ChatMessage) => void;
   getMediaKey: (msg: ChatMessage, index: number) => string;
   loadedMedia: Record<string, boolean>;
   markLoaded: (key: string) => void;
@@ -117,6 +117,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       onQuickReaction,
       onRemoveReaction,
       onMediaClick,
+      onRetry,
       getMediaKey,
       loadedMedia,
       markLoaded,
@@ -614,6 +615,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         return (
           <div
             key={`msg:${msgId ?? msgIndex}`}
+            data-message-id={msgId != null ? String(msgId) : undefined}
             style={{
               padding: isMobile
                 ? "0 12px 4px 12px"
@@ -634,6 +636,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               onQuickReaction={onQuickReaction}
               onRemoveReaction={onRemoveReaction}
               onMediaClick={onMediaClick}
+              onRetry={onRetry}
               getMediaKey={getMediaKey}
               loadedMedia={loadedMedia}
               markLoaded={markLoaded}
@@ -663,6 +666,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         onQuickReaction,
         onRemoveReaction,
         onMediaClick,
+        onRetry,
         getMediaKey,
         loadedMedia,
         markLoaded,
@@ -675,10 +679,11 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     );
 
     const isEmpty = rows.length <= 2;
-    // Show loader when loading (covers old messages during conversation switch)
-    // or when the list isn't visible yet (initial mount).
-    const showLoader = !listVisible || loading;
-    // Crossfade: loader fades out as list fades in
+    // `loading` is deliberately not set until the cache-first IndexedDB read
+    // completes. Do not use listVisible here: on a conversation switch the
+    // list is hidden while that read is in flight, and treating that as a load
+    // state flashes the full-screen loader before cached rows can arrive.
+    const showLoader = loading && isEmpty;
     const loaderOpacity = showLoader ? 1 : 0;
 
     return (
@@ -696,8 +701,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         sx={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
       >
         <DragDropOverlay isDragging={isDragging} />
-
-        {/* Loader overlay — crossfades with the message list */}
         <Box
           sx={{
             position: "absolute",
@@ -726,27 +729,22 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         <ScrollToBottomButton
           open={listVisible && (showScrollBtn || pendingNewMessages.length > 0)}
           onClick={async () => {
-            // Flush buffered new messages first (if any)
             if (pendingNewMessages.length > 0 && onFlushNewMessages) {
               onFlushNewMessages();
             }
-            // Already at the latest — just scroll to bottom
             scrollToBottom("smooth");
           }}
           showMenu={hasMoreAfter}
           onJumpToLatest={() => {
-            // Flush buffered new messages first (if any)
             if (pendingNewMessages.length > 0 && onFlushNewMessages) {
               onFlushNewMessages();
             }
             onJumpToLatest?.();
           }}
           onLoadOnePage={() => {
-            // Flush buffered new messages first (if any)
             if (pendingNewMessages.length > 0 && onFlushNewMessages) {
               onFlushNewMessages();
             }
-            // Just scroll to bottom of currently loaded data — no API call
             scrollToBottom("smooth");
           }}
           right={scrollToBottomRightOffset}

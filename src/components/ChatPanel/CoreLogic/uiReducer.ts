@@ -1,8 +1,3 @@
-// ─── UI state reducer ───────────────────────────────────────────────────────
-// Ported from OldChatReactCode/.../CoreLogic/uiReducer.js
-// Manages composer UI state: input value, media files, reply, forward,
-// media viewer, search, upload progress, loaded media cache.
-
 import type { ChatMessage } from "../../../types/message";
 
 export const UI = {
@@ -15,6 +10,8 @@ export const UI = {
   SET_BLINK: "SET_BLINK",
   SET_SEARCH_HIGHLIGHT: "SET_SEARCH_HIGHLIGHT",
   SET_VIEWER: "SET_VIEWER",
+  SET_PDF_VIEWER: "SET_PDF_VIEWER",
+  SET_TXT_VIEWER: "SET_TXT_VIEWER",
   SET_SEARCHING: "SET_SEARCHING",
   SET_SEARCH_RESULTS: "SET_SEARCH_RESULTS",
   SET_UPLOAD_PROGRESS: "SET_UPLOAD_PROGRESS",
@@ -34,7 +31,7 @@ export interface MediaFileItem {
 
 export interface MediaViewerItem {
   src: string;
-  type: "image" | "video" | "document";
+  type: "image" | "video" | "document" | "pdf" | "text";
   name: string;
   mimeType?: string;
   size?: number;
@@ -67,6 +64,16 @@ export type UIAction =
       index?: number;
       message?: ChatMessage | null;
     }
+  | {
+      type: "SET_PDF_VIEWER";
+      open?: boolean;
+      item?: MediaViewerItem | null;
+    }
+  | {
+      type: "SET_TXT_VIEWER";
+      open?: boolean;
+      item?: MediaViewerItem | null;
+    }
   | { type: "SET_SEARCHING"; value: boolean }
   | { type: "SET_SEARCH_RESULTS"; value: ChatMessage[] }
   | { type: "SET_UPLOAD_PROGRESS"; value: Record<string, number> }
@@ -87,6 +94,10 @@ export interface UIState {
   mediaViewerItems: MediaViewerItem[];
   mediaViewerIndex: number;
   mediaViewerMessage: ChatMessage | null;
+  pdfViewerOpen: boolean;
+  pdfViewerItem: MediaViewerItem | null;
+  txtViewerOpen: boolean;
+  txtViewerItem: MediaViewerItem | null;
   isSearching: boolean;
   searchResults: ChatMessage[];
   uploadProgress: Record<string, number>;
@@ -108,6 +119,10 @@ export const uiInitialState: UIState = {
   mediaViewerItems: [],
   mediaViewerIndex: 0,
   mediaViewerMessage: null,
+  pdfViewerOpen: false,
+  pdfViewerItem: null,
+  txtViewerOpen: false,
+  txtViewerItem: null,
   isSearching: false,
   searchResults: [],
   uploadProgress: {},
@@ -202,6 +217,32 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         mediaViewerItems: action.items ?? state.mediaViewerItems,
         mediaViewerIndex: action.index ?? state.mediaViewerIndex,
         mediaViewerMessage: action.message ?? state.mediaViewerMessage,
+      };
+
+    case UI.SET_PDF_VIEWER:
+      if (
+        (action.open === undefined || state.pdfViewerOpen === action.open) &&
+        (action.item === undefined || state.pdfViewerItem === action.item)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        pdfViewerOpen: action.open ?? state.pdfViewerOpen,
+        pdfViewerItem: action.item ?? state.pdfViewerItem,
+      };
+
+    case UI.SET_TXT_VIEWER:
+      if (
+        (action.open === undefined || state.txtViewerOpen === action.open) &&
+        (action.item === undefined || state.txtViewerItem === action.item)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        txtViewerOpen: action.open ?? state.txtViewerOpen,
+        txtViewerItem: action.item ?? state.txtViewerItem,
       };
 
     case UI.SET_STAR_FILTER:

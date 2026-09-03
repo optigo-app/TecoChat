@@ -20,7 +20,6 @@
 //     If all 5 fail → back to AUTO-1 phase.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { APIURL } from "../API/InitialApi/Config";
 
 export type RetryPhase = "silent" | "auto-1" | "auto-5" | "stopped" | "manual";
 
@@ -58,29 +57,8 @@ const PHASE_CONFIG: Record<
   manual: { maxAttempts: 5, intervalSec: 1, nextPhase: "auto-1" },
 };
 
-// Lightweight server health check — POST to the API URL and check if we get
-// any HTTP response. Only network errors / 502 / 503 count as "down".
-const checkServerHealth = async (): Promise<boolean> => {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    const response = await fetch(APIURL(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        con: '{"id":"","mode":"","appuserid":""}',
-        p: "{}",
-        f: "Health Check",
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (response.status === 502 || response.status === 503) return false;
-    return true;
-  } catch {
-    return false;
-  }
-};
+// No dedicated health endpoint is available. Retry completion is driven by
+// the existing real API/socket SERVICE_UP event.
 
 export function useServiceRetry({ onServiceUp }: UseServiceRetryOptions = {}) {
   const [state, setState] = useState<ServiceRetryState>({
@@ -98,7 +76,6 @@ export function useServiceRetry({ onServiceUp }: UseServiceRetryOptions = {}) {
   const onServiceUpRef = useRef(onServiceUp);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isCheckingRef = useRef(false);
   // Token to identify the current run loop. When retryNow/succeed is called,
   // the token is bumped, and the old loop sees the mismatch and exits.
   const loopTokenRef = useRef(0);
@@ -168,7 +145,6 @@ export function useServiceRetry({ onServiceUp }: UseServiceRetryOptions = {}) {
     clearTimers();
     phaseRef.current = "silent";
     attemptRef.current = 0;
-    isCheckingRef.current = false;
     setState({
       showMaintenancePage: false,
       phase: "silent",
@@ -181,15 +157,12 @@ export function useServiceRetry({ onServiceUp }: UseServiceRetryOptions = {}) {
     onServiceUpRef.current?.();
   }, [clearTimers]);
 
-  // Run a single health check. Returns true if server is up.
+  // Keep retry phases/countdown visible. The real API/socket handlers dispatch
+  // SERVICE_UP after a successful application request.
   const doCheck = useCallback(async (): Promise<boolean> => {
-    if (isCheckingRef.current) return false;
-    isCheckingRef.current = true;
-    setState((s) => ({ ...s, checking: true }));
-    const ok = await checkServerHealth();
-    isCheckingRef.current = false;
-    setState((s) => ({ ...s, checking: false }));
-    return ok;
+    // There is no safe health endpoint. SERVICE_UP from a real request is the
+    // only authoritative success signal.
+    return false;
   }, []);
 
   // Start a visual countdown for the next attempt.
@@ -255,7 +228,7 @@ export function useServiceRetry({ onServiceUp }: UseServiceRetryOptions = {}) {
           if (loopTokenRef.current !== myToken) return;
         }
 
-        // Only run health check when tab is visible — pause if hidden
+        // Pause retry phase progression while the tab is hidden
         await waitForVisible();
         if (loopTokenRef.current !== myToken) return;
 

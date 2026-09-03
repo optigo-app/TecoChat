@@ -4,7 +4,7 @@ import { memo } from "react";
 import { Box, IconButton, useTheme, alpha } from "@mui/material";
 import { Forward } from "lucide-react";
 import QuickReactionMenu from "./QuickReactionMenu";
-import type { ChatMessage } from "../../../types/message";
+import type { ChatMessage } from "../../../../types/message";
 
 interface MessageActionsProps {
   msg: ChatMessage;

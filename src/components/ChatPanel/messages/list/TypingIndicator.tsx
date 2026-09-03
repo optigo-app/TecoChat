@@ -3,7 +3,7 @@
 import { memo } from "react";
 import { Box, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import type { TypingStatus } from "../../../types/message";
+import type { TypingStatus } from "../../../../types/message";
 
 interface TypingIndicatorProps {
   typingStatus: TypingStatus | null;

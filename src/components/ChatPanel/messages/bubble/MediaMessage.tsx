@@ -5,8 +5,10 @@ import { Box, Skeleton, Typography, IconButton, useTheme, alpha } from "@mui/mat
 import { FileText, Download, Play, FileSpreadsheet, FileArchive, FileCode, File, Smartphone } from "lucide-react";
 import UploadProgressOverlay from "./UploadProgressOverlay";
 import { CrossFadeImage, CrossFadeVideo } from "./CrossFadeMedia";
-import { handleDownloadFile, getDocumentMeta } from "../../../utils/globalFunc";
-import type { ChatMessage } from "../../../types/message";
+import PdfThumbnail from "./PdfThumbnail";
+import { handleDownloadFile, getDocumentMeta } from "../../../../utils/globalFunc";
+import { isTextFile } from "../../../../utils/txtUtils";
+import type { ChatMessage } from "../../../../types/message";
 
 interface MediaMessageProps {
   msg: ChatMessage;
@@ -404,6 +406,58 @@ const MediaMessageComponent = ({
     const mediaItems = msg.mediaItems || [];
     const hasMultiple = mediaItems.length > 1;
 
+    // ── PDF: WhatsApp-style first-page thumbnail preview ───────────────────
+    const isPdf = (item: { mimeType?: string; filename?: string }) =>
+      item.mimeType === "application/pdf" ||
+      (item.filename || "").toLowerCase().endsWith(".pdf");
+
+    const pdfItems = mediaItems.filter(isPdf);
+    const hasPdf = pdfItems.length > 0;
+
+    if (hasPdf) {
+      // Single PDF → thumbnail card
+      if (pdfItems.length === 1 && !hasMultiple) {
+        return (
+          <Box sx={{ position: "relative" }}>
+            <PdfThumbnail
+              src={pdfItems[0].url || msg.previewUrl || ""}
+              fileName={pdfItems[0].filename || msg.FileName || "Document.pdf"}
+              fileSize={pdfItems[0].size}
+              onClick={() => handleMediaClick?.(msg, mediaItems.indexOf(pdfItems[0]))}
+            />
+            {msg.isUploading && <UploadProgressOverlay percent={msg.percent || 0} size={40} />}
+          </Box>
+        );
+      }
+
+      // Multiple PDFs → stack of thumbnail cards
+      return (
+        <Box
+          sx={{
+            position: "relative",
+            maxWidth: 350,
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
+          }}
+        >
+          {pdfItems.map((item, idx) => (
+            <PdfThumbnail
+              key={idx}
+              src={item.url}
+              fileName={item.filename || "Document.pdf"}
+              fileSize={item.size}
+              onClick={() => handleMediaClick?.(msg, mediaItems.indexOf(item))}
+            />
+          ))}
+          {msg.isUploading && <UploadProgressOverlay percent={msg.percent || 0} size={40} />}
+        </Box>
+      );
+    }
+
+    // ── Non-PDF documents: generic icon + filename row (unchanged) ────────
+
     const DocIconMap: Record<string, React.ComponentType<{ size?: number }>> = {
       FileText,
       FileSpreadsheet,
@@ -413,11 +467,12 @@ const MediaMessageComponent = ({
       Smartphone,
     };
 
-    const renderDocumentItem = (itemProps: { url?: string; filename?: string; fileName?: string; size?: number }, index: number) => {
+    const renderDocumentItem = (itemProps: { url?: string; filename?: string; fileName?: string; size?: number; mimeType?: string }, index: number) => {
       const href = itemProps.url || "";
       const name = itemProps.filename || itemProps.fileName || "Document";
       const meta = getDocumentMeta(name);
       const DocIcon = DocIconMap[meta.iconName] || File;
+      const isTxt = isTextFile(name, itemProps.mimeType);
 
       return (
         <Box
@@ -425,7 +480,12 @@ const MediaMessageComponent = ({
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
-            if (href) handleDownloadFile(href, name);
+            // Text files → open preview dialog; other docs → download
+            if (isTxt && href) {
+              handleMediaClick?.(msg, index);
+            } else if (href) {
+              handleDownloadFile(href, name);
+            }
           }}
           sx={{
             position: "relative",
@@ -545,7 +605,7 @@ const MediaMessageComponent = ({
         >
           {mediaItems.map((item, index) =>
             renderDocumentItem(
-              { url: item.url, filename: item.filename, size: item.size },
+              { url: item.url, filename: item.filename, size: item.size, mimeType: item.mimeType },
               index
             )
           )}
@@ -564,7 +624,7 @@ const MediaMessageComponent = ({
         style={{ position: "relative", maxWidth: 350, width: "100%" }}
       >
         {renderDocumentItem(
-          { url: rawSrc, fileName, size: msg.mediaItems?.[0]?.size },
+          { url: rawSrc, fileName, size: msg.mediaItems?.[0]?.size, mimeType: msg.mediaItems?.[0]?.mimeType },
           0
         )}
         {msg.isUploading && <UploadProgressOverlay percent={msg.percent || 0} size={40} />}

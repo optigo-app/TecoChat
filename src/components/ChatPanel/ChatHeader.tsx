@@ -3,7 +3,7 @@
 import { memo, useState, useCallback, useRef } from "react";
 import { Typography, IconButton, Tooltip, Box } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { RefreshCw, Search, EllipsisVertical, Star, ArrowLeft, Calendar } from "lucide-react";
+import { RefreshCw, Search, EllipsisVertical, Star, ArrowLeft, Calendar, WifiOff } from "lucide-react";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
 import { getCustomerDisplayName } from "../../utils/globalFunc";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -23,6 +23,7 @@ interface ChatHeaderProps {
   onToggleStarFilter?: () => void;
   starNewMessageCount?: number;
   onSearchByDate?: (date: string) => void;
+  isOffline?: boolean;
 }
 
 const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
@@ -38,6 +39,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
   onToggleStarFilter,
   starNewMessageCount = 0,
   onSearchByDate,
+  isOffline = false,
 }) => {
   const isMobile = useIsMobile();
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -117,14 +119,33 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
       </div>
 
       <div className="chat-header__right">
+        {isOffline && (
+          <Tooltip title="You're offline. Viewing saved messages. New messages will be sent when you reconnect." arrow>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: isMobile ? 32 : 28,
+                height: isMobile ? 32 : 28,
+                borderRadius: "50%",
+                backgroundColor: "rgba(211, 47, 47, 0.12)",
+                color: "var(--color-error, #d32f2f)",
+                flexShrink: 0,
+              }}
+            >
+              <WifiOff size={isMobile ? 18 : 16} />
+            </Box>
+          </Tooltip>
+        )}
         {/* Refresh — hidden on mobile to save space (available in more menu) */}
         {!isMobile && (
-          <Tooltip title="Refresh" arrow>
+          <Tooltip title={isOffline ? "You're offline" : "Refresh"} arrow>
             <span>
               <IconButton
                 size="small"
                 onClick={onRefresh}
-                disabled={loading}
+                disabled={loading || isOffline}
                 className="chat-header__btn"
               >
                 <RefreshCw size={18} className={loading ? "spin" : ""} />

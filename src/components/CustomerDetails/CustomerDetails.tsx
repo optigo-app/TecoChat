@@ -33,10 +33,12 @@ import { useFavorite } from "../../contexts/FavoriteContext";
 import { useRemoveInGroup } from "../../contexts/RemoveInGroupContext";
 import { useGroupAdminMode } from "../../contexts/GroupAdminModeContext";
 import AddMemberDialog from "../ReusableComponent/AddMemberDialog";
-import MediaViewer from "../ChatPanel/messages/MediaViewer";
+import { MediaViewer } from "../ChatPanel/messages/viewer";
 import type { MediaViewerItem } from "../ChatPanel/CoreLogic/uiReducer";
 import type { ConversationListEntry } from "../../types/conversation";
 import type { ChatMessage } from "../../types/message";
+import { clearConversation } from "../../db/messageCache";
+import { deleteDraft } from "../../db/draftCache";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -892,10 +894,9 @@ const CustomerDetails = ({
         });
         if (response?.Status === "200" || response?.success === true) {
           showToast("Chat cleared successfully", "success");
-          const cacheKey = `chat_cache_${conversationId}`;
-          sessionStorage.removeItem(cacheKey);
-          const lastPageKey = `chat_last_page_${conversationId}`;
-          sessionStorage.removeItem(lastPageKey);
+          // Clear cached messages and draft from IndexedDB.
+          clearConversation(auth, conversationId).catch(() => {});
+          deleteDraft(auth, conversationId).catch(() => {});
           setConfirmationModal({ isOpen: false, member: null, actionType: null });
           window.dispatchEvent(
             new CustomEvent("CLEAR_CONVERSATION_MESSAGES", {

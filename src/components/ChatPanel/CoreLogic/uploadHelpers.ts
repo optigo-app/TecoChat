@@ -153,6 +153,7 @@ export const buildMediaPayload = ({
       : selectedCustomer?.ReceiverId,
     Id: sentId || tempId,
     MessageId: sentId,
+    ...(tempId ? { ClientMessageId: tempId } : {}),
     SenderId: auth?.id,
     Direction: 2,
     Status: 1,

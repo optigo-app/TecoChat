@@ -12,10 +12,10 @@ import {
 } from "@mui/material";
 import { Reply, Forward, Copy, Trash2, Info, User, Edit2, Download, Star } from "lucide-react";
 import toast from "react-hot-toast";
-import { handleDownloadFile, isMessageEditable, normalizeMessageText } from "../../../utils/globalFunc";
-import { messageTextToHtml } from "../../../utils/messageTextRenderer";
-import type { ChatMessage } from "../../../types/message";
-import type { ConversationListEntry } from "../../../types/conversation";
+import { handleDownloadFile, isMessageEditable, normalizeMessageText } from "../../../../utils/globalFunc";
+import { messageTextToHtml } from "../../../../utils/messageTextRenderer";
+import type { ChatMessage } from "../../../../types/message";
+import type { ConversationListEntry } from "../../../../types/conversation";
 
 interface MessageContextMenuProps {
   open: boolean;

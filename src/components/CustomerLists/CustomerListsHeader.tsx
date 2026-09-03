@@ -2,7 +2,7 @@
 
 import React from "react";
 import { TextField, InputAdornment, IconButton, Box, Typography, Tooltip } from "@mui/material";
-import { Search, X, MessageSquarePlus, Users, ArrowLeft } from "lucide-react";
+import { Search, X, MessageSquarePlus, Users, ArrowLeft, WifiOff } from "lucide-react";
 
 interface CustomerListsHeaderProps {
   isArchiveOpen: boolean;
@@ -14,6 +14,7 @@ interface CustomerListsHeaderProps {
   onNewChat: () => void;
   onCreateGroup: () => void;
   mobileMenuTrigger?: React.ReactNode;
+  isOffline?: boolean;
 }
 
 export const CustomerListsHeader = ({
@@ -26,6 +27,7 @@ export const CustomerListsHeader = ({
   onNewChat,
   onCreateGroup,
   mobileMenuTrigger,
+  isOffline = false,
 }: CustomerListsHeaderProps) => {
   return (
     <>
@@ -46,27 +48,52 @@ export const CustomerListsHeader = ({
         </Box>
 
         <div className="add_conv_box">
+          {isOffline && (
+            <Tooltip title="You're offline. Viewing saved chats. New messages will be sent when you reconnect." arrow placement="top">
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  backgroundColor: "rgba(211, 47, 47, 0.12)",
+                  color: "var(--color-error, #d32f2f)",
+                  flexShrink: 0,
+                }}
+              >
+                <WifiOff size={18} />
+              </Box>
+            </Tooltip>
+          )}
           {!isArchiveOpen && (
             <>
-              <Tooltip title="New Chat" arrow placement="top">
-                <IconButton
-                  size="small"
-                  className="add_conv"
-                  onClick={onNewChat}
-                  aria-label="New chat"
-                >
-                  <MessageSquarePlus size={20} />
-                </IconButton>
+              <Tooltip title={isOffline ? "You're offline — new chat unavailable" : "New Chat"} arrow placement="top">
+                <span>
+                  <IconButton
+                    size="small"
+                    className="add_conv"
+                    onClick={onNewChat}
+                    disabled={isOffline}
+                    aria-label="New chat"
+                  >
+                    <MessageSquarePlus size={20} />
+                  </IconButton>
+                </span>
               </Tooltip>
-              <Tooltip title="Create Group" arrow placement="top">
-                <IconButton
-                  size="small"
-                  className="add_conv"
-                  onClick={onCreateGroup}
-                  aria-label="Create group"
-                >
-                  <Users size={20} />
-                </IconButton>
+              <Tooltip title={isOffline ? "You're offline — group creation unavailable" : "Create Group"} arrow placement="top">
+                <span>
+                  <IconButton
+                    size="small"
+                    className="add_conv"
+                    onClick={onCreateGroup}
+                    disabled={isOffline}
+                    aria-label="Create group"
+                  >
+                    <Users size={20} />
+                  </IconButton>
+                </span>
               </Tooltip>
             </>
           )}

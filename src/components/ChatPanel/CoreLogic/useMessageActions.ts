@@ -11,10 +11,12 @@ import { editMessageApi } from "../../../API/SendMessage/EditMessageApi";
 import { replyToMessageApi } from "../../../API/SendMessage/replyToMessageApi";
 import { starMessageApi } from "../../../API/SendMessage/starMessageApi";
 import { MSG, type MsgAction } from "./conversationReducer";
-import { UI, type UIAction, type ReplyToMessage } from "./uiReducer";
+import { UI, type UIAction, type ReplyToMessage, type MediaFileItem } from "./uiReducer";
 import { getLocalTime } from "./messageHelpers";
 import { emitTextMessage, emitDeleteMessage } from "./socketHelpers";
 import { showToast } from "../../../utils/toastHelper";
+import { updateMessageEdit, updateMessageStar } from "../../../db/messageCache";
+import { addToOutbox, removeFromOutbox, updateOutboxStatus } from "../../../db/outboxCache";
 import type { AuthData } from "../../../context/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
@@ -44,6 +46,7 @@ interface UseMessageActionsProps {
     dateTime: string;
   }) => Promise<void>;
   fetchAndCacheGroupMembers?: (conversationId: string | number) => Promise<{ members: Array<{ UserId?: number; userId?: number; id?: number }> } | null>;
+  isOffline?: boolean;
 }
 
 export function useMessageActions({
@@ -57,22 +60,25 @@ export function useMessageActions({
   tempConversationId,
   uploadAndSendMedia,
   fetchAndCacheGroupMembers,
+  isOffline = false,
 }: UseMessageActionsProps) {
   const handleSendMessage = useCallback(
     async (
       scrollToBottom?: (() => void) | null,
       messageOverride: string | null = null,
-      mentions?: MentionData[] | null
+      mentions?: MentionData[] | null,
+      overrideMediaFiles?: MediaFileItem[]
     ) => {
       const customer = selectedCustomerRef.current || selectedCustomer;
       const caption = (messageOverride !== null ? messageOverride : uiState.inputValue).trim();
-      if (!caption && !uiState.mediaFiles?.length) return;
+      const mediaList = overrideMediaFiles || uiState.mediaFiles;
+      if (!caption && !mediaList?.length) return;
 
       const { time, date, dateTime } = getLocalTime();
 
       // If media files are queued, delegate to uploadAndSendMedia
-      if (uiState.mediaFiles?.length && uploadAndSendMedia) {
-        const selected = [...uiState.mediaFiles];
+      if (mediaList?.length && uploadAndSendMedia) {
+        const selected = [...mediaList];
         dispatchUI({ type: UI.SET_INPUT, value: "" });
         dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
         dispatchUI({ type: UI.SET_MEDIA_FILES, value: [] });
@@ -107,6 +113,7 @@ export function useMessageActions({
             id: tempId,
             msg: {
               Id: tempId,
+              ClientMessageId: tempId,
               Direction: 1,
               Status: "pending",
               MessageType: type,
@@ -129,7 +136,11 @@ export function useMessageActions({
       }
 
       const replySnapshot = uiState.replyToMessage;
-      const replyToMessageId = uiState.storeMessData?.messageId;
+      const rawReplyToMessageId = uiState.storeMessData?.messageId;
+      const replyToMessageId = String(rawReplyToMessageId ?? "").trim() || null;
+      const replyTarget = replySnapshot && replyToMessageId ? replySnapshot : null;
+      const replyTargetId = replyTarget ? replyToMessageId : null;
+      const hasReply = replyTarget !== null;
       const tempId = `${Date.now()}-${Math.random()}`;
 
       // Serialize mentions for local optimistic message
@@ -146,6 +157,7 @@ export function useMessageActions({
         id: tempId,
         msg: {
           Id: tempId,
+          ClientMessageId: tempId,
           Message: caption,
           Time: time,
           Date: date,
@@ -156,28 +168,48 @@ export function useMessageActions({
           ConversationId: customer?.ConversationId || tempConversationId,
           SenderId: auth?.id,
           ...(mentionUsersJson ? { MentionUsers: mentionUsersJson, Mentions: mentionUsersJson } : {}),
-          ...(replySnapshot && replyToMessageId
+          ...(hasReply
             ? {
                 ContextType: 2,
-                ContextId: replyToMessageId,
-                ReplyContextMsg: replySnapshot.text || "Media",
-                SenderInfo: replySnapshot.sender || "",
+                ContextId: replyTargetId,
+                ReplyContextMsg: replyTarget.text || "Media",
+                SenderInfo: replyTarget.sender || "",
               }
             : {}),
         } as Partial<ChatMessage>,
       });
 
+      const convIdForOutbox = customer?.ConversationId || tempConversationId;
+      const optimisticMsg: ChatMessage = {
+        Id: tempId,
+        MessageId: tempId,
+        Message: caption,
+        Time: time,
+        Date: date,
+        DateTime: dateTime,
+        Direction: 1,
+        Status: isOffline ? 4 : "pending",
+        MessageType: "text",
+        ConversationId: convIdForOutbox,
+        SenderId: auth?.id,
+      } as ChatMessage;
+      addToOutbox(auth, optimisticMsg, caption, replyToMessageId, mentionUsersJson).catch(() => {});
+
       dispatchUI({ type: UI.SET_INPUT, value: "" });
       dispatchUI({ type: UI.SET_REPLY, value: null });
+      dispatchMsg({ type: MSG.SET_STORE_MESS, value: { messageId: "" } });
       if (scrollToBottom) scrollToBottom();
 
+      if (isOffline) {
+        return;
+      }
+
       try {
-        const isReply = !!(replySnapshot && replyToMessageId);
-        const resp = isReply
+        const resp = hasReply
           ? await replyToMessageApi(auth, {
-              conversationId: replySnapshot.ConversationId || customer?.ConversationId || "",
-              replyToMessageId: replySnapshot.Id || replyToMessageId,
-              ReplyToAttachmentId: replySnapshot.ReplyToAttachmentId,
+              conversationId: replyTarget.ConversationId || customer?.ConversationId || "",
+              replyToMessageId: replyTarget.Id || replyTargetId!,
+              ReplyToAttachmentId: replyTarget.ReplyToAttachmentId,
               message: caption,
               messageType: 1,
             })
@@ -207,6 +239,9 @@ export function useMessageActions({
             : "Failed to send message";
           console.error(errorMsg);
           dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4 } });
+          if (convIdForOutbox) {
+            updateOutboxStatus(auth, convIdForOutbox, tempId, "failed").catch(() => {});
+          }
           if (scrollToBottom) scrollToBottom();
           return;
         }
@@ -239,14 +274,14 @@ export function useMessageActions({
               ? (auth?.username || auth?.userId || "You")
               : (replySnapshot?.sender || (customer as { name?: string })?.name || "Customer");
 
-          const replyExtra = isReply && replySnapshot
+          const replyExtra = hasReply
             ? {
                 ContextType: 2,
-                ContextId: replySnapshot.Id,
-                ReplyContextMsg: replySnapshot.text || "Media",
+                ContextId: replyTarget.Id,
+                ReplyContextMsg: replyTarget.text || "Media",
                 SenderInfo: replyOriginalSenderName,
                 Sender: replyOriginalSenderName,
-                ReplyToAttachmentId: replySnapshot.ReplyToAttachmentId || null,
+                ReplyToAttachmentId: replyTarget.ReplyToAttachmentId || null,
               }
             : {};
 
@@ -264,6 +299,7 @@ export function useMessageActions({
               Time: time,
               Date: date,
               DateTime: dateTime,
+              ClientMessageId: tempId,
               ConversationId: convId || tempConversationId,
               ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
               ...replyExtra,
@@ -281,9 +317,15 @@ export function useMessageActions({
               ...(mentionUsersJson ? { MentionUsers: mentionUsersJson, Mentions: mentionUsersJson } : {}),
             },
           });
+          if (convIdForOutbox) {
+            removeFromOutbox(auth, convIdForOutbox, tempId).catch(() => {});
+          }
         } else {
           console.error("Failed to send message");
           dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4 } });
+          if (convIdForOutbox) {
+            updateOutboxStatus(auth, convIdForOutbox, tempId, "failed").catch(() => {});
+          }
         }
 
         if (rd?.IsNewConversation && convId && onCustomerSelect) {
@@ -292,6 +334,9 @@ export function useMessageActions({
       } catch (err) {
         console.error("sendTextMessage error:", err);
         dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4 } });
+        if (convIdForOutbox) {
+          updateOutboxStatus(auth, convIdForOutbox, tempId, "failed").catch(() => {});
+        }
       }
 
       if (scrollToBottom) scrollToBottom();
@@ -309,6 +354,7 @@ export function useMessageActions({
       uploadAndSendMedia,
       dispatchUI,
       dispatchMsg,
+      isOffline,
     ]
   );
 
@@ -350,7 +396,35 @@ export function useMessageActions({
 
   const handleCancelReply = useCallback(() => {
     dispatchUI({ type: UI.SET_REPLY, value: null });
-  }, [dispatchUI]);
+    dispatchMsg({ type: MSG.SET_STORE_MESS, value: { messageId: "" } });
+  }, [dispatchMsg, dispatchUI]);
+
+  const retryFailedMessage = useCallback(
+    async (message: ChatMessage) => {
+      const conversationId = message.ConversationId;
+      const messageId = message.MessageId ?? message.Id;
+      if (conversationId == null || messageId == null) return;
+
+      const wasQueued = await updateOutboxStatus(auth, conversationId, messageId, "pending");
+      if (!wasQueued) {
+        const isMedia = ["image", "video", "document"].includes(message.MessageType || "");
+        if (isMedia) {
+          showToast("This media is no longer available. Please attach it again.", "error");
+          return;
+        }
+        await addToOutbox(
+          auth,
+          message,
+          String(message.Message ?? ""),
+          message.ContextType === 2 ? message.ContextId : null,
+          typeof message.MentionUsers === "string" ? message.MentionUsers : null
+        );
+      }
+      dispatchMsg({ type: MSG.UPSERT, id: String(messageId), msg: { Status: "pending" } });
+      window.dispatchEvent(new CustomEvent("OUTBOX_RETRY_REQUESTED"));
+    },
+    [auth, dispatchMsg]
+  );
 
   const handleDeleteMessage = useCallback(
     async (messageId: string | number, mode: number) => {
@@ -447,6 +521,13 @@ export function useMessageActions({
             ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
           });
 
+          const convId = selectedCustomerRef?.current?.ConversationId ?? selectedCustomer?.ConversationId;
+          if (convId) {
+            updateMessageEdit(auth, convId, messageId, editedMessage.Message, {
+              Time: time, Date: date, ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
+            }).catch(() => {});
+          }
+
           // Emit socket event so other participants see the edit in real-time
           const customer = selectedCustomerRef?.current || selectedCustomer;
           const isGroup = (customer as { IsGroup?: number })?.IsGroup === 1;
@@ -513,6 +594,10 @@ export function useMessageActions({
 
       // Optimistic update
       dispatchMsg({ type: MSG.STAR, messageId, isStar: nextStar });
+      const convId = selectedCustomerRef?.current?.ConversationId ?? selectedCustomer?.ConversationId;
+      if (convId) {
+        updateMessageStar(auth, convId, messageId, nextStar).catch(() => {});
+      }
 
       try {
         const response = await starMessageApi(auth, { messageId, isStar: nextStar });
@@ -526,8 +611,8 @@ export function useMessageActions({
           }
           showToast(nextStar === 1 ? "Message starred" : "Star removed", "success");
         } else {
-          // Revert on failure
           dispatchMsg({ type: MSG.STAR, messageId, isStar: currentlyStarred ? 1 : 0 });
+          if (convId) updateMessageStar(auth, convId, messageId, currentlyStarred ? 1 : 0).catch(() => {});
           showToast(response?.Message || "Failed to update star", "error");
         }
       } catch (err) {
@@ -546,5 +631,6 @@ export function useMessageActions({
     handleStarMessage,
     handleReply,
     handleCancelReply,
+    retryFailedMessage,
   };
 }

@@ -144,8 +144,20 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
     case MSG.LOAD:
       return { ...state, data: action.data, total: action.total };
 
-    case MSG.APPEND:
-      return { ...state, data: [...state.data, ...action.data], total: action.total };
+    case MSG.APPEND: {
+      const map = new Map<string, ChatMessage>();
+      for (const message of [...state.data, ...action.data] as ChatMessage[]) {
+        const key = getMessageId(message) || `fallback:${message.DateTime}:${message.Message}`;
+        map.set(key, { ...(map.get(key) || {}), ...message });
+      }
+      return {
+        ...state,
+        data: Array.from(map.values()).sort(
+          (a, b) => new Date(a.DateTime || 0).getTime() - new Date(b.DateTime || 0).getTime()
+        ),
+        total: action.total,
+      };
+    }
 
     case MSG.PREPEND: {
       const map = new Map<string, ChatMessage>();
@@ -167,10 +179,18 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
     case MSG.UPSERT: {
       const incoming = action.msg;
       const id = action.id;
+      const incomingId = String(incoming.MessageId ?? incoming.Id ?? "");
+      const clientMessageId = String(
+        (incoming as ChatMessage & { ClientMessageId?: string | number }).ClientMessageId ?? ""
+      );
       const idx = state.data.findIndex(
         (m) =>
           String(m.MessageId ?? "") === id ||
-          String(m.Id ?? "") === id
+          String(m.Id ?? "") === id ||
+          (incomingId !== "" &&
+            (String(m.MessageId ?? "") === incomingId || String(m.Id ?? "") === incomingId)) ||
+          (clientMessageId !== "" &&
+            (String(m.MessageId ?? "") === clientMessageId || String(m.Id ?? "") === clientMessageId))
       );
       if (idx >= 0) {
         const existing = state.data[idx];
@@ -184,6 +204,32 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
         };
         return { ...state, data: next };
       }
+      // A socket echo can arrive before the API response and have a different
+      // direction or server ID. Reconcile it with the matching optimistic row.
+      const optimisticCandidates = state.data
+        .map((m, index) => ({ message: m, index }))
+        .filter(({ message: m }) => {
+          if (m.Direction !== 1 || (m.Status !== "pending" && m.Status !== 4)) return false;
+          if (String(m.ConversationId ?? "") !== String(incoming.ConversationId ?? "")) return false;
+          if (String(m.Message ?? "") !== String(incoming.Message ?? "")) return false;
+          const existingTime = new Date(m.DateTime || 0).getTime();
+          const incomingTime = new Date(incoming.DateTime || 0).getTime();
+          return !existingTime || !incomingTime || Math.abs(existingTime - incomingTime) <= 120000;
+        });
+      const incomingTime = new Date(incoming.DateTime || 0).getTime();
+      const optimisticIdx = optimisticCandidates
+        .sort((a, b) => {
+          const aTime = new Date(a.message.DateTime || 0).getTime();
+          const bTime = new Date(b.message.DateTime || 0).getTime();
+          return Math.abs(aTime - incomingTime) - Math.abs(bTime - incomingTime);
+        })[0]?.index ?? -1;
+      if (optimisticIdx >= 0) {
+        const existing = state.data[optimisticIdx];
+        const next = [...state.data];
+        next[optimisticIdx] = { ...existing, ...incoming, Direction: 1 } as ChatMessage;
+        return { ...state, data: next };
+      }
+
       // New message: insert in chronological order. Sorting (rather than
       // blindly appending) keeps the list ordered when a socket message
       // arrives with a DateTime earlier than the last visible message

@@ -31,16 +31,16 @@ import {
   getCustomerAvatarSeed,
   hasCustomerName,
   getDocumentMeta,
-} from "../../../utils/globalFunc";
-import { formatDateTime } from "../../../utils/dateUtils";
+} from "../../../../utils/globalFunc";
+import { formatDateTime } from "../../../../utils/dateUtils";
 import { Emoji, EmojiStyle } from "emoji-picker-react";
-import { charToUnified, parseReactions } from "../../../utils/EmojiUtils";
+import { charToUnified, parseReactions } from "../../../../utils/EmojiUtils";
 import { User } from "lucide-react";
-import QuickReactionMenu from "./QuickReactionMenu";
-import ReactionDetailsMenu from "./ReactionDetailsMenu";
-import type { MediaViewerItem } from "../CoreLogic/uiReducer";
-import type { ChatMessage } from "../../../types/message";
-import type { ConversationListEntry } from "../../../types/conversation";
+import { QuickReactionMenu, ReactionDetailsMenu } from "../interactions";
+import MediaViewerHeader from "./MediaViewerHeader";
+import type { MediaViewerItem } from "../../CoreLogic/uiReducer";
+import type { ChatMessage } from "../../../../types/message";
+import type { ConversationListEntry } from "../../../../types/conversation";
 
 interface MediaViewerProps {
   open: boolean;
@@ -280,118 +280,22 @@ const MediaViewerComponent = ({
       fullScreen
     >
       <div className="media-viewer-container">
-        {/* Header */}
-        <div className="media-viewer-header">
-          <div className="media-viewer-header-left">
-            {selectedCustomer && (
-              <>
-                {!hasCustomerName(selectedCustomer) ? (
-                  <Avatar
-                    {...getWhatsAppAvatarConfig(getCustomerAvatarSeed(selectedCustomer), 32)}
-                  >
-                    <User size={20} />
-                  </Avatar>
-                ) : (
-                  <Avatar {...getWhatsAppAvatarConfig(getCustomerDisplayName(selectedCustomer), 32)} />
-                )}
-                <div className="media-viewer-user-info">
-                  <div className="media-viewer-username">
-                    {getCustomerDisplayName(selectedCustomer)}
-                  </div>
-                  {time && <div className="media-viewer-timestamp">{time}</div>}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="media-viewer-header-right">
-            <div className="media-viewer-toolbar">
-              {currentMedia?.type === "image" && (
-                <>
-                  <Tooltip title="Zoom In" placement="bottom" slotProps={{ popper: { sx: { zIndex: 11000 } } }}>
-                    <IconButton className="toolbar-btn" onClick={handleZoomIn} size="small">
-                      <ZoomIn size={18} />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Zoom Out" placement="bottom" slotProps={{ popper: { sx: { zIndex: 11000 } } }}>
-                    <IconButton className="toolbar-btn" onClick={handleZoomOut} size="small">
-                      <ZoomOut size={18} />
-                    </IconButton>
-                  </Tooltip>
-                  <div className="toolbar-divider" />
-                </>
-              )}
-              {onReply && message && (
-                <Tooltip title="Reply" placement="bottom" slotProps={{ popper: { sx: { zIndex: 11000 } } }}>
-                  <IconButton
-                    className="toolbar-btn"
-                    onClick={() => {
-                      onReply(liveMessage || message);
-                      onClose();
-                    }}
-                    size="small"
-                  >
-                    <Reply size={18} />
-                  </IconButton>
-                </Tooltip>
-              )}
-              {onQuickReaction && message && (
-                <>
-                  <Tooltip title="React" placement="bottom" slotProps={{ popper: { sx: { zIndex: 11000 } } }}>
-                    <IconButton
-                      ref={reactionButtonRef}
-                      className="toolbar-btn reaction-btn"
-                      onClick={(e) => setReactionAnchorEl(e.currentTarget)}
-                      size="small"
-                    >
-                      <Smile size={18} />
-                    </IconButton>
-                  </Tooltip>
-                  <QuickReactionMenu
-                    open={Boolean(reactionAnchorEl)}
-                    anchorEl={reactionAnchorEl}
-                    hideTrigger={true}
-                    disablePortal={true}
-                    onClose={() => setReactionAnchorEl(null)}
-                    onSelectEmoji={(emoji: string) => {
-                      if (onQuickReaction) onQuickReaction(emoji, liveMessage || message!);
-                      setReactionAnchorEl(null);
-                    }}
-                  />
-                </>
-              )}
-              {onForward && message && (
-                <Tooltip title="Forward" placement="bottom" slotProps={{ popper: { sx: { zIndex: 11000 } } }}>
-                  <IconButton
-                    className="toolbar-btn"
-                    onClick={() => {
-                      onForward(liveMessage || message);
-                      onClose();
-                    }}
-                    size="small"
-                  >
-                    <Forward size={18} />
-                  </IconButton>
-                </Tooltip>
-              )}
-              <Tooltip title="Download" placement="bottom" slotProps={{ popper: { sx: { zIndex: 11000 } } }}>
-                <IconButton
-                  className="toolbar-btn"
-                  onClick={() => handleDownloadFile(currentMedia?.src, currentMedia?.name)}
-                  size="small"
-                >
-                  <Download size={18} />
-                </IconButton>
-              </Tooltip>
-              <div className="toolbar-divider" />
-              <Tooltip title="Close" placement="bottom" slotProps={{ popper: { sx: { zIndex: 11000 } } }}>
-                <IconButton className="toolbar-btn media-viewer-close" onClick={onClose} size="small">
-                  <X size={20} />
-                </IconButton>
-              </Tooltip>
-            </div>
-          </div>
-        </div>
+        {/* Header (reusable) */}
+        <MediaViewerHeader
+          selectedCustomer={selectedCustomer}
+          message={message}
+          liveMessage={liveMessage}
+          onDownload={() => handleDownloadFile(currentMedia?.src, currentMedia?.name)}
+          onReply={onReply}
+          onForward={onForward}
+          onQuickReaction={onQuickReaction}
+          onRemoveReaction={onRemoveReaction}
+          onClose={onClose}
+          zoom={currentMedia?.type === "image" ? {
+            zoomIn: handleZoomIn,
+            zoomOut: handleZoomOut,
+          } : undefined}
+        />
 
         {/* Media Display Area */}
         <div className="media-viewer-content">
@@ -508,6 +412,53 @@ const MediaViewerComponent = ({
                             }}
                           />
                         </>
+                      )}
+
+                      {item?.type === "pdf" && (
+                        // PDFs are now handled by the dedicated PdfViewerDialog.
+                        // If a PDF somehow reaches here, show the generic document card.
+                        (() => {
+                          const meta = getDocumentMeta(item.name || "");
+                          const IconMap: Record<string, React.ComponentType<{ size?: number }>> = {
+                            FileText,
+                            FileSpreadsheet,
+                            FileArchive,
+                            FileCode,
+                            File,
+                            Smartphone,
+                          };
+                          const DocIcon = IconMap[meta.iconName] || File;
+                          return (
+                            <div className="document-preview">
+                              <div className="document-header">
+                                <div className={`document-icon ${meta.tone}`}>
+                                  {meta.iconUrl ? (
+                                    <img
+                                      src={meta.iconUrl}
+                                      alt={meta.label}
+                                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                                    />
+                                  ) : (
+                                    <DocIcon size={32} />
+                                  )}
+                                </div>
+                                <div className="document-info">
+                                  <div className="document-name">{item.name}</div>
+                                  <div className="document-size">PDF Document</div>
+                                </div>
+                              </div>
+                              <div className="document-actions">
+                                <button
+                                  className="document-action primary"
+                                  onClick={() => handleDownloadFile(item.src, item.name)}
+                                >
+                                  <Download size={18} />
+                                  Download
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()
                       )}
 
                       {item?.type === "document" && (
@@ -681,6 +632,13 @@ const MediaViewerComponent = ({
                         alt="Video"
                         className="thumbnail-video-icon"
                       />
+                    </div>
+                  )}
+                  {item.type === "pdf" && (
+                    <div className="thumbnail-document">
+                      <div className="thumbnail-icon pdf">
+                        <FileText size={22} />
+                      </div>
                     </div>
                   )}
                   {item.type === "document" && (

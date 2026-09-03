@@ -28,6 +28,7 @@ import { LogoutApi } from "@/src/API/Logout/Logout";
 import ConfirmationDialog from "@/src/components/ReusableComponent/ConfirmationDialog";
 import { CONFIRM_CONFIG } from "@/src/hooks/confirmConfig";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
+import { deleteDb } from "@/src/db/tecoDb";
 import "./ProfileAvatar.scss";
 
 const isValidUrl = (url: unknown): url is string => {
@@ -109,6 +110,9 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
       console.error("Error during logout:", error);
     } finally {
       disconnectSocket(true);
+      // Wipe the per-user IndexedDB before clearing sessionStorage so the
+      // auth ID is still available for deleteDb().
+      deleteDb(auth?.id).catch(() => {});
       sessionStorage.clear();
       eraseCookie("userData");
       eraseCookie("token");

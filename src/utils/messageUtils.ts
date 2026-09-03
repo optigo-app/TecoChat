@@ -37,6 +37,7 @@ interface RawMessage {
   [key: string]: unknown;
   Id?: string | number;
   MessageId?: string | number;
+  ConversationId?: string | number;
   Message?: string;
   Message1?: string;
   SenderId?: string | number;
@@ -85,10 +86,14 @@ interface RawMessage {
 /**
  * Normalize messages from the API into a consistent ChatMessage shape.
  * Ported from old app's conversationUtils.js → normalizeServerMessages.
+ * @param conversationId - The conversation these messages belong to.
+ *   The API may not include ConversationId on each message, so we set it
+ *   explicitly here to ensure cache keys and queries work correctly.
  */
 export const normalizeServerMessages = (
   messagesArray: unknown,
-  auth: AuthLike | null
+  auth: AuthLike | null,
+  conversationId?: string | number | null
 ): RawMessage[] => {
   if (!Array.isArray(messagesArray)) return [];
 
@@ -259,6 +264,9 @@ export const normalizeServerMessages = (
       ...msg,
       Id: msg.Id ? String(msg.Id) : (msg.MessageId ? String(msg.MessageId) : undefined),
       MessageId: msg.MessageId ? String(msg.MessageId) : (msg.Id ? String(msg.Id) : undefined),
+      // Ensure ConversationId is always set — the API may not include it
+      // on each message, but the cache and merge logic depend on it.
+      ConversationId: msg.ConversationId ?? conversationId ?? undefined,
       IsMyMessage: isMyMessage,
       Direction: isMyMessage ? 1 : (typeof msg.Direction === "number" ? (msg.Direction === 1 || msg.Direction === 2 ? 0 : msg.Direction) : 0),
       MessageType: resolvedMessageType,

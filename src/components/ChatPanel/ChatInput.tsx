@@ -51,6 +51,7 @@ interface ChatInputProps {
   inputValue?: string;
   /** Called on every text change so the draft ref in useConversation stays in sync */
   onInputChange?: (val: string) => void;
+  isOffline?: boolean;
 }
 
 const MAX_CHARS = 2000;
@@ -81,6 +82,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   isGroup = false,
   inputValue,
   onInputChange,
+  isOffline = false,
 }) => {
   const theme = useTheme();
   const isMobile = useIsMobile();
@@ -671,7 +673,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             value={inputValue ?? textRef.current}
             onChange={handleEditorChange}
             onKeyDown={handleKeyDown}
-            placeholder={mediaFiles.length > 0 ? "Type a caption..." : placeholder}
+            placeholder={isOffline ? "Offline — type and send, we'll deliver when you reconnect" : (mediaFiles.length > 0 ? "Type a caption..." : placeholder)}
             editorRef={editorRef}
             syncKey={syncKey}
             maxChars={MAX_CHARS}
@@ -709,14 +711,22 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         )}
 
         {/* Send button */}
-        <IconButton
-          size="small"
-          className={`chat-input-send ${canSend ? "active" : ""}`}
-          onClick={handleSend}
-          disabled={!canSend}
+        <Tooltip
+          title={isOffline ? "You're offline — message will be sent when you reconnect" : ""}
+          arrow
+          disableHoverListener={!isOffline}
         >
-          <SendHorizontal size={isMobile ? 18 : 20} />
-        </IconButton>
+          <span>
+            <IconButton
+              size="small"
+              className={`chat-input-send ${canSend ? "active" : ""} ${isOffline ? "offline" : ""}`}
+              onClick={handleSend}
+              disabled={!canSend}
+            >
+              <SendHorizontal size={isMobile ? 18 : 20} />
+            </IconButton>
+          </span>
+        </Tooltip>
       </div>
 
       {/* Paste-to-TXT conversion dialog */}

@@ -8,9 +8,9 @@
 import { memo } from "react";
 import { Box, Typography, useTheme, alpha } from "@mui/material";
 import { Image as ImageIcon, Video as VideoIcon, FileText } from "lucide-react";
-import { renderMessageText } from "../../../utils/messageTextRenderer";
-import { getSoftAvatarColors } from "../../../utils/globalFunc";
-import type { ChatMessage } from "../../../types/message";
+import { renderMessageText } from "../../../../utils/messageTextRenderer";
+import { getSoftAvatarColors } from "../../../../utils/globalFunc";
+import type { ChatMessage } from "../../../../types/message";
 
 interface ReplyPreviewProps {
   msg: ChatMessage;

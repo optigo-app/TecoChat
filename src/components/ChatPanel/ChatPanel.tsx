@@ -3,8 +3,10 @@
 import { useCallback, useState, useRef, useEffect, memo } from "react";
 import { Box, Typography, Menu, MenuItem, ListItemIcon, ListItemText, Divider, IconButton, useTheme, Popover, Avatar, alpha, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
 import { MessageSquare, MoreVertical, BellOff, Bell, X, Info, CheckSquare, Star, CircleMinus, LogOut, Trash2 } from "lucide-react";
-import MessageContextMenu from "./messages/MessageContextMenu";
+import { MessageContextMenu } from "./messages/interactions";
 import { useLoginContext, type AuthData } from "../../context/LoginData";
+import { useSocketContext } from "../../context/SocketContext";
+import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useConversation } from "../../hooks/useConversation";
 import { useColorMode } from "../../theme/ThemeRegistry";
 import { useFavorite } from "../../contexts/FavoriteContext";
@@ -21,7 +23,7 @@ import { showToast } from "../../utils/toastHelper";
 import { ChatHeader } from "./ChatHeader";
 import MessageList, { type MessageListRef } from "./MessageList";
 import { ChatInput } from "./ChatInput";
-import MediaViewer from "./messages/MediaViewer";
+import { MediaViewer, PdfViewerDialog, TxtViewerDialog } from "./messages/viewer";
 import MediaPreview from "./messages/MediaPreview";
 import EditMessageDialog from "./EditMessageDialog";
 import MuteNotificationDialog from "./MuteNotificationDialog";
@@ -33,6 +35,7 @@ import CustomerDetails from "../CustomerDetails/CustomerDetails";
 import { CONFIRM_CONFIG as confirmConfig } from "../../hooks/confirmConfig";
 import type { ConversationListEntry } from "../../types/conversation";
 import type { ChatMessage } from "../../types/message";
+import type { MediaFileItem } from "./CoreLogic/uiReducer";
 import "./ChatPanel.scss";
 
 interface ChatPanelProps {
@@ -93,6 +96,9 @@ export const ChatPanel = memo(({
 
   // Responsive: narrow screen → drawer overlay; wider → docked side panel
   const isNarrowScreen = useBreakpointDown("lg"); // <= 1024px
+  const { status: socketStatus } = useSocketContext();
+  const isOnline = useOnlineStatus();
+  const isOffline = !isOnline || socketStatus === "disconnected" || socketStatus === "error";
 
   // The scroll-to-bottom button is position:absolute inside .messages-area,
   // which already shrinks when the detail panel docks. So the right offset
@@ -147,6 +153,10 @@ export const ChatPanel = memo(({
     mediaViewerItems,
     mediaViewerIndex,
     mediaViewerMessage,
+    pdfViewerOpen,
+    pdfViewerItem,
+    txtViewerOpen,
+    txtViewerItem,
     flattenedRows,
     messageById,
     typingStatus,
@@ -161,9 +171,12 @@ export const ChatPanel = memo(({
     processFiles,
     handleMediaClick,
     handleClosePreview,
+    handleClosePdfViewer,
+    handleCloseTxtViewer,
     handleSendMessage,
     handleReply,
     handleCancelReply,
+    retryFailedMessage,
     handleForward,
     handleCloseForward,
     handleSendForward,
@@ -223,11 +236,6 @@ export const ChatPanel = memo(({
       ? contextAdminMode
       : (selectedCustomer?.IsGroupAdmin === 1);
 
-  // ── Consolidated conversation-change effect ───────────────────────────────
-  // Fires once per conversation switch. Handles:
-  //   1. Reset admin state from selectedCustomer (fast sync)
-  //   2. Sync RemoveInGroup context
-  //   3. Fetch group details for admin mode + current-user admin flag
   const isGroup = selectedCustomer?.IsGroup === 1;
   const currentUserId = auth?.id || auth?.userId;
   const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState<boolean>(
@@ -249,11 +257,6 @@ export const ChatPanel = memo(({
     return () => window.removeEventListener("SHOW_ALL_MENTIONS", handleShowAllMentions);
   }, []);
 
-  // Listen for individual @mention clicks — look up the member in
-  // groupMembers and redirect to their chat (same as sender-name click /
-  // onMemberRedirect). If the member has a ConversationId, open that chat.
-  // If not, start a new chat with them via SELECT_NEW_CONVERSATION.
-  // If the member isn't in groupMembers, fall back to SHOW_MEMBER_INFO.
   useEffect(() => {
     const handleMentionClick = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -275,8 +278,6 @@ export const ChatPanel = memo(({
             })
           );
         } else {
-          // No existing conversation — open the contact profile so the
-          // user can start a chat from there (same as sender-name click).
           window.dispatchEvent(
             new CustomEvent("SHOW_MEMBER_INFO", {
               detail: {
@@ -291,8 +292,6 @@ export const ChatPanel = memo(({
           );
         }
       } else {
-        // Member not found in groupMembers — fall back to SHOW_MEMBER_INFO
-        // with whatever data we have from the mention metadata
         window.dispatchEvent(
           new CustomEvent("SHOW_MEMBER_INFO", {
             detail: {
@@ -311,28 +310,20 @@ export const ChatPanel = memo(({
 
   useEffect(() => {
     const convId = selectedCustomer?.ConversationId;
-    // 1. Fast-sync admin state from selectedCustomer
     setIsCurrentUserAdmin(
       isGroup &&
         (selectedCustomer?.IsGroupAdmin === 1 || selectedCustomer?.IsGroupAdmin === true)
     );
 
-    // 2. Clear group members immediately on conversation switch to prevent
-    //    stale members from the previous group leaking into @mention dropdown.
     setGroupMembers([]);
 
-    // 3. Sync RemoveInGroup context
     if (convId && selectedCustomer?.RemoveInGroup !== undefined) {
       updateRemoveInGroupStatus(convId, selectedCustomer.RemoveInGroup === 1);
     }
 
-    // 4. Fetch group details for admin mode + current-user admin flag + members for mentions
     if (isGroup && convId && auth) {
-      // Use .then() instead of async to avoid creating a new function on every render
       fetchAndCacheGroupMembers(convId)
         .then((groupData: any) => {
-          // Guard: if the user switched to another conversation while fetching,
-          // discard the result to avoid leaking old group data into the new one.
           if (selectedCustomer?.ConversationId !== convId) return;
           if (groupData?.groupDetails) {
             updateGroupAdminMode(convId, groupData.groupDetails.SendNewMessage === 0);
@@ -341,7 +332,6 @@ export const ChatPanel = memo(({
             );
             setIsCurrentUserAdmin((currentUser as any)?.IsGroupAdmin === 1);
           }
-          // Store members for @mention feature
           if (groupData?.members) {
             setGroupMembers(groupData.members);
           }
@@ -350,10 +340,8 @@ export const ChatPanel = memo(({
           console.error("Error fetching initial group status:", error);
         });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer?.ConversationId, selectedCustomer?.IsGroup, auth]);
 
-  // ── Favorite toggle (ported from old useMessageActions handleToggleFavorite) ──
   const handleToggleFavorite = useCallback(async () => {
     if (!selectedCustomer?.ConversationId) return;
     const newIsStar = isFavorite ? 0 : 1;
@@ -552,8 +540,6 @@ export const ChatPanel = memo(({
     setMenuAnchor(null);
   }, []);
 
-  // ── Search: opens the CustomerDetails panel in "search" view ──────────────
-  // (The panel hosts the search input + results list, matching the old app.)
   const handleSearch = useCallback(() => {
     if (drawerOpen && drawerViewState === "search") {
       closeDrawer();
@@ -562,9 +548,6 @@ export const ChatPanel = memo(({
     }
   }, [drawerOpen, drawerViewState, openSearch, closeDrawer]);
 
-  // ── Search by date from the search panel (mobile) ─────────────────────────
-  // On mobile, close the search panel after selecting a date so the user
-  // sees the jumped-to messages in the chat.
   const handleSearchByDateFromPanel = useCallback(
     (date: string) => {
       searchByDate?.(date);
@@ -597,12 +580,6 @@ export const ChatPanel = memo(({
     containerRef.current = el;
   }, []);
 
-  // Stable input change handler — prevents ChatInput re-render on every keystroke.
-  // Only updates the ref (for draft saving). setInputValue is NOT called here
-  // because it would create a feedback loop:
-  //   type → onChange → setInputValue → re-render → ExternalValueSyncPlugin
-  //   sees changed value → re-imports → triggers update → onChange → ...
-  // setInputValue is only called when loading a draft or clearing input.
   const handleInputChange = useCallback(
     (val: string) => {
       updateLatestInput(val);
@@ -610,8 +587,6 @@ export const ChatPanel = memo(({
     [updateLatestInput]
   );
 
-  // Stable fetch members handler — guards against race conditions by
-  // checking that the conversation hasn't changed by the time the fetch resolves.
   const handleFetchMembers = useCallback(() => {
     if (isGroup && selectedCustomer?.ConversationId) {
       const convId = selectedCustomer.ConversationId;
@@ -659,13 +634,13 @@ export const ChatPanel = memo(({
 
   // ── Send handler with scroll ─────────────────────────────────────────────
   const handleSendWithScroll = useCallback(
-    (text: string, mentions?: import("./input/MentionPlugin").MentionData[]) => {
+    (
+      text: string,
+      mentions?: import("./input/MentionPlugin").MentionData[],
+      overrideMediaFiles?: MediaFileItem[]
+    ) => {
       handleSendMessage(
         () => {
-          // If we're in a historical/search view (hasMoreAfter=true), jump
-          // to the latest messages after sending — otherwise the user stays
-          // stuck in the old message view and the conversation appears
-          // unselected when they close the search panel.
           if (hasMoreAfter) {
             jumpToLatest();
           } else {
@@ -673,7 +648,8 @@ export const ChatPanel = memo(({
           }
         },
         text,
-        mentions
+        mentions,
+        overrideMediaFiles
       );
     },
     [handleSendMessage, hasMoreAfter, jumpToLatest]
@@ -715,6 +691,7 @@ export const ChatPanel = memo(({
         onToggleStarFilter={handleToggleStarFilter}
         starNewMessageCount={starNewMessageCount}
         onSearchByDate={searchByDate ?? undefined}
+        isOffline={isOffline}
       />
 
       <MessageList
@@ -735,6 +712,7 @@ export const ChatPanel = memo(({
         onQuickReaction={handleQuickReaction}
         onRemoveReaction={handleRemoveReactionCb}
         onMediaClick={handleMediaClick}
+        onRetry={retryFailedMessage}
         getMediaKey={getMediaKey}
         loadedMedia={loadedMedia}
         markLoaded={markLoaded}
@@ -791,6 +769,7 @@ export const ChatPanel = memo(({
         onInputChange={handleInputChange}
         onFetchMembers={handleFetchMembers}
         isGroup={isGroup}
+        isOffline={isOffline}
       />
 
       {/* Media Preview overlay (shows when files are attached) */}
@@ -798,12 +777,22 @@ export const ChatPanel = memo(({
         open={mediaFiles.length > 0}
         mediaFiles={mediaFiles}
         onClose={() => setMediaFiles([])}
-        onSend={(caption) => {
-          handleSendWithScroll(caption);
+        onSend={(caption, exportedFiles) => {
+          handleSendWithScroll(caption, undefined, exportedFiles);
           setMediaFiles([]);
         }}
         onRemoveMedia={(idx) => {
           const next = mediaFiles.filter((_, i) => i !== idx);
+          setMediaFiles(next);
+        }}
+        onUpdateMedia={(index, file, preview) => {
+          const previousPreview = mediaFiles[index]?.preview;
+          if (previousPreview?.startsWith("blob:") && previousPreview !== preview) {
+            URL.revokeObjectURL(previousPreview);
+          }
+          const next = mediaFiles.map((item, i) =>
+            i === index ? { ...item, file, preview, size: file.size, name: file.name } : item
+          );
           setMediaFiles(next);
         }}
         onAddMore={(files) => {
@@ -1047,6 +1036,34 @@ export const ChatPanel = memo(({
         selectedCustomer={selectedCustomer}
         currentUserId={currentUserId}
         onClose={handleClosePreview}
+        onReply={handleReply}
+        onForward={handleForward}
+        onQuickReaction={(emoji, msg) => handleMessageEmojiClick(emoji, msg)}
+        onRemoveReaction={(reaction, msg) => handleRemoveReaction(reaction, msg)}
+      />
+
+      {/* PDF Viewer Dialog (dedicated full-screen PDF viewer with zoom) */}
+      <PdfViewerDialog
+        open={pdfViewerOpen}
+        item={pdfViewerItem}
+        message={mediaViewerMessage}
+        messages={messages}
+        selectedCustomer={selectedCustomer}
+        onClose={handleClosePdfViewer}
+        onReply={handleReply}
+        onForward={handleForward}
+        onQuickReaction={(emoji, msg) => handleMessageEmojiClick(emoji, msg)}
+        onRemoveReaction={(reaction, msg) => handleRemoveReaction(reaction, msg)}
+      />
+
+      {/* Text Viewer Dialog (full-screen .txt / .log / .csv / .json preview) */}
+      <TxtViewerDialog
+        open={txtViewerOpen}
+        item={txtViewerItem}
+        message={mediaViewerMessage}
+        messages={messages}
+        selectedCustomer={selectedCustomer}
+        onClose={handleCloseTxtViewer}
         onReply={handleReply}
         onForward={handleForward}
         onQuickReaction={(emoji, msg) => handleMessageEmojiClick(emoji, msg)}

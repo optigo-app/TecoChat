@@ -1,15 +1,5 @@
 "use client";
 
-// ─── scrollUtils ────────────────────────────────────────────────────────────
-// Pure scroll helpers extracted from MessageList.tsx.
-// These functions operate on a scroll container element and do NOT depend on
-// React state — they're designed to be called from effects, callbacks, and
-// event handlers within the component.
-
-/**
- * Instantly set the scroll position of a container (no smooth animation).
- * Temporarily disables scroll-behavior to avoid CSS `smooth` interference.
- */
 export function setScrollTop(
   outer: HTMLElement,
   top: number
@@ -19,17 +9,10 @@ export function setScrollTop(
   outer.style.scrollBehavior = "";
 }
 
-/**
- * Scroll a container to its bottom (latest content).
- * Uses instant jump (not smooth) for programmatic positioning.
- */
 export function scrollToBottomInstant(outer: HTMLElement): void {
   setScrollTop(outer, outer.scrollHeight);
 }
 
-/**
- * Scroll a container to its bottom with optional smooth behavior.
- */
 export function scrollToBottomSmooth(
   outer: HTMLElement,
   behavior: ScrollBehavior = "smooth"
@@ -37,11 +20,6 @@ export function scrollToBottomSmooth(
   outer.scrollTo({ top: outer.scrollHeight, behavior });
 }
 
-/**
- * Scroll to a specific message element inside the scroll container.
- * The element is identified by `data-message-id` attribute.
- * Returns true if the element was found and scrolled to, false otherwise.
- */
 export function scrollToMessageElement(
   outer: HTMLElement,
   messageId: string | number
@@ -56,12 +34,6 @@ export function scrollToMessageElement(
   return false;
 }
 
-/**
- * Scroll to a message element positioned near the top of the viewport.
- * Used for unread-anchor scrolling so the user sees unread messages
- * flowing downward from the anchor point.
- * Returns true if the element was found and scrolled to, false otherwise.
- */
 export function scrollToMessageNearTop(
   outer: HTMLElement,
   messageId: string | number,
@@ -77,39 +49,43 @@ export function scrollToMessageNearTop(
   return false;
 }
 
-/**
- * Compute the distance from the current scroll position to the bottom.
- */
 export function getDistanceFromBottom(outer: HTMLElement): number {
   return outer.scrollHeight - outer.clientHeight - outer.scrollTop;
 }
 
-/**
- * Check if the scroll position is at or near the bottom.
- */
 export function isAtBottom(outer: HTMLElement, threshold = 100): boolean {
   return getDistanceFromBottom(outer) <= threshold;
 }
 
-/**
- * Preserve scroll position when content is prepended (older messages loaded).
- * Captures the current scroll state before the prepend, then adjusts
- * scrollTop by the height difference after the new content is rendered.
- *
- * Usage:
- *   const anchor = captureScrollAnchor(outer);  // before prepend
- *   // ... rows change ...
- *   restoreScrollAnchor(outer, anchor);          // after prepend
- */
 export interface ScrollAnchor {
   scrollHeight: number;
   scrollTop: number;
+  anchorMessageId?: string | number | null;
+  anchorOffsetTop?: number;
 }
 
 export function captureScrollAnchor(outer: HTMLElement): ScrollAnchor {
+  const scrollTop = outer.scrollTop;
+  let anchorMessageId: string | number | null = null;
+  let anchorOffsetTop = 0;
+
+  // Find the first message element at or below the current scroll top.
+  const messageEls = outer.querySelectorAll("[data-message-id]");
+  for (let i = 0; i < messageEls.length; i++) {
+    const el = messageEls[i] as HTMLElement;
+    const elTop = el.offsetTop;
+    if (elTop >= scrollTop) {
+      anchorMessageId = el.getAttribute("data-message-id");
+      anchorOffsetTop = elTop;
+      break;
+    }
+  }
+
   return {
     scrollHeight: outer.scrollHeight,
-    scrollTop: outer.scrollTop,
+    scrollTop,
+    anchorMessageId,
+    anchorOffsetTop,
   };
 }
 
@@ -117,14 +93,20 @@ export function restoreScrollAnchor(
   outer: HTMLElement,
   anchor: ScrollAnchor
 ): void {
+  if (anchor.anchorMessageId) {
+    const target = outer.querySelector(
+      `[data-message-id="${CSS.escape(String(anchor.anchorMessageId))}"]`
+    ) as HTMLElement | null;
+    if (target) {
+      setScrollTop(outer, target.offsetTop - (anchor.anchorOffsetTop ?? 0) + anchor.scrollTop);
+      return;
+    }
+  }
+  // Fallback: height-delta restoration.
   const heightDiff = outer.scrollHeight - anchor.scrollHeight;
   setScrollTop(outer, anchor.scrollTop + heightDiff);
 }
 
-/**
- * Restore a previously saved scroll position proportional to the new
- * content height. Used when returning to a conversation.
- */
 export function restoreScrollPosition(
   outer: HTMLElement,
   savedScrollTop: number,
@@ -135,9 +117,7 @@ export function restoreScrollPosition(
   setScrollTop(outer, savedScrollTop * heightRatio);
 }
 
-/**
- * Save the current scroll position for later restoration.
- */
+
 export function saveScrollPosition(outer: HTMLElement): {
   scrollTop: number;
   scrollHeight: number;
@@ -148,22 +128,10 @@ export function saveScrollPosition(outer: HTMLElement): {
   };
 }
 
-/**
- * Double-rAF helper: waits two animation frames before calling the callback.
- * This ensures the DOM has been painted and layout is settled (correct
- * scrollHeight) before performing scroll operations.
- */
 export function doubleRequestAnimationFrame(callback: () => void): void {
   requestAnimationFrame(() => requestAnimationFrame(callback));
 }
 
-/**
- * Perform the initial scroll on conversation open.
- * If an unread anchor message ID is provided and found in the DOM,
- * scrolls to it (near the top). Otherwise scrolls to the bottom.
- *
- * Returns the scroll mode that was used: "anchor" or "bottom".
- */
 export type InitialScrollMode = "anchor" | "bottom";
 
 export function performInitialScroll(
@@ -180,11 +148,6 @@ export function performInitialScroll(
   return "bottom";
 }
 
-/**
- * Correct scroll position on a second rAF pass after the initial scroll.
- * Re-scrolls to the anchor or bottom to fix any drift from media/layout
- * changes that altered the scrollHeight after the first pass.
- */
 export function correctInitialScrollDrift(
   outer: HTMLElement,
   mode: InitialScrollMode,
@@ -198,11 +161,6 @@ export function correctInitialScrollDrift(
   }
 }
 
-/**
- * Auto-scroll to bottom on new messages if the user was already near the
- * bottom or if the last message is outgoing (sent by current user).
- * Returns true if scrolled, false if position was preserved.
- */
 export function autoScrollOnNewMessage(
   outer: HTMLElement,
   isOutgoingLastMessage: boolean,

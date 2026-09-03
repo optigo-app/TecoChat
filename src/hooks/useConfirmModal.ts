@@ -9,6 +9,10 @@ import { clearChatApi } from "../API/ClearChat/ClearChatApi";
 import { deleteConversationApi } from "../API/ConversationView/DeleteConversationApi";
 import { isMessageEditable } from "../utils/globalFunc";
 import type { AuthData } from "../context/LoginData";
+import { clearConversation } from "../db/messageCache";
+import { deleteConversation as deleteCachedConversation } from "../db/conversationCache";
+import { clearMembers } from "../db/groupMembersCache";
+import { deleteDraft } from "../db/draftCache";
 
 const INITIAL_STATE = { isOpen: false, actionType: "" as string };
 
@@ -109,8 +113,11 @@ export function useConfirmModal({
       if (stat === 1 || stat === "1" || response?.Status === "200") {
         toast.success("You have left the group");
         const convId = selectedCustomer.ConversationId;
-        sessionStorage.removeItem(`chat_cache_${convId}`);
-        sessionStorage.removeItem(`chat_last_page_${convId}`);
+        // Clear all cached data for this conversation from IndexedDB.
+        clearConversation(auth, convId).catch(() => {});
+        clearMembers(auth, convId).catch(() => {});
+        deleteDraft(auth, convId).catch(() => {});
+        deleteCachedConversation(auth, convId).catch(() => {});
         close();
         onCustomerSelect?.(null as any);
         window.dispatchEvent(
@@ -147,8 +154,11 @@ export function useConfirmModal({
       if (stat === 1 || stat === "1" || response?.Status === "200" || response?.success === true) {
         toast.success(statMsg || "Conversation deleted");
         const convId = selectedCustomer.ConversationId;
-        sessionStorage.removeItem(`chat_cache_${convId}`);
-        sessionStorage.removeItem(`chat_last_page_${convId}`);
+        // Clear all cached data for this conversation from IndexedDB.
+        clearConversation(auth, convId).catch(() => {});
+        clearMembers(auth, convId).catch(() => {});
+        deleteDraft(auth, convId).catch(() => {});
+        deleteCachedConversation(auth, convId).catch(() => {});
         close();
         onCustomerSelect?.(null as any);
         window.dispatchEvent(
@@ -184,8 +194,9 @@ export function useConfirmModal({
       if (stat === 1 || stat === "1" || response?.Status === "200" || response?.success === true) {
         toast.success(statMsg || "Chat cleared successfully");
         const convId = selectedCustomer.ConversationId;
-        sessionStorage.removeItem(`chat_cache_${convId}`);
-        sessionStorage.removeItem(`chat_last_page_${convId}`);
+        // Clear cached messages for this conversation from IndexedDB.
+        clearConversation(auth, convId).catch(() => {});
+        deleteDraft(auth, convId).catch(() => {});
         window.dispatchEvent(
           new CustomEvent("CLEAR_CONVERSATION_MESSAGES", {
             detail: { conversationId: convId },

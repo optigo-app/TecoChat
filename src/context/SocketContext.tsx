@@ -19,6 +19,7 @@ import {
 } from "../socket";
 import { useLoginContext } from "./LoginData";
 import { eraseCookie } from "../utils/cookieUtils";
+import { deleteDb } from "../db/tecoDb";
 
 interface SocketContextValue {
   /** Current socket connection status. */
@@ -58,6 +59,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // ── Session logout handler ──────────────────────────────────────────────
   // When the server sends "sessionLogout", clear everything and redirect.
   const handleSessionLogout = useCallback(() => {
+    // Wipe the per-user IndexedDB before clearing sessionStorage.
+    deleteDb(authRef.current?.id).catch(() => {});
     sessionStorage.clear();
     eraseCookie("userData");
     eraseCookie("token");

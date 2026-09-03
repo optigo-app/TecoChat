@@ -2,7 +2,7 @@
 
 import { memo, useRef, useState, useLayoutEffect, useEffect, useCallback } from "react";
 import { Box, Typography } from "@mui/material";
-import { renderMessageText } from "../../../utils/messageTextRenderer";
+import { renderMessageText } from "../../../../utils/messageTextRenderer";
 
 const TOLERANCE = 1;
 

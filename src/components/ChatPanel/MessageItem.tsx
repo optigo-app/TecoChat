@@ -4,7 +4,7 @@ import { memo, useState, useCallback, useEffect, useRef } from "react";
 import { Box } from "@mui/material";
 import { MessageBubble } from "./MessageBubble";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
-import SystemMessage from "./messages/SystemMessage";
+import { SystemMessage } from "./messages/list";
 import type { ChatMessage } from "../../types/message";
 import type { ConversationListEntry } from "../../types/conversation";
 
@@ -22,6 +22,7 @@ interface MessageItemProps {
   onQuickReaction?: (emoji: string, msg: ChatMessage) => void;
   onRemoveReaction?: (reaction: { Emoji?: string; Reaction?: string; UserId?: number | string }, msg: ChatMessage) => void;
   onMediaClick?: (msg: ChatMessage, index: number) => void;
+  onRetry?: (msg: ChatMessage) => void;
   getMediaKey: (msg: ChatMessage, index: number) => string;
   loadedMedia: Record<string, boolean>;
   markLoaded: (key: string) => void;
@@ -52,6 +53,7 @@ const MessageItemComponent = ({
   onQuickReaction,
   onRemoveReaction,
   onMediaClick,
+  onRetry,
   getMediaKey,
   loadedMedia,
   markLoaded,
@@ -138,6 +140,7 @@ const MessageItemComponent = ({
         onQuickReaction={onQuickReaction}
         onRemoveReaction={onRemoveReaction}
         onMediaClick={onMediaClick}
+        onRetry={onRetry}
         getMediaKey={getMediaKey}
         loadedMedia={loadedMedia}
         markLoaded={markLoaded}
