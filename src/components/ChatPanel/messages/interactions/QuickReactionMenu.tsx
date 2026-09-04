@@ -1,9 +1,15 @@
 "use client";
 
-import { memo, useState, useRef } from "react";
+import { memo, useState, useRef, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { IconButton, Popper, Paper, ClickAwayListener, useTheme, alpha } from "@mui/material";
 import { SmilePlus } from "lucide-react";
-import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
+
+// Lazy-load EmojiPicker — heavy component, only needed when reaction picker opens
+const EmojiPicker = dynamic(() => import("emoji-picker-react").then((m) => m.default), {
+  ssr: false,
+  loading: () => <Paper sx={{ width: 380, height: 300, display: "flex", alignItems: "center", justifyContent: "center" }} />,
+});
 
 interface QuickReactionMenuProps {
   onEmojiSelect?: (emoji: string) => void;
@@ -31,11 +37,22 @@ const QuickReactionMenuComponent = ({
   const theme = useTheme();
   const [internalOpen, setInternalOpen] = useState(false);
   const internalAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const [emojiEnums, setEmojiEnums] = useState<{ EmojiStyle: any; EmojiTheme: any } | null>(null);
 
   // Controlled vs uncontrolled
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
   const anchorEl = isControlled ? controlledAnchorEl : internalAnchorRef.current;
+
+  // Load emoji enums dynamically when the picker opens
+  useEffect(() => {
+    if (!open || emojiEnums) return;
+    let mounted = true;
+    import("emoji-picker-react").then((m) => {
+      if (mounted) setEmojiEnums({ EmojiStyle: m.EmojiStyle, EmojiTheme: m.Theme });
+    });
+    return () => { mounted = false; };
+  }, [open, emojiEnums]);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -114,8 +131,8 @@ const QuickReactionMenuComponent = ({
               searchDisabled={false}
               skinTonesDisabled={true}
               previewConfig={{ showPreview: false }}
-              emojiStyle={EmojiStyle.APPLE}
-              theme={theme.palette.mode === "dark" ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+              emojiStyle={emojiEnums?.EmojiStyle.APPLE}
+              theme={theme.palette.mode === "dark" ? emojiEnums?.EmojiTheme.DARK : emojiEnums?.EmojiTheme.LIGHT}
             />
           </Paper>
         </ClickAwayListener>

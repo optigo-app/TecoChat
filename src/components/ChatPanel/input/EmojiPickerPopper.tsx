@@ -1,13 +1,19 @@
 "use client";
 
 import { memo, useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { Box, Popper, Paper, ClickAwayListener } from "@mui/material";
-import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
+
+// Lazy-load EmojiPicker — heavy component (~500KB), only needed when picker opens
+const EmojiPicker = dynamic(() => import("emoji-picker-react").then((m) => m.default), {
+  ssr: false,
+  loading: () => <Box sx={{ width: 380, height: 300, display: "flex", alignItems: "center", justifyContent: "center" }} />,
+});
 
 interface EmojiPickerPopperProps {
   open: boolean;
   anchorEl: HTMLElement | null;
-  onEmojiClick: (emojiData: { emoji: string }) => void;
+  onEmojiClick: (emojiData: { emoji: string; imageUrl?: string }) => void;
   onClose: () => void;
   darkMode?: boolean;
 }
@@ -21,6 +27,17 @@ const EmojiPickerPopperComponent = ({
 }: EmojiPickerPopperProps) => {
   const [placement, setPlacement] = useState<"top-start" | "bottom-start">("top-start");
   const [height, setHeight] = useState(400);
+  const [emojiEnums, setEmojiEnums] = useState<{ EmojiStyle: any; EmojiTheme: any } | null>(null);
+
+  // Load emoji enums dynamically when the picker opens
+  useEffect(() => {
+    if (!open || emojiEnums) return;
+    let mounted = true;
+    import("emoji-picker-react").then((m) => {
+      if (mounted) setEmojiEnums({ EmojiStyle: m.EmojiStyle, EmojiTheme: m.Theme });
+    });
+    return () => { mounted = false; };
+  }, [open, emojiEnums]);
 
   const handleClickAway = (event: MouseEvent | TouchEvent) => {
     if (anchorEl && anchorEl.contains(event.target as Node)) return;
@@ -107,8 +124,8 @@ const EmojiPickerPopperComponent = ({
               searchDisabled={false}
               skinTonesDisabled={true}
               previewConfig={{ showPreview: true }}
-              emojiStyle={EmojiStyle.APPLE}
-              theme={darkMode ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+              emojiStyle={emojiEnums?.EmojiStyle.APPLE}
+              theme={darkMode ? emojiEnums?.EmojiTheme.DARK : emojiEnums?.EmojiTheme.LIGHT}
             />
           </Box>
         </Paper>

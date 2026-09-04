@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { HomeIcon, ChevronLeft, Menu, X } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { IconButton } from "@mui/material";
 import logo from "@/src/assets/logo.png";
@@ -128,8 +129,7 @@ export const Sidebar = ({
               <div className="agentic-chat-header">
                 <div className="agentic-chat-header__icon" onClick={handleHeaderClick}>
                   <div className="icon-bg">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={typeof logo === "string" ? logo : logo.src} alt="TeCoChat" className="icon" loading="lazy" draggable="false" />
+                    <Image src={logo} alt="TeCoChat" fill className="icon" draggable={false} priority sizes="40px" />
                   </div>
                   <h1 className="title">TeCoChat</h1>
                 </div>
@@ -168,8 +168,7 @@ export const Sidebar = ({
             <div className="powered-by">
               <span>Powered by </span>
               <div className="optigo-logo">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icons/logo1.png" alt="Optigo logo" loading="lazy" draggable="false" />
+                <Image src="/icons/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
               </div>
             </div>
           </div>
@@ -189,8 +188,7 @@ export const Sidebar = ({
           <div className="agentic-chat-header">
             <div className="agentic-chat-header__icon" onClick={handleHeaderClick}>
               <div className="icon-bg">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={typeof logo === "string" ? logo : logo.src} alt="TeCoChat" className="icon" loading="lazy" draggable="false" />
+                <Image src={logo} alt="TeCoChat" fill className="icon" draggable={false} priority sizes="40px" />
               </div>
               {!isCollapsedEffective && <h1 className="title">TeCoChat</h1>}
             </div>
@@ -233,8 +231,7 @@ export const Sidebar = ({
         <div className={`powered-by ${isCollapsedEffective ? "collapsed" : ""}`}>
           <span>Powered by </span>
           <div className="optigo-logo">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/logo1.png" alt="Optigo logo" loading="lazy" draggable="false" />
+            <Image src="/icons/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
           </div>
         </div>
       </div>

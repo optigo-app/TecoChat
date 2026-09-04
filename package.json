@@ -2,6 +2,12 @@
   "name": "tecochat",
   "version": "0.1.0",
   "private": true,
+  "browserslist": [
+    "Chrome >= 100",
+    "Firefox >= 100",
+    "Safari >= 15",
+    "Edge >= 100"
+  ],
   "scripts": {
     "dev": "next dev -p 6026",
     "build": "next build",

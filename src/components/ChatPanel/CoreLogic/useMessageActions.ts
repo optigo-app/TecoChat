@@ -17,6 +17,7 @@ import { emitTextMessage, emitDeleteMessage } from "./socketHelpers";
 import { showToast } from "../../../utils/toastHelper";
 import { updateMessageEdit, updateMessageStar } from "../../../db/messageCache";
 import { addToOutbox, removeFromOutbox, updateOutboxStatus } from "../../../db/outboxCache";
+import { playSound } from "../../../utils/sound";
 import type { AuthData } from "../../../context/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
@@ -131,6 +132,8 @@ export function useMessageActions({
           if (scrollToBottom) scrollToBottom();
           await uploadAndSendMedia({ files, caption, type, tempId, time, date, dateTime });
         }
+        // Play send sound once after all media batches are uploaded successfully
+        playSound("send");
         if (scrollToBottom) scrollToBottom();
         return;
       }
@@ -248,6 +251,9 @@ export function useMessageActions({
 
         const sentId = rd?.MessageId;
         const convId = rd?.ConversationId || customer?.ConversationId;
+
+        // Play send sound only after the API confirms success
+        playSound("send");
 
         if (sentId) {
           // For groups, fetch member IDs so the socket payload includes all recipients

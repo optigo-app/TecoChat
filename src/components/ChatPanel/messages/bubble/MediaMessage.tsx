@@ -256,18 +256,22 @@ const MediaMessageComponent = ({
                   }}
                 >
                   {!loadedMedia[mKey] && (
-                    <Skeleton
-                      variant="rounded"
-                      animation="wave"
+                    <Box
                       sx={{
                         position: "absolute",
                         inset: 0,
                         width: "100%",
                         height: "100%",
-                        borderRadius: 0,
                         zIndex: 0,
+                        backgroundColor: alpha(theme.palette.text.primary, 0.1),
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: alpha(theme.palette.text.primary, 0.4),
                       }}
-                    />
+                    >
+                      <Play size={28} fill="currentColor" />
+                    </Box>
                   )}
                   {src && (
                     <Box sx={{ position: "relative", width: "100%", height: "100%", zIndex: 1 }}>
@@ -295,6 +299,7 @@ const MediaMessageComponent = ({
                       justifyContent: "center",
                       color: "#fff",
                       pointerEvents: "none",
+                      zIndex: 2,
                     }}
                   >
                     <Play size={18} fill="currentColor" />
@@ -351,18 +356,22 @@ const MediaMessageComponent = ({
           }}
         >
           {!loadedMedia[mediaKey] && (
-            <Skeleton
-              variant="rounded"
-              animation="wave"
+            <Box
               sx={{
                 position: "absolute",
                 inset: 0,
                 width: "100%",
                 height: "100%",
-                borderRadius: 0,
                 zIndex: 0,
+                backgroundColor: alpha(theme.palette.text.primary, 0.1),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: alpha(theme.palette.text.primary, 0.4),
               }}
-            />
+            >
+              <Play size={36} fill="currentColor" />
+            </Box>
           )}
           {rawSrc && (
             <Box sx={{ position: "relative", width: "100%", height: "100%", zIndex: 1 }}>

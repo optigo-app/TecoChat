@@ -1,7 +1,5 @@
 import { SHA1 } from "crypto-js";
 import Hex from "crypto-js/enc-hex";
-import imageCompression from "browser-image-compression";
-import JSZip from "jszip";
 import { downloadFileApi } from "../API/FileUpload/fileDownloadApi";
 
 // ── Avatar helpers ───────────────────────────────────────────────────────────
@@ -324,6 +322,7 @@ export const handleDownloadFile = async (
     // >4 items → zip them into a single .zip download
     if (mediaItems.length > DOWNLOAD_ZIP_THRESHOLD) {
       try {
+        const { default: JSZip } = await import("jszip");
         const zip = new JSZip();
         const timestamp = Date.now();
         const zipFileName = `attachments_${timestamp}.zip`;
@@ -486,7 +485,7 @@ const DOC_ICON_MAP: Record<string, DocumentMeta> = {
   ts: { iconName: "FileCode", label: "CODE", tone: "code", iconUrl: "/icons/java-script.png" },
   jsx: { iconName: "FileCode", label: "CODE", tone: "code", iconUrl: "/icons/java-script.png" },
   tsx: { iconName: "FileCode", label: "CODE", tone: "code", iconUrl: "/icons/java-script.png" },
-  json: { iconName: "FileCode", label: "CODE", tone: "code", iconUrl: "/icons/json-file.png" },
+  json: { iconName: "FileCode", label: "CODE", tone: "code", iconUrl: "/icons/json-file.webp" },
   xml: { iconName: "FileCode", label: "CODE", tone: "code", iconUrl: "/icons/xml.png" },
   html: { iconName: "FileCode", label: "HTML", tone: "code", iconUrl: "/icons/html.png" },
   htm: { iconName: "FileCode", label: "HTML", tone: "code", iconUrl: "/icons/html.png" },
@@ -632,6 +631,8 @@ export async function compressImagesToWebP(
   };
 
   const results: CompressedImageResult[] = [];
+
+  const { default: imageCompression } = await import("browser-image-compression");
 
   for (const file of inputFiles) {
     if (!file?.type?.startsWith("image/")) continue;

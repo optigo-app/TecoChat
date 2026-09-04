@@ -33,11 +33,12 @@ export interface TextElement {
 
 export interface BlurRegion {
   type: "box" | "path";
+  style?: "pixelate" | "smooth";
   start?: { x: number; y: number };
   end?: { x: number; y: number };
   points?: Array<{ x: number; y: number }>;
   size?: number;
-  intensity?: number; // 0–100, controls pixelate block size
+  intensity?: number; // 0–100, controls pixelate block size or blur radius
 }
 
 export interface EmojiElement {
@@ -46,6 +47,7 @@ export interface EmojiElement {
   x: number;
   y: number;
   size: number;
+  imageUrl?: string;
 }
 
 export interface CropRect {
@@ -68,7 +70,6 @@ export interface ImageEditState {
   crop: CropRect | null;
   rotation: number;
   filter: FilterType;
-  isHd: boolean;
 }
 
 export interface MediaPreviewProps {

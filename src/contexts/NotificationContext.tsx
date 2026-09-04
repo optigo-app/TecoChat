@@ -80,12 +80,13 @@ export const NotificationProvider = ({
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
 
-    // Unlock audio on first user interaction (click/touch/keydown).
+    // Unlock audio on first user interaction (click/touchend/keyup).
     // Browsers block audio playback until the user interacts with the page.
     // Without this, playNotificationSound() silently fails.
+    // NOTE: iOS requires click/touchend/keyup — pointerdown does NOT count.
     window.addEventListener("click", unlockAudio, { once: true });
-    window.addEventListener("touchstart", unlockAudio, { once: true });
-    window.addEventListener("keydown", unlockAudio, { once: true });
+    window.addEventListener("touchend", unlockAudio, { once: true });
+    window.addEventListener("keyup", unlockAudio, { once: true });
 
     setPermissionStatus(Notification.permission);
     if (Notification.permission === "granted") {
@@ -94,18 +95,22 @@ export const NotificationProvider = ({
       // the user actively grants permission during this session.
     }
 
+    // Track the PermissionStatus so we can clean up its onchange handler
+    let permStatus: PermissionStatus | null = null;
+
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions
         .query({ name: "notifications" as PermissionName })
-        .then((permStatus) => {
-          permStatus.onchange = () => {
+        .then((ps) => {
+          permStatus = ps;
+          ps.onchange = () => {
             setPermissionStatus(
-              permStatus.state as NotificationPermission | "default"
+              ps.state as NotificationPermission | "default"
             );
 
-            if (permStatus.state === "granted") {
+            if (ps.state === "granted") {
               showEnabledConfirmation();
-            } else if (permStatus.state === "denied") {
+            } else if (ps.state === "denied") {
               setShowGuide(false);
             }
           };
@@ -117,8 +122,10 @@ export const NotificationProvider = ({
 
     return () => {
       window.removeEventListener("click", unlockAudio);
-      window.removeEventListener("touchstart", unlockAudio);
-      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("touchend", unlockAudio);
+      window.removeEventListener("keyup", unlockAudio);
+      // Clean up the onchange handler to prevent stale closures on unmount/HMR
+      if (permStatus) permStatus.onchange = null;
     };
   }, []);
 
@@ -135,6 +142,7 @@ export const NotificationProvider = ({
   };
 
   const executeNativeRequest = async (fromModal = false) => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
     try {
       const status = await Notification.requestPermission();
       setPermissionStatus(status);

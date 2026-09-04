@@ -1,16 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useLoginContext } from "../../context/LoginData";
 import "./LoginExists.scss";
 import warning from "../../assets/lotties/warning.json";
 import loader from "../../assets/lotties/loader.json";
-import Lottie from "lottie-react";
 import { LogoutApi } from "../../API/Logout/Logout";
 import { initializeSocket } from "../../socket";
 import { Button } from "@mui/material";
 import { eraseCookie } from "../../utils/cookieUtils";
+
+// Lazy-load Lottie — only shown on the "already logged in" page
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 interface StoredSocketId {
   id?: string;

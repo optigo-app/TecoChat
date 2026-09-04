@@ -18,7 +18,7 @@ interface MediaPreviewPopoversProps {
   onCloseShapes: () => void;
   onSelectShape: (id: "rect" | "circle" | "line" | "arrow") => void;
   onCloseCanvasEmoji: () => void;
-  onAddCanvasEmoji: (emoji: string) => void;
+  onAddCanvasEmoji: (emoji: string, imageUrl?: string) => void;
   onCloseKeyboardHelp: () => void;
 }
 
@@ -53,12 +53,12 @@ export default function MediaPreviewPopovers({
           paper: {
             sx: {
               bgcolor: headerBg,
-              p: 1,
-              borderRadius: "14px",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+              p: 1.5,
+              borderRadius: "16px",
+              boxShadow: "0 12px 36px rgba(0,0,0,0.28)",
               border: `1px solid ${borderColor}`,
               display: "flex",
-              gap: 1,
+              gap: 1.5,
             },
           },
         }}
@@ -69,24 +69,30 @@ export default function MediaPreviewPopovers({
           return (
             <Tooltip key={item.id} title={item.label} arrow>
               <IconButton
-                size="medium"
+                size="large"
                 onClick={() => {
                   onSelectShape(item.id);
                   onCloseShapes();
                 }}
                 sx={{
-                  p: "12px",
-                  borderRadius: "12px",
+                  p: "16px 14px",
+                  borderRadius: "14px",
                   color: isSel ? theme.palette.primary.main : titleColor,
                   bgcolor: isSel ? alpha(theme.palette.primary.main, 0.15) : "transparent",
+                  border: isSel ? `1.5px solid ${theme.palette.primary.main}` : "1.5px solid transparent",
                   flexDirection: "column",
-                  gap: 0.5,
-                  minWidth: 56,
-                  "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.08) },
+                  gap: 1,
+                  minWidth: 78,
+                  height: 78,
+                  transition: "all 0.15s ease",
+                  "&:hover": {
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    transform: "translateY(-2px)",
+                  },
                 }}
               >
-                <Icon size={28} />
-                <span style={{ fontSize: 10, fontWeight: 600, color: isSel ? theme.palette.primary.main : titleColor, letterSpacing: 0.2 }}>
+                <Icon size={38} strokeWidth={2} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: isSel ? theme.palette.primary.main : titleColor, letterSpacing: 0.2 }}>
                   {item.label}
                 </span>
               </IconButton>
@@ -99,7 +105,7 @@ export default function MediaPreviewPopovers({
       <EmojiPickerPopper
         open={Boolean(canvasEmojiAnchorEl)}
         anchorEl={canvasEmojiAnchorEl}
-        onEmojiClick={(data) => onAddCanvasEmoji(data.emoji)}
+        onEmojiClick={(data) => onAddCanvasEmoji(data.emoji, data.imageUrl)}
         onClose={onCloseCanvasEmoji}
         darkMode={isDark}
       />

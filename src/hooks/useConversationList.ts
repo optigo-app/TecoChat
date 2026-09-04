@@ -11,6 +11,7 @@ import {
   normalizeMessageType,
   mapMessageTypeToCode,
   resolveConversationName,
+  getMemberTimeValue,
 } from "../components/CustomerLists/CustomerListFunc";
 import { formatDateTime } from "../utils/dateUtils";
 import {
@@ -131,20 +132,21 @@ export const useConversationList = ({
       const searchToUse = search !== null ? search : searchTermRef.current;
       const isSearchRequest = Boolean(searchToUse) && reset;
       if (isSearchRequest) setSearchLoading(true);
-      else setLoading(true);
 
-      // Cache-first: on a non-search reset, render the cached conversation
-      // list instantly from IndexedDB, then reconcile with the API below.
+      let didShowCache = false;
       if (reset && !isSearchRequest) {
         try {
           const cached = await getConversations(auth);
           if (cached.length > 0) {
             setChatMembers({ data: cached, total: cached.length });
+            didShowCache = true;
           }
         } catch {
           /* ignore cache read errors */
         }
       }
+
+      if (!didShowCache && !isSearchRequest) setLoading(true);
 
       try {
         const response = await fetchConversationLists(
@@ -276,6 +278,10 @@ export const useConversationList = ({
   // ── handleSocketUpdate: the core real-time update function ────────────────
   const handleSocketUpdate = useCallback(
     (incoming: Record<string, unknown>, isStatusChange = false) => {
+      // Collect notification info inside the updater, but call notify() outside
+      // to avoid side effects inside a React state updater (anti-pattern).
+      let pendingNotify: Record<string, unknown> | null = null;
+
       setChatMembers((prev) => {
         if (!prev?.data) return prev;
 
@@ -368,19 +374,18 @@ export const useConversationList = ({
           && (!muted || mentioned);
 
         if (shouldNotify) {
-          notify(
-            {
-              senderName: resolvedName,
-              message: messagePreviewText,
-              conversationId,
-              conversationName: (existingChat?.name as string) || (incoming.ConversationName as string),
-              isGroup: (existingChat?.IsGroup as number) ?? (incoming.IsGroup as number),
-              tag: `msg-${conversationId}`,
-              ...incoming,
-            },
-            "NEW_MESSAGE",
-            auth
-          );
+          // Collect notification data — actual notify() call is deferred outside
+          // the setChatMembers updater to avoid side effects in state updaters
+          pendingNotify = {
+            senderName: resolvedName,
+            message: messagePreviewText,
+            conversationId,
+            conversationName: (existingChat?.name as string) || (incoming.ConversationName as string),
+            isGroup: (existingChat?.IsGroup as number) ?? (incoming.IsGroup as number),
+            tag: `msg-${conversationId}`,
+            isOpenConversation,
+            ...incoming,
+          };
         }
 
         const nextUnreadCount = (currentCount: number) => {
@@ -487,7 +492,30 @@ export const useConversationList = ({
           updatedData.push(newCustomer);
         }
 
-        updatedData.sort(conversationComparator);
+        // Optimized: instead of full O(n log n) sort on every incoming message,
+        // move only the updated conversation to its correct position.
+        if (index !== -1 && updatedData.length > 1) {
+          const [moved] = updatedData.splice(index, 1);
+          const movedPinned = Number((moved as any).IsPin || 0) === 1;
+          const movedTime = getMemberTimeValue(moved);
+          let lo = 0, hi = updatedData.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            const midPinned = Number((updatedData[mid] as any).IsPin || 0) === 1;
+            const midTime = getMemberTimeValue(updatedData[mid]);
+            if (midPinned !== movedPinned) {
+              if (midPinned) lo = mid + 1;
+              else hi = mid;
+            } else if (midTime > movedTime) {
+              lo = mid + 1;
+            } else {
+              hi = mid;
+            }
+          }
+          updatedData.splice(lo, 0, moved);
+        } else {
+          updatedData.sort(conversationComparator);
+        }
         // Write-through: persist the updated conversation to IndexedDB.
         const updatedEntry = updatedData.find(
           (m) => Number((m as any).ConversationId) === Number(conversationId)
@@ -499,6 +527,12 @@ export const useConversationList = ({
         }
         return { ...prev, data: updatedData };
       });
+
+      // Fire notification outside the state updater to avoid side effects
+      // in React's functional updater (which can run multiple times in concurrent mode)
+      if (pendingNotify) {
+        notify(pendingNotify, "NEW_MESSAGE", auth);
+      }
     },
     [auth]
   );
@@ -575,7 +609,7 @@ export const useConversationList = ({
         group_updated: "GROUP_UPDATED",
       };
       const notificationTemplate = eventNotificationMap[data.eventType as string];
-      if (notificationTemplate && selectedCustomer?.ConversationId !== data.conversationId) {
+      if (notificationTemplate && String(selectedCustomer?.ConversationId) !== String(data.conversationId)) {
         notify(data, notificationTemplate, auth);
       }
       if (data.conversationData) {
@@ -620,7 +654,7 @@ export const useConversationList = ({
         member_demoted: "MEMBER_DEMOTED",
       };
       const notificationTemplate = eventNotificationMap[data.eventType as string];
-      if (notificationTemplate && selectedCustomer?.ConversationId !== data.conversationId) {
+      if (notificationTemplate && String(selectedCustomer?.ConversationId) !== String(data.conversationId)) {
         notify(data, notificationTemplate, auth);
       }
       if (data.conversationData) {
@@ -655,7 +689,7 @@ export const useConversationList = ({
 
     const handlePermissionEvent = (data: Record<string, unknown>) => {
       if (!data || !data.conversationId) return;
-      if (selectedCustomer?.ConversationId !== data.conversationId) {
+      if (String(selectedCustomer?.ConversationId) !== String(data.conversationId)) {
         notify(data, "PERMISSION_CHANGED", auth);
       }
     };

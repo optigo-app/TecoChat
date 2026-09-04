@@ -52,9 +52,9 @@
 
   /* Text */
   --color-title: #444050;
-  --color-text-secondary: #7d7f85;
-  --color-text-2nd: #6d6b77;
-  --color-placeholder: #808080;
+  --color-text-secondary: #6b6d75;
+  --color-text-2nd: #5f5d69;
+  --color-placeholder: #6e6e6e;
   --color-text-white: #ffffff;
   --color-text-light: #f1f1f1;
 
@@ -233,7 +233,7 @@
   /* Chat message area background */
   --color-chat-bg: #161622;
   --color-chat-pattern: rgba(115, 103, 240, 0.04);
-  --chat-bg-image: url(/icons/bg-3-dark.png);
+  --chat-bg-image: url(/icons/bg-3-dark.webp);
   --chat-bg-overlay: rgba(22, 22, 34, 0.85);
 
   /* WhatsApp-style surface colors (for CreateGroup, AddConversation, dialogs) */

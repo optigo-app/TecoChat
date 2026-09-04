@@ -13,6 +13,7 @@ import { MSG, type MsgAction } from "./conversationReducer";
 import { getMessageId, resolveStatus, normalizeSocketMessage } from "./messageHelpers";
 import { normalizeServerMessages } from "../../../utils/messageUtils";
 import { upsertMessage, updateMessageStatus, deleteMessage, updateMessageReaction } from "../../../db/messageCache";
+import { playSound } from "../../../utils/sound";
 import type { AuthData } from "../../../context/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
@@ -34,6 +35,8 @@ export function useSocketHandlers({
 }: UseSocketHandlersProps) {
   const dispatchRef = useRef(dispatchMsg);
   const handleReadRef = useRef(handleReadMessage);
+  // Track previous status per message to detect transitions (for sound playback)
+  const prevStatusRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     dispatchRef.current = dispatchMsg;
@@ -88,20 +91,56 @@ export function useSocketHandlers({
         if (data.SenderInfo != null) extra.SenderInfo = data.SenderInfo;
         if (data.DateTime != null) extra.DateTime = data.DateTime;
         if (data.Message != null) extra.Message = data.Message;
+
+        const newStatus = resolveStatus(data.MessageStatus ?? data.status ?? data.Status);
         dispatchRef.current({
           type: MSG.UPDATE_STATUS,
           messageId,
           conversationId,
-          status: resolveStatus(data.MessageStatus ?? data.status ?? data.Status),
+          status: newStatus,
           extra,
         });
+
+        // Play delivered/read sounds only for the current user's outgoing messages
+        // (status transitions). Status: 1=sent, 2=delivered, 3=read, 4=failed
+        if (messageId) {
+          const msgKey = String(messageId);
+          const prevStatus = prevStatusRef.current.get(msgKey) ?? 0;
+
+          // Only play for outgoing messages — check SenderId against auth.id
+          const senderId = Number(data.SenderId ?? data.Sender ?? data.UserId);
+          const myId = Number(auth?.id ?? auth?.userId);
+          const isOutgoing = myId && senderId && myId === senderId;
+
+          if (isOutgoing) {
+            if (newStatus === 2 && prevStatus < 2) {
+              playSound("delivered");
+            } else if (newStatus === 3 && prevStatus < 3) {
+              playSound("read");
+            }
+          }
+
+          // Track status; clean up terminal entries to prevent unbounded growth
+          if (newStatus >= 3) {
+            // Read is terminal — no further transitions expected
+            prevStatusRef.current.delete(msgKey);
+          } else {
+            prevStatusRef.current.set(msgKey, newStatus);
+          }
+          // Cap the map size as a safety net
+          if (prevStatusRef.current.size > 500) {
+            const firstKey = prevStatusRef.current.keys().next().value;
+            if (firstKey) prevStatusRef.current.delete(firstKey);
+          }
+        }
+
         // Write-through status update to IndexedDB.
         if (messageId && conversationId) {
           updateMessageStatus(
             auth,
             conversationId,
             messageId,
-            resolveStatus(data.MessageStatus ?? data.status ?? data.Status),
+            newStatus,
             extra as Partial<ChatMessage>
           ).catch(() => {
             /* ignore */

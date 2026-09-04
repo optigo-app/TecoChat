@@ -15,6 +15,7 @@ interface BrowserNotificationOptions {
   badge?: string;
   data?: Record<string, unknown>;
   tag?: string;
+  isOpenConversation?: boolean; // if true, the user is already viewing this chat
 }
 
 // ── Window focus tracker ───────────────────────────────────────────────────
@@ -38,8 +39,10 @@ if (typeof window !== "undefined") {
   }
 
   // Initialize from current state
-  windowFocused = document.hasFocus();
-  windowVisible = document.visibilityState === "visible";
+  if (typeof document !== "undefined") {
+    windowFocused = document.hasFocus();
+    windowVisible = document.visibilityState === "visible";
+  }
 }
 
 /**
@@ -63,14 +66,16 @@ export const showBrowserNotification = async ({
   badge = NOTIFICATION_ICON,
   data,
   tag,
+  isOpenConversation = false,
 }: BrowserNotificationOptions): Promise<void> => {
   const active = isWindowActive();
-  console.log("[NOTIFY] showBrowserNotification:", { title, body, tag, windowFocused, windowVisible, active, permission: typeof Notification !== "undefined" ? Notification.permission : "N/A" });
+  console.log("[NOTIFY] showBrowserNotification:", { title, body, tag, windowFocused, windowVisible, active, isOpenConversation, permission: typeof Notification !== "undefined" ? Notification.permission : "N/A" });
 
   // If not in browser or Notification API not supported, fall back to toast
   if (typeof window === "undefined" || !("Notification" in window)) {
     console.log("[NOTIFY] Notification API not supported, playing sound + toast");
-    playNotificationSound();
+    // Only play sound if the conversation is NOT open (user isn't already reading it)
+    if (!isOpenConversation) playNotificationSound();
     if (!active) showToast(body, "info", { title, data });
     return;
   }
@@ -78,7 +83,7 @@ export const showBrowserNotification = async ({
   // If permission not granted, play sound but don't show notification
   if (Notification.permission !== "granted") {
     console.log("[NOTIFY] Permission not granted, playing sound only");
-    playNotificationSound();
+    if (!isOpenConversation) playNotificationSound();
     return;
   }
 
@@ -90,17 +95,27 @@ export const showBrowserNotification = async ({
     tag: tag || `msg-${(data as any)?.conversationId || (data as any)?.ConversationId}`,
     requireInteraction: false,
     renotify: true,
-    silent: false,
+    // App plays its own synthesized sound — silence the OS default to avoid double audio
+    silent: true,
   };
 
-  if ("vibrate" in navigator) {
+  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
     options.vibrate = [200, 100, 200];
   }
+
+  // Track whether we already played the sound in this call to avoid double-play
+  let soundPlayed = false;
+  const playSoundIfNeeded = () => {
+    if (!isOpenConversation && !soundPlayed) {
+      playNotificationSound();
+      soundPlayed = true;
+    }
+  };
 
   // WhatsApp Web behavior: Only show browser notifications if window is not active
   if (!active) {
     console.log("[NOTIFY] Window NOT active — showing notification + sound");
-    playNotificationSound();
+    playSoundIfNeeded();
 
     try {
       // Use Service Worker if available
@@ -142,12 +157,16 @@ export const showBrowserNotification = async ({
       }
     } catch (error) {
       console.warn("[NOTIFY] Browser notification failed, falling back to toast:", error);
-      playNotificationSound();
+      // Don't replay sound here — already played above if needed
       showToast(body, "info", { title, data });
     }
   } else {
-    // Window is active — just play sound (caller already checked shouldNotify)
-    console.log("[NOTIFY] Window active — playing sound only");
-    playNotificationSound();
+    // Window is active — only play sound if user is NOT already viewing this chat
+    if (!isOpenConversation) {
+      console.log("[NOTIFY] Window active but chat not open — playing sound only");
+      playSoundIfNeeded();
+    } else {
+      console.log("[NOTIFY] Window active AND chat open — no sound (user is reading it)");
+    }
   }
 };

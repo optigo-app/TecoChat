@@ -180,7 +180,7 @@ const MediaSection = ({
                   <Box
                     component="img"
                     src={src}
-                    alt=""
+                    alt="Shared media"
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                     }}

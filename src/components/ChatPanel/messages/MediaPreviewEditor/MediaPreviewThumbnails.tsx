@@ -5,6 +5,7 @@ import { FileText, Plus, X } from "lucide-react";
 import type { MediaFileItem, ImageEditState } from "./types";
 import { getFilterCssString } from "./constants";
 import { hasImageEdits } from "./canvasRender";
+import { getDocumentMeta } from "../../../../utils/globalFunc";
 
 interface MediaPreviewThumbnailsProps {
   mediaFiles: MediaFileItem[];
@@ -113,7 +114,18 @@ export default function MediaPreviewThumbnails({
                 }}
               />
             ) : (
-              <FileText size={28} color={theme.palette.primary.main} />
+              (() => {
+                const docIcon = getDocumentMeta(item.name).iconUrl;
+                return docIcon ? (
+                  <img
+                    src={docIcon}
+                    alt={item.name}
+                    style={{ width: 32, height: 32, objectFit: "contain" }}
+                  />
+                ) : (
+                  <FileText size={28} color={theme.palette.primary.main} />
+                );
+              })()
             )}
 
             {/* Edit badge on thumbnail */}

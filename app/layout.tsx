@@ -41,12 +41,10 @@ export const metadata: Metadata = {
 
 // Next.js 16 viewport config (separate export).
 // viewport-fit=cover enables safe-area-inset on notched devices.
-// maximum-scale=1 + user-scalable=no gives an app-like feel (no pinch zoom).
+// Zoom is allowed for accessibility (WCAG 1.4.4).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
@@ -68,15 +66,29 @@ export default function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeNoFlashScript }}
         />
+        {/* Preconnect to essential external origins */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+        {/* Preconnect to API / socket server (production) */}
+        <link rel="preconnect" href="https://apilx.optigoapps.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://apilx.optigoapps.com" />
+        {/* Google Fonts — loaded with preload + swap to avoid render-blocking.
+             The stylesheet is fetched early via preload, then applied once loaded. */}
         <link
+          rel="preload"
+          as="style"
           href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        />
+        <link
           rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+          media="all"
         />
       </head>
       <body>

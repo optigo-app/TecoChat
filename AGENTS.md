@@ -17,8 +17,9 @@ desktop site squished into a phone screen. Every page/component converted from
 the old CRA app must follow these rules:
 
 ### Viewport & PWA
-- `app/layout.tsx` exports a `viewport` with `viewportFit: "cover"`,
-  `maximumScale: 1`, `userScalable: false` (no pinch-zoom — app feel).
+- `app/layout.tsx` exports a `viewport` with `viewportFit: "cover"`.
+  Zoom is allowed (no `maximumScale`/`userScalable` restrictions) for
+  accessibility compliance (WCAG 1.4.4 — users can pinch-zoom).
 - A web app manifest (`public/manifest.json`) is linked via `metadata.manifest`
   with `display: standalone` so it can be added to home screen.
 - `appleWebApp` metadata is set for iOS standalone mode.
@@ -197,4 +198,19 @@ the old CRA app must follow these rules:
 - MUI Next.js cache provider: import from `@mui/material-nextjs/v16-appRouter`
   (NOT `v13-appRouter` — the package supports v13–v16 export paths; use v16
   for Next.js 16).
+
+## Performance
+
+- Heavy libraries are dynamically imported via `next/dynamic` with `ssr: false`:
+  - **Lottie** (`lottie-react`) — loaded only when animations are visible.
+  - **EmojiPicker** (`emoji-picker-react`) — loaded only when picker opens.
+  - **Swiper** (`swiper/react` + modules + CSS) — loaded only when MediaViewer opens.
+  - **JSZip** + **browser-image-compression** — loaded only during bulk download/compress.
+- `browserslist` in `package.json` targets modern browsers (Chrome 100+, Firefox 100+,
+  Safari 15+, Edge 100+) to avoid transpiling baseline features.
+- Preconnect to external origins (Google Fonts, cdn.jsdelivr.net, API server)
+  is configured in `app/layout.tsx`.
+- **Server config**: The production backend (nginx/CDN) should enable HTTP/2 or
+  HTTP/3 for multiplexed asset delivery. This is a server config, not a Next.js
+  code change.
 

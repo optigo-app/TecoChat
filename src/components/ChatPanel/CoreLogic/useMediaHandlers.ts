@@ -48,27 +48,60 @@ export function useMediaHandlers({
 
   const buildMediaFileItems = useCallback(
     async (files: File[]): Promise<MediaFileItem[]> => {
-      return Promise.all(
-        files.map(async (file) => {
-          const dim = await getMediaDimensions(file);
-          if (dim) {
-            (file as File & { width?: number; height?: number }).width = dim.width;
-            (file as File & { width?: number; height?: number }).height = dim.height;
-          }
-          return {
-            file,
-            preview: URL.createObjectURL(file),
-            type: file.type.startsWith("image/")
-              ? "image"
-              : file.type.startsWith("video/")
-              ? "video"
-              : "file",
-            name: file.name,
-            size: file.size,
-            ...(dim ? { width: dim.width, height: dim.height } : {}),
+      // Phase 1: Create preview URLs and basic file items synchronously (fast)
+      const items = files.map((file) => ({
+        file,
+        preview: URL.createObjectURL(file),
+        type: file.type.startsWith("image/")
+          ? "image"
+          : file.type.startsWith("video/")
+          ? "video"
+          : "file",
+        name: file.name,
+        size: file.size,
+      }));
+
+      // Phase 2: Get dimensions lazily — only for images/videos, and don't block the UI
+      // Use requestIdleCallback to defer dimension loading until the browser is idle
+      const getDims = (file: File): Promise<{ width: number; height: number } | null> => {
+        return new Promise((resolve) => {
+          const done = (dim: { width: number; height: number } | null) => {
+            if (dim) {
+              (file as File & { width?: number; height?: number }).width = dim.width;
+              (file as File & { width?: number; height?: number }).height = dim.height;
+            }
+            resolve(dim);
           };
+          if (typeof requestIdleCallback !== "undefined") {
+            requestIdleCallback(() => done(getMediaDimensionsSync(file)));
+          } else {
+            setTimeout(() => done(getMediaDimensionsSync(file)), 0);
+          }
+        });
+      };
+
+      // Lightweight synchronous dimension check (no async Image load)
+      function getMediaDimensionsSync(file: File): { width: number; height: number } | null {
+        // For images, we can get dimensions from the File object if available
+        const withDim = file as File & { width?: number; height?: number };
+        if (withDim.width && withDim.height) return { width: withDim.width, height: withDim.height };
+        return null;
+      }
+
+      // Load dimensions in parallel without blocking the drop handler
+      Promise.all(
+        files.map(async (file, i) => {
+          if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
+            const dim = await getMediaDimensions(file);
+            if (dim) {
+              (items[i] as MediaFileItem & { width?: number; height?: number }).width = dim.width;
+              (items[i] as MediaFileItem & { height?: number }).height = dim.height;
+            }
+          }
         })
       );
+
+      return items as MediaFileItem[];
     },
     []
   );
@@ -84,6 +117,7 @@ export function useMediaHandlers({
       if (skippedTotal.length > 0) showToast("Total selection exceeds 100MB.", "error");
       if (!acceptedFiles.length) return;
 
+      // Build media file items — now fast (URLs created sync, dimensions loaded async)
       const newMediaFiles = await buildMediaFileItems(acceptedFiles);
 
       // If there are already media files and no explicit mode, ask the user

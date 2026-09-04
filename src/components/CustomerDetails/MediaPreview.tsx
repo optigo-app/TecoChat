@@ -81,7 +81,7 @@ const MediaPreview = ({ mediaItems, onClick, onMediaClick }: MediaPreviewProps) 
             >
               <img
                 src={img.src as string}
-                alt=""
+                alt={(img.name as string) || "Media preview"}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             </div>

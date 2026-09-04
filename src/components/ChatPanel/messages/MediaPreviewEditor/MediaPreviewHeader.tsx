@@ -13,28 +13,36 @@ import {
   Circle,
   Minus,
   MoveUpRight,
-  Grid,
+  Aperture,
   Smile,
-  Keyboard,
   Check,
   Copy,
   Download,
   Trash2,
+  RotateCcw,
 } from "lucide-react";
 import type { ToolMode, ImageEditState, MediaFileItem } from "./types";
 /** Shared styling for the image-editing buttons in the preview header. */
 function MediaPreviewToolButton({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
   const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
   return (
     <Tooltip title={label} arrow>
       <IconButton
         size="small"
         onClick={onClick}
         sx={{
-          color: active ? theme.palette.primary.main : theme.palette.text.primary,
-          bgcolor: active ? alpha(theme.palette.primary.main, 0.15) : "transparent",
-          borderRadius: "10px",
-          p: "7px",
+          color: active ? theme.palette.text.primary : (isDark ? "rgba(255,255,255,0.75)" : "#54656f"),
+          bgcolor: active ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent",
+          borderRadius: "50%",
+          width: 38,
+          height: 38,
+          p: 0,
+          transition: "all 0.15s ease",
+          "&:hover": {
+            bgcolor: active ? (isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)") : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"),
+            color: theme.palette.text.primary,
+          },
         }}
       >
         {children}
@@ -75,9 +83,7 @@ interface MediaPreviewHeaderProps {
   activeShapeType: "rect" | "circle" | "line" | "arrow";
   canUndo: boolean;
   canRedo: boolean;
-  isHd: boolean;
   copied: boolean;
-  showKeyboardHelp: boolean;
   selectedElementId: string | null;
   canvasEmojiAnchorEl: HTMLElement | null;
   sizeText: string;
@@ -93,12 +99,12 @@ interface MediaPreviewHeaderProps {
   onToggleTool: (tool: ToolMode) => void;
   onOpenShapes: (el: HTMLElement) => void;
   onOpenCanvasEmoji: (el: HTMLElement) => void;
-  onToggleKeyboardHelp: () => void;
-  onToggleHd: () => void;
   onDone: () => void;
   onCopy: () => void;
   onDownload: () => void;
   onDeleteOrRemove: () => void;
+  onResetAll: () => void;
+  hasEdits: boolean;
 }
 
 /** Top header toolbar with close, undo/redo, image editing tools, and right-side controls. */
@@ -111,9 +117,7 @@ export default function MediaPreviewHeader({
   activeShapeType,
   canUndo,
   canRedo,
-  isHd,
   copied,
-  showKeyboardHelp,
   selectedElementId,
   canvasEmojiAnchorEl,
   sizeText,
@@ -129,12 +133,12 @@ export default function MediaPreviewHeader({
   onToggleTool,
   onOpenShapes,
   onOpenCanvasEmoji,
-  onToggleKeyboardHelp,
-  onToggleHd,
   onDone,
   onCopy,
   onDownload,
   onDeleteOrRemove,
+  onResetAll,
+  hasEdits,
 }: MediaPreviewHeaderProps) {
   const theme = useTheme();
 
@@ -258,10 +262,17 @@ export default function MediaPreviewHeader({
               size="small"
               onClick={(e) => onOpenShapes(e.currentTarget)}
               sx={{
-                color: activeTool === "shapes" ? theme.palette.primary.main : titleColor,
-                bgcolor: activeTool === "shapes" ? alpha(theme.palette.primary.main, 0.15) : "transparent",
-                borderRadius: "10px",
-                p: "7px",
+                color: activeTool === "shapes" ? theme.palette.text.primary : (isDark ? "rgba(255,255,255,0.75)" : "#54656f"),
+                bgcolor: activeTool === "shapes" ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent",
+                borderRadius: "50%",
+                width: 38,
+                height: 38,
+                p: 0,
+                transition: "all 0.15s ease",
+                "&:hover": {
+                  bgcolor: activeTool === "shapes" ? (isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)") : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"),
+                  color: theme.palette.text.primary,
+                },
               }}
             >
               {activeShapeType === "rect" && <Square size={20} />}
@@ -272,7 +283,7 @@ export default function MediaPreviewHeader({
           </Tooltip>
 
           <MediaPreviewToolButton label="Blur (B)" active={activeTool === "blur"} onClick={() => onToggleTool("blur")}>
-            <Grid size={20} />
+            <Aperture size={20} />
           </MediaPreviewToolButton>
 
           {/* Emoji Sticker for Image */}
@@ -281,10 +292,17 @@ export default function MediaPreviewHeader({
               size="small"
               onClick={(e) => onOpenCanvasEmoji(e.currentTarget)}
               sx={{
-                color: canvasEmojiAnchorEl ? theme.palette.primary.main : titleColor,
-                bgcolor: canvasEmojiAnchorEl ? alpha(theme.palette.primary.main, 0.15) : "transparent",
-                borderRadius: "10px",
-                p: "7px",
+                color: canvasEmojiAnchorEl ? theme.palette.text.primary : (isDark ? "rgba(255,255,255,0.75)" : "#54656f"),
+                bgcolor: canvasEmojiAnchorEl ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent",
+                borderRadius: "50%",
+                width: 38,
+                height: 38,
+                p: 0,
+                transition: "all 0.15s ease",
+                "&:hover": {
+                  bgcolor: canvasEmojiAnchorEl ? (isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)") : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"),
+                  color: theme.palette.text.primary,
+                },
               }}
             >
               <Smile size={20} />
@@ -303,77 +321,69 @@ export default function MediaPreviewHeader({
         />
       )}
 
-      {/* Right Controls: Keyboard Help, HD, Done, Copy, Download, Trash */}
+      {/* Right Controls: Reset, Done, Copy, Download, Trash */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {/* Keyboard Shortcuts Help */}
-        <Tooltip title="Keyboard Shortcuts (Ctrl+K)" arrow>
-          <IconButton
-            size="small"
-            onClick={onToggleKeyboardHelp}
-            sx={{
-              color: showKeyboardHelp ? theme.palette.primary.main : titleColor,
-              bgcolor: showKeyboardHelp ? alpha(theme.palette.primary.main, 0.15) : "transparent",
-              borderRadius: "10px",
-              p: "7px",
-            }}
-          >
-            <Keyboard size={20} />
-          </IconButton>
-        </Tooltip>
-
         {isImage && (
           <>
-            {/* HD Quality Toggle */}
-            <Tooltip title={isHd ? "Quality: HD (High Res)" : "Quality: Standard (Press H)"} arrow>
+            {/* Reset all edits — icon + text, before Done */}
+            {hasEdits && (
               <button
-                onClick={onToggleHd}
+                onClick={onResetAll}
                 style={{
-                  height: 30,
-                  padding: "0 8px",
-                  borderRadius: 8,
-                  border: isHd
-                    ? `1.5px solid ${theme.palette.primary.main}`
-                    : `1px solid ${borderColor}`,
-                  background: isHd
-                    ? alpha(theme.palette.primary.main, 0.18)
-                    : isDark
-                    ? "rgba(255,255,255,0.06)"
-                    : "rgba(0,0,0,0.04)",
-                  color: isHd ? theme.palette.primary.main : titleColor,
-                  fontWeight: 700,
-                  fontSize: 11,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 3,
-                }}
-              >
-                HD
-              </button>
-            </Tooltip>
-
-            {/* Done Button (when in tool mode) */}
-            {activeTool !== "none" && (
-              <button
-                onClick={onDone}
-                style={{
-                  height: 30,
+                  height: 32,
                   padding: "0 10px",
                   borderRadius: 8,
                   border: "none",
-                  background: theme.palette.primary.main,
-                  color: "#fff",
+                  background: "transparent",
+                  color: isDark ? "rgba(255,255,255,0.6)" : "#54656f",
                   fontWeight: 600,
-                  fontSize: 12,
+                  fontSize: 13,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
+                  gap: 5,
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
+                  e.currentTarget.style.color = theme.palette.warning.main;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.color = isDark ? "rgba(255,255,255,0.6)" : "#54656f";
                 }}
               >
-                <Check size={14} /> Done
+                <RotateCcw size={16} />
+                Reset
               </button>
             )}
+
+            {/* Done Button (WhatsApp Web styled text button) */}
+            <button
+              onClick={onDone}
+              style={{
+                height: 32,
+                padding: "0 12px",
+                borderRadius: 8,
+                border: "none",
+                background: "transparent",
+                color: activeTool !== "none" ? theme.palette.text.primary : (isDark ? "rgba(255,255,255,0.6)" : "#54656f"),
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              Done
+            </button>
 
             {/* Copy edited image to clipboard */}
             <Tooltip title={copied ? "Copied!" : "Copy to clipboard (Ctrl+C)"} arrow>

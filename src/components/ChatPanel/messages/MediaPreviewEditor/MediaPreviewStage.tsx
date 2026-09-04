@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState, useLayoutEffect } from "react";
-import { alpha, Skeleton, useTheme } from "@mui/material";
-import { ChevronLeft, ChevronRight, FileText, Trash2 } from "lucide-react";
+import { alpha, Skeleton, Popover, useTheme } from "@mui/material";
+import { ChevronLeft, ChevronRight, FileText, Trash2, Info } from "lucide-react";
 import EmojiPickerPopper from "../../input/EmojiPickerPopper";
+import { KEYBOARD_SHORTCUTS } from "./constants";
 import type { MediaFileItem, ImageEditState, ToolMode, TextElement, CropRect, FilterType } from "./types";
 import { getFilterCssString } from "./constants";
 
@@ -42,13 +43,15 @@ interface MediaPreviewStageProps {
     isDown: boolean;
     startPoint: { x: number; y: number };
     currentPoint: { x: number; y: number };
-    dragType: "draw" | "shape" | "blur" | "move-element" | "crop-handle" | "crop-move" | "shape-handle" | "blur-move" | "blur-resize" | null;
+    dragType: "draw" | "shape" | "blur" | "move-element" | "crop-handle" | "crop-move" | "shape-handle" | "blur-move" | "blur-resize" | "emoji-resize" | null;
     elementId?: string;
     cropHandle?: string;
     blurHandle?: string;
     initialCrop?: CropRect;
     initialShape?: { start: { x: number; y: number }; end: { x: number; y: number } };
     initialBlur?: { start: { x: number; y: number }; end: { x: number; y: number } };
+    initialEmojiSize?: number;
+    initialPos?: { x: number; y: number };
     tempPath?: Array<{ x: number; y: number }>;
   }>;
   onPrev: () => void;
@@ -125,6 +128,7 @@ export default function MediaPreviewStage({
   const theme = useTheme();
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [textEmojiAnchorEl, setTextEmojiAnchorEl] = useState<HTMLElement | null>(null);
+  const [infoAnchorEl, setInfoAnchorEl] = useState<HTMLElement | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const textMeasureRef = useRef<HTMLSpanElement | null>(null);
   const blurTimeoutRef = useRef<number | null>(null);
@@ -237,6 +241,96 @@ export default function MediaPreviewStage({
         </button>
       )}
 
+      {/* Info icon — top right, shows keyboard shortcuts on hover */}
+      <button
+        onClick={(e) => setInfoAnchorEl(e.currentTarget)}
+        aria-label="Keyboard shortcuts"
+        style={{
+          position: "absolute",
+          right: 16,
+          top: 16,
+          width: 36,
+          height: 36,
+          borderRadius: "50%",
+          border: `1px solid ${borderColor}`,
+          background: isDark ? "rgba(30,30,42,0.85)" : "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          color: subtitleColor,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          zIndex: 30,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "scale(1.1)";
+          e.currentTarget.style.color = theme.palette.primary.main;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.color = subtitleColor;
+        }}
+      >
+        <Info size={18} />
+      </button>
+      <Popover
+        open={Boolean(infoAnchorEl)}
+        anchorEl={infoAnchorEl}
+        onClose={() => setInfoAnchorEl(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: "14px",
+              p: 1.5,
+              bgcolor: isDark ? "rgba(26,26,38,0.98)" : "#fff",
+              border: `1px solid ${borderColor}`,
+              boxShadow: "0 12px 36px rgba(0,0,0,0.28)",
+              maxWidth: 320,
+            },
+          },
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700, color: titleColor, marginBottom: 10 }}>
+          <Info size={18} color={theme.palette.primary.main} />
+          Keyboard Shortcuts
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {KEYBOARD_SHORTCUTS.map((sc) => (
+            <div
+              key={sc.key}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "5px 10px",
+                borderRadius: 8,
+                background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+              }}
+            >
+              <span style={{ fontSize: 12, color: subtitleColor }}>{sc.desc}</span>
+              <span
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "2px 7px",
+                  borderRadius: 5,
+                  background: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+                  color: titleColor,
+                }}
+              >
+                {sc.key}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Popover>
+
       {/* Stage Container */}
       <div
         ref={mediaStageRef}
@@ -333,9 +427,13 @@ export default function MediaPreviewStage({
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     setSelectedElementId(item.id);
+                    // Record history snapshot before drag starts (for undo)
+                    updateCurrentState((prev) => prev, true);
                     pointerDragRef.current.isDown = true;
                     pointerDragRef.current.dragType = "move-element";
                     pointerDragRef.current.elementId = item.id;
+                    pointerDragRef.current.startPoint = getNormalizedPoint(e) || { x: 0, y: 0 };
+                    pointerDragRef.current.initialPos = { x: item.x, y: item.y };
                     e.currentTarget.setPointerCapture(e.pointerId);
                   }}
                   style={{
@@ -344,12 +442,14 @@ export default function MediaPreviewStage({
                     top: `${item.y * 100}%`,
                     transform: "translate(-50%, -50%)",
                     color: item.color,
-                    // When editing, make the element invisible so only the
-                    // unified white input shows at the same position.
-                    background: isEditing ? "transparent" : item.bgMode === "none"
-                        ? "transparent"
-                        : item.color === "#ffffff" ? "#111827" : "#ffffff",
-                    padding: "4px 10px",
+                    background: isEditing
+                      ? "transparent"
+                      : item.bgMode === "none"
+                      ? "transparent"
+                      : item.bgMode === "solid"
+                      ? item.color === "#ffffff" ? "#111827" : "#ffffff"
+                      : "rgba(255,255,255,0.85)",
+                    padding: "6px 14px",
                     borderRadius: 8,
                     fontSize: 20,
                     fontFamily:
@@ -362,15 +462,16 @@ export default function MediaPreviewStage({
                         : item.fontFamily === "impact"
                         ? "Impact, sans-serif"
                         : "sans-serif",
-                    fontWeight: 450,
+                    fontWeight: 500,
                     cursor: "move",
-                    outline: isSel && !isEditing ? `2px dashed ${theme.palette.primary.main}` : "none",
-                    boxShadow: isEditing ? "none" : item.bgMode === "none" ? "0 1px 4px rgba(0,0,0,0.8)" : "none",
+                    outline: isSel && !isEditing ? `2px solid ${theme.palette.primary.main}` : "none",
+                    boxShadow: isEditing ? "none" : item.bgMode === "none" ? "0 1px 4px rgba(0,0,0,0.8)" : "0 2px 8px rgba(0,0,0,0.18)",
                     userSelect: "none",
                     zIndex: 10,
                     whiteSpace: "pre-wrap",
                     textAlign: "center",
                     opacity: isEditing ? 0 : 1,
+                    transition: "outline 0.1s ease",
                   }}
                 >
                   {isEditing ? "" : item.text}
@@ -386,16 +487,16 @@ export default function MediaPreviewStage({
               const x2 = Math.max(region.start.x, region.end.x);
               const y2 = Math.max(region.start.y, region.end.y);
               const blurId = `blur_${idx}`;
-              const isSel = selectedBlurId === blurId;
+              const isSel = selectedBlurId === blurId || (!selectedBlurId && idx === 0);
               const handles: Array<{ pos: string; cursor: string; style: React.CSSProperties }> = [
-                { pos: "nw", cursor: "nwse-resize", style: { top: -7, left: -7 } },
-                { pos: "n",  cursor: "ns-resize",   style: { top: -7, left: "50%", transform: "translateX(-50%)" } },
-                { pos: "ne", cursor: "nesw-resize", style: { top: -7, right: -7 } },
-                { pos: "e",  cursor: "ew-resize",   style: { top: "50%", right: -7, transform: "translateY(-50%)" } },
-                { pos: "se", cursor: "nwse-resize", style: { bottom: -7, right: -7 } },
-                { pos: "s",  cursor: "ns-resize",   style: { bottom: -7, left: "50%", transform: "translateX(-50%)" } },
-                { pos: "sw", cursor: "nesw-resize", style: { bottom: -7, left: -7 } },
-                { pos: "w",  cursor: "ew-resize",   style: { top: "50%", left: -7, transform: "translateY(-50%)" } },
+                { pos: "nw", cursor: "nwse-resize", style: { top: -5, left: -5 } },
+                { pos: "n",  cursor: "ns-resize",   style: { top: -5, left: "50%", transform: "translateX(-50%)" } },
+                { pos: "ne", cursor: "nesw-resize", style: { top: -5, right: -5 } },
+                { pos: "e",  cursor: "ew-resize",   style: { top: "50%", right: -5, transform: "translateY(-50%)" } },
+                { pos: "se", cursor: "nwse-resize", style: { bottom: -5, right: -5 } },
+                { pos: "s",  cursor: "ns-resize",   style: { bottom: -5, left: "50%", transform: "translateX(-50%)" } },
+                { pos: "sw", cursor: "nesw-resize", style: { bottom: -5, left: -5 } },
+                { pos: "w",  cursor: "ew-resize",   style: { top: "50%", left: -5, transform: "translateY(-50%)" } },
               ];
               return (
                 <div
@@ -422,14 +523,13 @@ export default function MediaPreviewStage({
                     top: `${y1 * 100}%`,
                     width: `${(x2 - x1) * 100}%`,
                     height: `${(y2 - y1) * 100}%`,
-                    border: `2px solid ${isSel ? theme.palette.primary.main : alpha(theme.palette.primary.main, 0.5)}`,
-                    boxShadow: isSel ? `0 0 0 1px ${theme.palette.primary.main}` : "none",
+                    border: `1.5px solid ${theme.palette.primary.main}`,
                     cursor: "move",
                     zIndex: 12,
                     boxSizing: "border-box",
                   }}
                 >
-                  {/* Resize handles — only show when selected */}
+                  {/* Circular resize handles — 4 corners + 4 mid-edges matching WhatsApp */}
                   {isSel && handles.map((h) => (
                     <div
                       key={h.pos}
@@ -444,14 +544,15 @@ export default function MediaPreviewStage({
                       }}
                       style={{
                         position: "absolute",
-                        width: 14,
-                        height: 14,
-                        backgroundColor: "#fff",
-                        border: `2px solid ${theme.palette.primary.main}`,
-                        borderRadius: 3,
+                        width: 10,
+                        height: 10,
+                        backgroundColor: "#ffffff",
+                        border: `1.5px solid ${theme.palette.primary.main}`,
+                        borderRadius: "50%",
                         ...h.style,
                         cursor: h.cursor,
                         zIndex: 14,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
                       }}
                     />
                   ))}
@@ -494,9 +595,10 @@ export default function MediaPreviewStage({
               );
             })}
 
-            {/* Interactive Draggable Emojis */}
+            {/* Interactive Draggable & Resizable Emojis */}
             {currentState.emojis.map((item) => {
               const isSel = selectedElementId === item.id;
+              const emojiSize = item.size || 48;
               return (
                 <div
                   key={item.id}
@@ -507,24 +609,96 @@ export default function MediaPreviewStage({
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     setSelectedElementId(item.id);
+                    // Record history snapshot before drag starts (for undo)
+                    updateCurrentState((prev) => prev, true);
                     pointerDragRef.current.isDown = true;
                     pointerDragRef.current.dragType = "move-element";
                     pointerDragRef.current.elementId = item.id;
-                    e.currentTarget.setPointerCapture(e.pointerId);
+                    pointerDragRef.current.startPoint = getNormalizedPoint(e) || { x: 0, y: 0 };
+                    pointerDragRef.current.initialPos = { x: item.x, y: item.y };
                   }}
                   style={{
                     position: "absolute",
                     left: `${item.x * 100}%`,
                     top: `${item.y * 100}%`,
                     transform: "translate(-50%, -50%)",
-                    fontSize: item.size || 48,
+                    fontSize: emojiSize,
+                    lineHeight: 1,
                     cursor: "move",
-                    outline: isSel ? `2px dashed ${theme.palette.primary.main}` : "none",
                     userSelect: "none",
                     zIndex: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: isSel ? 6 : 0,
+                    borderRadius: 8,
+                    border: isSel ? `2px dashed ${theme.palette.primary.main}` : "2px solid transparent",
+                    transition: isSel ? "none" : "border-color 0.15s ease, padding 0.15s ease",
                   }}
                 >
-                  {item.emoji}
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.emoji}
+                      crossOrigin="anonymous"
+                      draggable={false}
+                      style={{ width: emojiSize, height: emojiSize, objectFit: "contain", pointerEvents: "none" }}
+                      onError={(e) => {
+                        // Fallback to text emoji if image fails to load
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                        const parent = e.currentTarget.parentElement;
+                        if (parent) parent.setAttribute("data-emoji-fallback", item.emoji);
+                      }}
+                    />
+                  ) : (
+                    item.emoji
+                  )}
+                  {/* Text fallback when image fails */}
+                  {item.imageUrl && (
+                    <span style={{ fontSize: emojiSize, lineHeight: 1, display: "none" }} data-emoji-text>
+                      {item.emoji}
+                    </span>
+                  )}
+                  {/* Resize handle — bottom-right corner, drag to scale */}
+                  {isSel && (
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        const pt = getNormalizedPoint(e);
+                        if (!pt) return;
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        // Record history snapshot before resize starts (for undo)
+                        updateCurrentState((prev) => prev, true);
+                        setSelectedElementId(item.id);
+                        pointerDragRef.current.isDown = true;
+                        pointerDragRef.current.dragType = "emoji-resize";
+                        pointerDragRef.current.elementId = item.id;
+                        pointerDragRef.current.startPoint = pt;
+                        pointerDragRef.current.initialEmojiSize = emojiSize;
+                      }}
+                      style={{
+                        position: "absolute",
+                        bottom: -10,
+                        right: -10,
+                        width: 20,
+                        height: 20,
+                        backgroundColor: "#fff",
+                        border: `2px solid ${theme.palette.primary.main}`,
+                        borderRadius: 4,
+                        cursor: "nwse-resize",
+                        zIndex: 14,
+                        touchAction: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+                      }}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M2 8L8 2M4 8L8 4M6 8L8 6" stroke={theme.palette.primary.main} strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -555,6 +729,8 @@ export default function MediaPreviewStage({
                     const pt = getNormalizedPoint(e);
                     if (!pt) return;
                     e.currentTarget.setPointerCapture(e.pointerId);
+                    // Record history snapshot before drag starts (for undo)
+                    updateCurrentState((prev) => prev, true);
                     setSelectedElementId(shape.id);
                     pointerDragRef.current.isDown = true;
                     pointerDragRef.current.dragType = "move-element";
@@ -583,6 +759,8 @@ export default function MediaPreviewStage({
                         const pt = getNormalizedPoint(e);
                         if (!pt) return;
                         e.currentTarget.setPointerCapture(e.pointerId);
+                        // Record history snapshot before resize starts (for undo)
+                        updateCurrentState((prev) => prev, true);
                         setSelectedElementId(shape.id);
                         pointerDragRef.current.isDown = true;
                         pointerDragRef.current.dragType = "shape-handle";
@@ -847,6 +1025,7 @@ export default function MediaPreviewStage({
                                 : t
                             ),
                           }));
+                          setSelectedElementId(editingTextId);
                           setEditingTextId(null);
                         } else {
                           const newId = `txt_${Date.now()}`;
@@ -866,11 +1045,11 @@ export default function MediaPreviewStage({
                               },
                             ],
                           }));
+                          setSelectedElementId(newId);
                         }
                       }
                       setTextInputActive(false);
                       setTextInputValue("");
-                      setActiveTool("none");
                     } else if (e.key === "Escape") {
                       e.preventDefault();
                       e.stopPropagation();
@@ -895,6 +1074,7 @@ export default function MediaPreviewStage({
                                 : t
                             ),
                           }));
+                          setSelectedElementId(editingTextId);
                           setEditingTextId(null);
                         } else {
                           const newId = `txt_${Date.now()}`;
@@ -914,18 +1094,18 @@ export default function MediaPreviewStage({
                               },
                             ],
                           }));
+                          setSelectedElementId(newId);
                         }
                       }
                       setTextInputActive(false);
                       setTextInputValue("");
-                      setActiveTool("none");
-                    }, 150);
+                    }, 180);
                   }}
                   style={{
                     background: "#ffffff",
                     border: `2px solid ${theme.palette.primary.main}`,
-                    borderRadius: 6,
-                    color: activeColor,
+                    borderRadius: 8,
+                    color: activeColor === "#ffffff" ? "#111827" : activeColor,
                     fontSize: 20,
                     fontFamily:
                       activeFontFamily === "serif" ? "Georgia, serif"
@@ -933,13 +1113,13 @@ export default function MediaPreviewStage({
                       : activeFontFamily === "cursive" ? "Pacifico, cursive"
                       : activeFontFamily === "impact" ? "Impact, sans-serif"
                       : "sans-serif",
-                    fontWeight: 450,
-                    padding: "4px 10px",
+                    fontWeight: 500,
+                    padding: "6px 14px",
                     outline: "none",
                     width: inputWidth,
                     maxWidth: "80vw",
                     textAlign: "center",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
+                    boxShadow: "0 2px 14px rgba(0,0,0,0.25)",
                     resize: "none",
                     overflow: "hidden",
                     whiteSpace: "nowrap",
@@ -1019,21 +1199,49 @@ export default function MediaPreviewStage({
               textAlign: "center",
               color: subtitleColor,
               padding: 20,
+              width: "100%",
+              maxWidth: 600,
             }}
           >
-            <div style={{ marginBottom: 16 }}>
-              {iconUrl ? (
-                <img src={iconUrl} alt="" style={{ width: 80, height: 80, objectFit: "contain" }} />
-              ) : (
-                <FileText size={80} color={theme.palette.primary.main} />
-              )}
-            </div>
-            <div style={{ fontWeight: 600, fontSize: 16, color: titleColor, marginBottom: 4 }}>
-              {currentMedia.name}
-            </div>
-            <div style={{ fontSize: 13, color: subtitleColor }}>
-              {sizeText} · {extText}
-            </div>
+            {/* PDF preview — show embedded first page like WhatsApp */}
+            {extText === "pdf" ? (
+              <div style={{ width: "100%", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                <iframe
+                  src={getMediaUrl(currentMedia)}
+                  title={currentMedia.name}
+                  style={{
+                    width: "100%",
+                    flex: 1,
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: 12,
+                    background: "#fff",
+                    minHeight: 0,
+                  }}
+                />
+                <div style={{ marginTop: 12, fontWeight: 600, fontSize: 14, color: titleColor }}>
+                  {currentMedia.name}
+                </div>
+                <div style={{ fontSize: 12, color: subtitleColor }}>
+                  {sizeText} · {extText.toUpperCase()}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  {iconUrl ? (
+                    <img src={iconUrl} alt="" style={{ width: 80, height: 80, objectFit: "contain" }} />
+                  ) : (
+                    <FileText size={80} color={theme.palette.primary.main} />
+                  )}
+                </div>
+                <div style={{ fontWeight: 600, fontSize: 16, color: titleColor, marginBottom: 4 }}>
+                  {currentMedia.name}
+                </div>
+                <div style={{ fontSize: 13, color: subtitleColor }}>
+                  {sizeText} · {extText}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -98,6 +98,9 @@ export function useKeyboardShortcuts({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      // Skip all shortcuts when a modal/dialog is open (confirmation, etc.)
+      if (document.querySelector('[aria-modal="true"]')) return;
+
       const isInput =
         document.activeElement?.tagName === "INPUT" ||
         document.activeElement?.tagName === "TEXTAREA" ||
@@ -159,8 +162,6 @@ export function useKeyboardShortcuts({
         setSelectedElementId(null);
       } else if (key === "e") {
         setCanvasEmojiAnchorEl(mediaStageRef.current);
-      } else if (key === "h") {
-        updateCurrentState((prev) => ({ ...prev, isHd: !prev.isHd }));
       } else if ((e.ctrlKey || e.metaKey) && key === "c" && !e.shiftKey) {
         // Copy current edited image to clipboard — only when not in an input
         // and no text selection to copy. Prevent default to avoid copying

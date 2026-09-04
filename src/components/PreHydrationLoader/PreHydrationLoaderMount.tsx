@@ -18,11 +18,10 @@ export default function PreHydrationLoaderMount() {
   const [showLoader, setShowLoader] = useState(true);
 
   useEffect(() => {
-    // Keep the loader visible briefly after hydration so the user sees
-    // the animation, then fade it out.
+    // Fade out the loader shortly after hydration — keep it brief to avoid white screen
     const fadeTimer = setTimeout(() => {
       setShowLoader(false);
-    }, 300);
+    }, 150);
 
     // Remove the raw background after the fade-out transition completes
     const removeTimer = setTimeout(() => {
@@ -30,7 +29,7 @@ export default function PreHydrationLoaderMount() {
       if (bg) {
         bg.classList.add("fade-out");
       }
-    }, 700);
+    }, 400);
 
     // Fully remove the raw background from the DOM
     const cleanupTimer = setTimeout(() => {
@@ -38,7 +37,7 @@ export default function PreHydrationLoaderMount() {
       if (bg && bg.parentNode) {
         bg.parentNode.removeChild(bg);
       }
-    }, 1200);
+    }, 700);
 
     return () => {
       clearTimeout(fadeTimer);

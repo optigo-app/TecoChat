@@ -2,6 +2,7 @@
 
 import { Menu } from "lucide-react";
 import { IconButton } from "@mui/material";
+import Image from "next/image";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
 import { ProfileAvatar } from "@/src/components/ProfileAvatar/ProfileAvatar";
 import { useLoginContext } from "@/src/context/LoginData";
@@ -32,13 +33,14 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
             </IconButton>
           )}
           <div className="header_brand">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src="/icons/logo.png"
-              alt="logo"
+              alt="TeCoChat logo"
+              width={120}
+              height={36}
               className="header_left_logo"
-              loading="lazy"
-              draggable="false"
+              draggable={false}
+              priority
             />
           </div>
         </div>

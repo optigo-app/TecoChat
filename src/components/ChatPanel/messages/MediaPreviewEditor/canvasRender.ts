@@ -205,8 +205,36 @@ export function renderTextOnCanvas(
   ctx.shadowBlur = 0;
 }
 
+/** Load an emoji image, with a timeout fallback. */
+function loadEmojiImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        img.onload = null;
+        img.onerror = null;
+        resolve(null);
+      }
+    }, 3000);
+    const done = (result: HTMLImageElement | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      img.onload = null;
+      img.onerror = null;
+      resolve(result);
+    };
+    img.onload = () => done(img);
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+}
+
 /** Render an emoji sticker onto an export canvas. */
-export function renderEmojiOnCanvas(
+export async function renderEmojiOnCanvas(
   ctx: CanvasRenderingContext2D,
   emoji: EmojiElement,
   imageW: number,
@@ -215,10 +243,21 @@ export function renderEmojiOnCanvas(
   const x = emoji.x * imageW;
   const y = emoji.y * imageH;
   const size = Math.max(26, Math.round(emoji.size * (imageW / 800)));
+  if (emoji.imageUrl) {
+    const img = await loadEmojiImage(emoji.imageUrl);
+    if (img) {
+      ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+      return;
+    }
+  }
+  // Fallback: render as text emoji
+  ctx.save();
+  ctx.fillStyle = "#000";
   ctx.font = `${size}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(emoji.emoji, x, y);
+  ctx.restore();
 }
 
 /**
@@ -274,7 +313,7 @@ export async function renderEditedImage(
     const cropW = Math.max(1, Math.round(crop.width * rotW));
     const cropH = Math.max(1, Math.round(crop.height * rotH));
 
-    const maxDim = state.isHd ? 2560 : 1600;
+    const maxDim = 2560;
     let outW = cropW;
     let outH = cropH;
     if (outW > maxDim || outH > maxDim) {
@@ -295,12 +334,12 @@ export async function renderEditedImage(
     finalCtx.imageSmoothingQuality = "high";
 
     finalCtx.drawImage(rotCanvas, cropX, cropY, cropW, cropH, 0, 0, outW, outH);
-    drawAnnotations(finalCtx, state, outW, outH);
-    return await canvasToMediaFile(finalCanvas, item, outW, outH, state.isHd);
+    await drawAnnotations(finalCtx, state, outW, outH);
+    return await canvasToMediaFile(finalCanvas, item, outW, outH);
   }
 
   // No crop — use full rotated image
-  const maxDim = state.isHd ? 2560 : 1600;
+  const maxDim = 2560;
   let outW = rotW;
   let outH = rotH;
   if (outW > maxDim || outH > maxDim) {
@@ -322,12 +361,12 @@ export async function renderEditedImage(
 
   finalCtx.drawImage(rotCanvas, 0, 0, rotW, rotH, 0, 0, outW, outH);
 
-  drawAnnotations(finalCtx, state, outW, outH);
-  return await canvasToMediaFile(finalCanvas, item, outW, outH, state.isHd);
+  await drawAnnotations(finalCtx, state, outW, outH);
+  return await canvasToMediaFile(finalCanvas, item, outW, outH);
 }
 
 /** Draw all annotations (blur, drawings, shapes, text, emoji) onto a canvas context. */
-function drawAnnotations(ctx: CanvasRenderingContext2D, state: ImageEditState, outW: number, outH: number) {
+async function drawAnnotations(ctx: CanvasRenderingContext2D, state: ImageEditState, outW: number, outH: number) {
   // Mosaic blur — uses per-region intensity for pixelate block size
   for (const blur of state.blurRegions) {
     const intensity = blur.intensity ?? 50; // default 50 if not set
@@ -337,7 +376,17 @@ function drawAnnotations(ctx: CanvasRenderingContext2D, state: ImageEditState, o
       const by = Math.min(blur.start.y, blur.end.y) * outH;
       const bw = Math.abs(blur.end.x - blur.start.x) * outW;
       const bh = Math.abs(blur.end.y - blur.start.y) * outH;
-      applyPixelateBox(ctx, bx, by, bw, bh, blockSize);
+      if (blur.style === "smooth") {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(bx, by, bw, bh);
+        ctx.clip();
+        ctx.filter = `blur(${Math.max(4, Math.round(intensity * 0.35))}px)`;
+        ctx.drawImage(ctx.canvas, 0, 0);
+        ctx.restore();
+      } else {
+        applyPixelateBox(ctx, bx, by, bw, bh, blockSize);
+      }
     } else if (blur.type === "path" && blur.points) {
       const bSize = (blur.size || 24) * (outW / 800);
       applyPixelatePath(ctx, blur.points, outW, outH, bSize, Math.max(4, Math.round(bSize / 2.5)));
@@ -423,16 +472,16 @@ function drawAnnotations(ctx: CanvasRenderingContext2D, state: ImageEditState, o
 
   // Emoji stickers
   for (const emoji of state.emojis) {
-    renderEmojiOnCanvas(ctx, emoji, outW, outH);
+    await renderEmojiOnCanvas(ctx, emoji, outW, outH);
   }
 }
 
 /** Convert a canvas to a MediaFileItem with a new File and preview URL. */
-async function canvasToMediaFile(canvas: HTMLCanvasElement, item: MediaFileItem, outW: number, outH: number, isHd?: boolean): Promise<MediaFileItem> {
+async function canvasToMediaFile(canvas: HTMLCanvasElement, item: MediaFileItem, outW: number, outH: number): Promise<MediaFileItem> {
   const isPng = item.file?.type === "image/png" || (item.name || "").toLowerCase().endsWith(".png");
   const mimeType = isPng ? "image/png" : "image/jpeg";
   const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, mimeType, isHd ? 0.95 : 0.88);
+    canvas.toBlob(resolve, mimeType, 0.95);
   });
 
   if (!blob) throw new Error("Canvas export produced null blob");
@@ -467,7 +516,6 @@ export function hasImageEdits(state: ImageEditState | undefined): state is Image
     state.emojis.length > 0 ||
     state.rotation !== 0 ||
     state.crop !== null ||
-    state.filter !== "none" ||
-    state.isHd
+    state.filter !== "none"
   );
 }

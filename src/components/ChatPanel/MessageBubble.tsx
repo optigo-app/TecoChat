@@ -370,7 +370,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
             }}
             sx={{
               position: "absolute",
-              bottom: -14,
+              bottom: -24,
               display: "flex",
               alignItems: "center",
               padding: "2px 8px",
@@ -381,7 +381,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
               zIndex: 10,
               cursor: "pointer",
               gap: "2px",
-              ...(isOutgoing ? { right: 12 } : { left: 12 }),
+              ...(isOutgoing ? { right: 25 } : { left: 12 }),
             }}
           >
             {(() => {

@@ -230,20 +230,22 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
         return { ...state, data: next };
       }
 
-      // New message: insert in chronological order. Sorting (rather than
-      // blindly appending) keeps the list ordered when a socket message
-      // arrives with a DateTime earlier than the last visible message
-      // (clock skew, delayed delivery, or a back-dated message). Without
-      // this, the date-separator flattening can emit two headers for the
-      // same day, producing duplicate React keys.
-      return {
-        ...state,
-        data: [...state.data, incoming as ChatMessage].sort(
-          (a, b) =>
-            new Date(a.DateTime || 0).getTime() -
-            new Date(b.DateTime || 0).getTime()
-        ),
-      };
+      // New message: binary-insert in chronological order instead of full sort.
+      // This keeps the list ordered for clock skew / delayed delivery without
+      // the O(n log n) cost of sorting the entire array on every message.
+      const newArr = [...state.data];
+      const newMsg = incoming as ChatMessage;
+      const newTime = new Date(newMsg.DateTime || 0).getTime();
+      // Binary search for insertion point
+      let lo = 0, hi = newArr.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        const midTime = new Date(newArr[mid].DateTime || 0).getTime();
+        if (midTime < newTime) lo = mid + 1;
+        else hi = mid;
+      }
+      newArr.splice(lo, 0, newMsg);
+      return { ...state, data: newArr };
     }
 
     case MSG.UPDATE_STATUS: {

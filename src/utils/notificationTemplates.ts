@@ -127,6 +127,9 @@ export const notify = (data: any, templateId: string, user?: any): void => {
     return;
   }
 
+  // Extract isOpenConversation from data (passed by caller)
+  const isOpenConversation = Boolean(data?.isOpenConversation);
+
   // Dedup check — prevent the same event from firing twice
   const key = getNotificationKey(templateId, data);
   const now = Date.now();
@@ -191,6 +194,7 @@ export const notify = (data: any, templateId: string, user?: any): void => {
         showBrowserNotification({
           ...notificationOptions,
           body,
+          isOpenConversation,
           data: {
             ...data,
             type: templateId,
@@ -207,6 +211,7 @@ export const notify = (data: any, templateId: string, user?: any): void => {
 
   showBrowserNotification({
     ...notificationOptions,
+    isOpenConversation,
     data: {
       ...data,
       type: templateId,

@@ -2,6 +2,7 @@
 
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import { useTheme } from "@mui/material";
+import DragDropOverlay from "../../DragDropOverlay/DragDropOverlay";
 import {
   CLEAR_EDITOR_COMMAND,
   $getSelection,
@@ -43,6 +44,7 @@ import {
   STROKE_SIZES,
   formatSize,
   getExt,
+  createDefaultEditState,
 } from "./MediaPreviewEditor/constants";
 export { FILTERS } from "./MediaPreviewEditor/constants";
 import { useMediaEditHistory, useKeyboardShortcuts } from "./MediaPreviewEditor/hooks";
@@ -62,6 +64,7 @@ import MediaPreviewPopovers from "./MediaPreviewEditor/MediaPreviewPopovers";
 import MediaPreviewStage from "./MediaPreviewEditor/MediaPreviewStage";
 import MediaPreviewThumbnails from "./MediaPreviewEditor/MediaPreviewThumbnails";
 import MediaPreviewCaptionBar from "./MediaPreviewEditor/MediaPreviewCaptionBar";
+import ConfirmationDialog from "../../ReusableComponent/ConfirmationDialog";
 
 const MediaPreviewComponent = ({
   open,
@@ -96,8 +99,9 @@ const MediaPreviewComponent = ({
   const [activeShapeType, setActiveShapeType] = useState<"rect" | "circle" | "line" | "arrow">("rect");
   const [activeFontFamily, setActiveFontFamily] = useState<TextElement["fontFamily"]>("system");
   const [activeTextBgMode, setActiveTextBgMode] = useState<TextBgMode>("solid");
-  const [activeBlurMode, setActiveBlurMode] = useState<"path" | "box">("path");
+  const [activeBlurMode, setActiveBlurMode] = useState<"path" | "box">("box");
   const [activeBlurSize, setActiveBlurSize] = useState(50);
+  const [activeBlurStyle, setActiveBlurStyle] = useState<"pixelate" | "smooth">("pixelate");
   const [selectedCropAspect, setSelectedCropAspect] = useState<string>("free");
 
   // Selection & Interactive Dragging
@@ -129,13 +133,15 @@ const MediaPreviewComponent = ({
     isDown: boolean;
     startPoint: { x: number; y: number };
     currentPoint: { x: number; y: number };
-    dragType: "draw" | "shape" | "blur" | "move-element" | "crop-handle" | "crop-move" | "shape-handle" | "blur-move" | "blur-resize" | null;
+    dragType: "draw" | "shape" | "blur" | "move-element" | "crop-handle" | "crop-move" | "shape-handle" | "blur-move" | "blur-resize" | "emoji-resize" | null;
     elementId?: string;
     cropHandle?: string;
     blurHandle?: string;
     initialCrop?: CropRect;
     initialShape?: { start: { x: number; y: number }; end: { x: number; y: number } };
     initialBlur?: { start: { x: number; y: number }; end: { x: number; y: number } };
+    initialEmojiSize?: number;
+    initialPos?: { x: number; y: number };
     tempPath?: Array<{ x: number; y: number }>;
   }>({
     isDown: false,
@@ -221,6 +227,23 @@ const MediaPreviewComponent = ({
   const handleSendRef = useRef<() => void>(() => {});
   const handleCopyRef = useRef<() => void>(() => {});
   const handleApplyCropRef = useRef<() => void>(() => {});
+
+  // Close confirmation — show dialog if there are media files or unsaved edits
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const requestClose = useCallback(() => {
+    if (closeConfirmOpen || resetConfirmOpen) return;
+    if (mediaFiles.length > 0 || hasImageEdits(currentState)) {
+      setCloseConfirmOpen(true);
+    } else {
+      onClose();
+    }
+  }, [closeConfirmOpen, resetConfirmOpen, mediaFiles.length, currentState, onClose]);
+  const confirmClose = useCallback(() => {
+    setCloseConfirmOpen(false);
+    onClose();
+  }, [onClose]);
+
   useKeyboardShortcuts({
     open,
     activeTool,
@@ -228,7 +251,7 @@ const MediaPreviewComponent = ({
     selectedElementId,
     showKeyboardHelp,
     mediaFilesLength: mediaFiles.length,
-    onClose,
+    onClose: requestClose,
     handleUndo,
     handleRedo,
     onSend: () => handleSendRef.current(),
@@ -301,7 +324,7 @@ const MediaPreviewComponent = ({
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
 
-    // 1. Draw Mosaic Blur — pixelate with per-region intensity
+    // 1. Draw Mosaic / Smooth Blur — with per-region intensity and style
     for (const blur of currentState.blurRegions) {
       const intensity = blur.intensity ?? 50;
       const blockSize = intensityToBlockSize(intensity, width);
@@ -310,7 +333,11 @@ const MediaPreviewComponent = ({
         const by = Math.min(blur.start.y, blur.end.y) * height;
         const bw = Math.abs(blur.end.x - blur.start.x) * width;
         const bh = Math.abs(blur.end.y - blur.start.y) * height;
-        applyPixelateBox(ctx, bx, by, bw, bh, blockSize, img);
+        if (blur.style === "smooth") {
+          applyInteractiveBlur(ctx, img, bx, by, bw, bh, Math.max(4, Math.round(intensity * 0.35)));
+        } else {
+          applyPixelateBox(ctx, bx, by, bw, bh, blockSize, img);
+        }
       } else if (blur.type === "path" && blur.points) {
         const bSize = (blur.size || 24) * (width / 800);
         applyPixelatePath(ctx, blur.points, width, height, bSize, Math.max(4, Math.round(bSize / 2.5)), img);
@@ -529,8 +556,17 @@ const MediaPreviewComponent = ({
         pointerDragRef.current.dragType = "draw";
         pointerDragRef.current.tempPath = [pt];
       } else if (activeTool === "shapes") {
-        // Click-to-add: create a new default shape centered at the click point,
-        // then allow dragging it on the same gesture.
+        // If there's already a selected shape, clicking empty canvas deselects it
+        // (clicking on a shape is handled by the shape's own onClick in the Stage).
+        // Only add a new shape if there are no shapes yet.
+        const hasShapes = currentState.shapes.length > 0;
+        if (hasShapes) {
+          // Deselect — user can click a shape to select/move/resize it
+          setSelectedElementId(null);
+          pointerDragRef.current.isDown = false;
+          return;
+        }
+        // No shapes yet → create a default centered shape at the click point
         const newShape: ShapeElement = {
           id: `shape_${Date.now()}`,
           type: activeShapeType,
@@ -573,6 +609,7 @@ const MediaPreviewComponent = ({
       textInputActive,
       updateCurrentState,
       setEditingTextId,
+      currentState.shapes,
     ]
   );
 
@@ -613,11 +650,26 @@ const MediaPreviewComponent = ({
             ),
           }), false);
         } else {
-          updateCurrentState((prev) => ({
-            ...prev,
-            texts: prev.texts.map((t) => (t.id === id ? { ...t, x: pt.x, y: pt.y } : t)),
-            emojis: prev.emojis.map((m) => (m.id === id ? { ...m, x: pt.x, y: pt.y } : m)),
-          }), false);
+          // Use drag offset so element doesn't snap to cursor center
+          const startPt = pointerDragRef.current.startPoint;
+          const initPos = pointerDragRef.current.initialPos;
+          if (startPt && initPos) {
+            const dx = pt.x - startPt.x;
+            const dy = pt.y - startPt.y;
+            const newX = Math.max(0, Math.min(1, initPos.x + dx));
+            const newY = Math.max(0, Math.min(1, initPos.y + dy));
+            updateCurrentState((prev) => ({
+              ...prev,
+              texts: prev.texts.map((t) => (t.id === id ? { ...t, x: newX, y: newY } : t)),
+              emojis: prev.emojis.map((m) => (m.id === id ? { ...m, x: newX, y: newY } : m)),
+            }), false);
+          } else {
+            updateCurrentState((prev) => ({
+              ...prev,
+              texts: prev.texts.map((t) => (t.id === id ? { ...t, x: pt.x, y: pt.y } : t)),
+              emojis: prev.emojis.map((m) => (m.id === id ? { ...m, x: pt.x, y: pt.y } : m)),
+            }), false);
+          }
         }
       } else if (
         pointerDragRef.current.dragType === "shape-handle" &&
@@ -744,6 +796,21 @@ const MediaPreviewComponent = ({
           ),
         }), false);
         drawCanvas();
+      } else if (
+        pointerDragRef.current.dragType === "emoji-resize" &&
+        pointerDragRef.current.elementId &&
+        pointerDragRef.current.initialEmojiSize != null
+      ) {
+        const id = pointerDragRef.current.elementId;
+        const initSize = pointerDragRef.current.initialEmojiSize;
+        const startPt = pointerDragRef.current.startPoint;
+        // Use signed scalar: dragging down-right increases, up-left decreases
+        const delta = (pt.x - startPt.x) + (pt.y - startPt.y);
+        const newSize = Math.max(20, Math.min(200, Math.round(initSize * (1 + delta * 2))));
+        updateCurrentState((prev) => ({
+          ...prev,
+          emojis: prev.emojis.map((m) => (m.id === id ? { ...m, size: newSize } : m)),
+        }), false);
       }
     },
     [getNormalizedPoint, drawCanvas, activeBlurMode, updateCurrentState]
@@ -785,8 +852,9 @@ const MediaPreviewComponent = ({
           ],
         }));
       }
-    } else if (dragType === "move-element" || dragType === "shape-handle" || dragType === "crop-handle" || dragType === "crop-move" || dragType === "blur-move" || dragType === "blur-resize") {
-      updateCurrentState((prev) => ({ ...prev }), true);
+    } else if (dragType === "move-element" || dragType === "shape-handle" || dragType === "crop-handle" || dragType === "crop-move" || dragType === "blur-move" || dragType === "blur-resize" || dragType === "emoji-resize") {
+      // History was already recorded at pointer down; live updates used recordHistory=false.
+      // No additional history entry needed here.
     }
 
     pointerDragRef.current.dragType = null;
@@ -997,6 +1065,53 @@ const MediaPreviewComponent = ({
     [onAddMore]
   );
 
+  // ── Drag & Drop file support (same pattern as MessageList) ──
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const isExternalFileDrag = useCallback((e: React.DragEvent) => {
+    const types = e.dataTransfer.types;
+    if (!types?.includes("Files")) return false;
+    if (types.includes("text/uri-list") || types.includes("text/html")) return false;
+    return true;
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isExternalFileDrag(e)) return;
+    dragCounterRef.current++;
+    if (e.dataTransfer.items?.length > 0) setIsDragOver(true);
+  }, [isExternalFileDrag]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isExternalFileDrag(e)) return;
+    if (--dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  }, [isExternalFileDrag]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isExternalFileDrag(e)) return;
+    setIsDragOver(false);
+    dragCounterRef.current = 0;
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0 && onAddMore) {
+      e.dataTransfer.clearData();
+      requestAnimationFrame(() => onAddMore(files));
+    }
+  }, [onAddMore, isExternalFileDrag]);
+
   const addDefaultShape = useCallback((type: "rect" | "circle" | "line" | "arrow" = activeShapeType) => {
     const newShape: ShapeElement = {
       id: `shape_${Date.now()}`,
@@ -1038,19 +1153,35 @@ const MediaPreviewComponent = ({
     if (willActivate && tool === "crop") {
       updateCurrentState((p) => (p.crop ? p : { ...p, crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 } }));
     }
+    if (willActivate && tool === "blur") {
+      setActiveBlurMode("box");
+      // Always add a new blur region when activating the blur tool
+      const newBlur = {
+        type: "box" as const,
+        style: activeBlurStyle,
+        start: { x: 0.35, y: 0.38 },
+        end: { x: 0.65, y: 0.62 },
+        intensity: 50,
+      };
+      const newIdx = currentState.blurRegions.length;
+      updateCurrentState((p) => ({
+        ...p,
+        blurRegions: [...p.blurRegions, newBlur],
+      }));
+      setSelectedBlurId(`blur_${newIdx}`);
+    } else {
+      setSelectedBlurId(null);
+    }
     if (tool === "shapes") {
-      // Add a default centered shape when activating the shape tool.
-      requestAnimationFrame(() => addDefaultShape());
+      // Always add a default centered shape when activating the shape tool.
+      if (willActivate) {
+        addDefaultShape();
+      }
     } else {
       setSelectedElementId(null);
     }
-    setSelectedBlurId(null);
     setHoveredFilter(null);
-  }, [activeTool, addDefaultShape, updateCurrentState]);
-
-  const toggleHd = useCallback(() => {
-    updateCurrentState((prev) => ({ ...prev, isHd: !prev.isHd }));
-  }, [updateCurrentState]);
+  }, [activeTool, addDefaultShape, updateCurrentState, activeBlurStyle, currentState.blurRegions]);
 
   const rotateCCW = useCallback(() => {
     updateCurrentState((prev) => ({
@@ -1075,15 +1206,31 @@ const MediaPreviewComponent = ({
     setSelectedCropAspect("free");
   }, [updateCurrentState]);
 
+  // Reset ALL edits on the current image — drawings, shapes, text, blur, emoji, crop, rotation, filter
+  const resetAllEdits = useCallback(() => {
+    setResetConfirmOpen(true);
+  }, []);
+  const confirmResetAll = useCallback(() => {
+    // Reset state without recording history, then clear undo/redo stack
+    updateCurrentState(() => createDefaultEditState(), false);
+    resetCurrent();
+    setSelectedElementId(null);
+    setSelectedBlurId(null);
+    setSelectedCropAspect("free");
+    setActiveTool("none");
+    setResetConfirmOpen(false);
+  }, [updateCurrentState, resetCurrent]);
+
   // Add Emoji Sticker to Canvas
   const handleAddCanvasEmoji = useCallback(
-    (emojiStr: string) => {
+    (emojiStr: string, imageUrl?: string) => {
       const newEmoji: EmojiElement = {
         id: `emoji_${Date.now()}`,
         emoji: emojiStr,
         x: 0.5,
         y: 0.5,
         size: 54,
+        imageUrl,
       };
       updateCurrentState((prev) => ({
         ...prev,
@@ -1143,9 +1290,9 @@ const MediaPreviewComponent = ({
   const getMediaUrl = (item: MediaFileItem) =>
     item.preview || (item.file ? URL.createObjectURL(item.file) : "");
 
-  const surfaceBg = isDark ? "rgba(22, 22, 34, 0.96)" : "rgba(255, 255, 255, 0.98)";
-  const headerBg = isDark ? "rgba(20, 20, 30, 0.98)" : "#ffffff";
-  const borderColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+  const surfaceBg = isDark ? "#111b21" : "#ffffff";
+  const headerBg = isDark ? "#111b21" : "#ffffff";
+  const borderColor = isDark ? "rgba(255,255,255,0.08)" : "#e9edef";
   const titleColor = theme.palette.text.primary;
   const subtitleColor = theme.palette.text.secondary;
 
@@ -1162,17 +1309,21 @@ const MediaPreviewComponent = ({
   return (
     <div
       className="media-preview-overlay"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       style={{
         position: "absolute",
         inset: 0,
         zIndex: 1000,
         display: "flex",
         flexDirection: "column",
-        background: "rgba(10, 14, 23, 0.4)",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
+        background: isDark ? "#111b21" : "#ffffff",
       }}
     >
+      {/* Drag & Drop overlay — same component as chat message area */}
+      <DragDropOverlay isDragging={isDragOver} />
       <div
         style={{
           width: "100%",
@@ -1192,9 +1343,7 @@ const MediaPreviewComponent = ({
           activeShapeType={activeShapeType}
           canUndo={canUndo}
           canRedo={canRedo}
-          isHd={currentState.isHd}
           copied={copiedFeedback}
-          showKeyboardHelp={showKeyboardHelp}
           selectedElementId={selectedElementId}
           canvasEmojiAnchorEl={canvasEmojiAnchorEl}
           sizeText={currentFileMeta.sizeText}
@@ -1204,7 +1353,7 @@ const MediaPreviewComponent = ({
           borderColor={borderColor}
           headerBg={headerBg}
           isDark={isDark}
-          onClose={onClose}
+          onClose={requestClose}
           onUndo={handleUndo}
           onRedo={handleRedo}
           onToggleTool={toggleTool}
@@ -1213,12 +1362,12 @@ const MediaPreviewComponent = ({
             setActiveTool("shapes");
           }}
           onOpenCanvasEmoji={(el) => setCanvasEmojiAnchorEl(el)}
-          onToggleKeyboardHelp={() => setShowKeyboardHelp((v) => !v)}
-          onToggleHd={toggleHd}
           onDone={activeTool === "crop" ? () => { handleApplyCrop(); } : () => setActiveTool("none")}
           onCopy={handleCopyCurrent}
           onDownload={handleDownloadCurrent}
           onDeleteOrRemove={handleDeleteOrRemove}
+          onResetAll={resetAllEdits}
+          hasEdits={hasImageEdits(currentState)}
         />
 
         {isImage && activeTool === "filter" && (
@@ -1246,7 +1395,18 @@ const MediaPreviewComponent = ({
           headerBg={headerBg}
           isDark={isDark}
           onCloseShapes={() => setShapesAnchorEl(null)}
-          onSelectShape={setActiveShapeType}
+          onSelectShape={(shapeId) => {
+            setActiveShapeType(shapeId);
+            // If a shape is selected, change its type. Otherwise add a new shape.
+            if (selectedElementId) {
+              updateCurrentState((prev) => ({
+                ...prev,
+                shapes: prev.shapes.map((s) => (s.id === selectedElementId ? { ...s, type: shapeId } : s)),
+              }));
+            } else if (currentState.shapes.length === 0) {
+              addDefaultShape(shapeId);
+            }
+          }}
           onCloseCanvasEmoji={() => setCanvasEmojiAnchorEl(null)}
           onAddCanvasEmoji={handleAddCanvasEmoji}
           onCloseKeyboardHelp={() => setShowKeyboardHelp(false)}
@@ -1304,7 +1464,7 @@ const MediaPreviewComponent = ({
           updateCurrentState={updateCurrentState}
         />
 
-        {isImage && (
+        {isImage && !(activeTool === "text" && textInputActive) && (
           <MediaPreviewToolControls
             activeTool={activeTool}
             activeColor={activeColor}
@@ -1314,6 +1474,7 @@ const MediaPreviewComponent = ({
             activeTextBgMode={activeTextBgMode}
             activeBlurMode={activeBlurMode}
             activeBlurSize={activeBlurSize}
+            activeBlurStyle={activeBlurStyle}
             selectedBlurId={selectedBlurId}
             selectedCropAspect={selectedCropAspect}
             selectedElementId={selectedElementId}
@@ -1327,6 +1488,19 @@ const MediaPreviewComponent = ({
             onSetFontFamily={setActiveFontFamily}
             onSetTextBgMode={setActiveTextBgMode}
             onSetBlurMode={setActiveBlurMode}
+            onSetBlurStyle={(style) => {
+              setActiveBlurStyle(style);
+              updateCurrentState((prev) => ({
+                ...prev,
+                blurRegions: prev.blurRegions.map((b, i) => {
+                  if (selectedBlurId) {
+                    const selIdx = parseInt(selectedBlurId.replace("blur_", ""), 10);
+                    return i === selIdx ? { ...b, style } : b;
+                  }
+                  return { ...b, style };
+                }),
+              }));
+            }}
             onSetBlurSize={(val) => {
               setActiveBlurSize(val);
               // Update the selected blur region's intensity, or all regions if none selected
@@ -1407,6 +1581,30 @@ const MediaPreviewComponent = ({
           onSelectionChange={handleSelectionChange}
         />
       </div>
+
+      {/* Reset all edits confirmation */}
+      <ConfirmationDialog
+        isOpen={resetConfirmOpen}
+        onClose={() => setResetConfirmOpen(false)}
+        onConfirm={confirmResetAll}
+        title="Reset edits?"
+        description="All changes to this image will be removed."
+        confirmText="Reset"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
+      {/* Close with unsaved edits confirmation */}
+      <ConfirmationDialog
+        isOpen={closeConfirmOpen}
+        onClose={() => setCloseConfirmOpen(false)}
+        onConfirm={confirmClose}
+        title="Discard selection?"
+        description="Your selected media will be removed."
+        confirmText="Discard"
+        cancelText="Keep"
+        variant="danger"
+      />
     </div>
   );
 };

@@ -30,9 +30,13 @@
     overflow: hidden;
     position: relative;
 
-    // Empty state — solid background, no image
+    // Empty state — very light cream background
     &--empty {
         background: var(--color-surface);
+        // Light cream tint only in light mode
+        [data-theme="light"] & {
+            background: linear-gradient(135deg, #faf9f6 0%, #f5f3ee 100%);
+        }
     }
 
     // Ensure children stack above the pattern
@@ -822,12 +826,12 @@
 
     &.user-message {
         justify-content: flex-end;
-        padding-block: 4px;
+        padding-block: 10px;
     }
 
     &.customer-message {
         justify-content: flex-start;
-        padding-block: 4px;
+        padding-block: 10px;
     }
 
     &.blink-message {

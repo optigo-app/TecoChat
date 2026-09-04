@@ -380,6 +380,7 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
             </ListItemIcon>
             <ListItemText primary="Profile" />
           </MenuItem>
+
         </Box>
 
         <Divider

@@ -55,6 +55,7 @@ export const ChatPanel = memo(({
 }: ChatPanelProps) => {
   const theme = useTheme();
   const { resolvedMode } = useColorMode();
+  const isDark = theme.palette.mode === "dark";
   const { auth } = useLoginContext();
   const messageListRef = useRef<MessageListRef>(null);
   const containerRef = useRef<HTMLElement | null>(null);
@@ -625,12 +626,14 @@ export const ChatPanel = memo(({
     if (!selectedCustomer) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // Don't close chat when media preview is open — let it handle Esc
+        if (mediaFiles.length > 0) return;
         onCustomerSelect?.(null as any);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedCustomer, onCustomerSelect]);
+  }, [selectedCustomer, onCustomerSelect, mediaFiles.length]);
 
   // ── Send handler with scroll ─────────────────────────────────────────────
   const handleSendWithScroll = useCallback(
@@ -1096,24 +1099,42 @@ export const ChatPanel = memo(({
             sx: {
               borderRadius: 3,
               p: 1,
+              bgcolor: theme.palette.background.paper,
+              backgroundImage: "none",
+              boxShadow: isDark ? "0 20px 60px rgba(0,0,0,0.6)" : "0 20px 60px rgba(0,0,0,0.2)",
+              border: isDark ? `1px solid ${alpha(theme.palette.primary.main, 0.15)}` : "none",
+            },
+          },
+          backdrop: {
+            sx: {
+              bgcolor: isDark ? "rgba(10,10,20,0.7)" : "rgba(0,0,0,0.5)",
             },
           },
         }}
       >
-        <DialogTitle sx={{ fontWeight: 600, fontSize: "1.1rem" }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.1rem", color: theme.palette.text.primary, pb: 1 }}>
           Replace or Add Files?
         </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary">
-            You already have {replaceAddDialog.existingCount} file{replaceAddDialog.existingCount !== 1 ? "s" : ""} in the preview.
+        <DialogContent sx={{ pb: 1 }}>
+          <Typography variant="body2" sx={{ lineHeight: 1.6, color: theme.palette.text.secondary }}>
+            You already have <strong style={{ color: theme.palette.primary.main }}>{replaceAddDialog.existingCount}</strong> file{replaceAddDialog.existingCount !== 1 ? "s" : ""} in the preview.
             Do you want to replace them with the new file{replaceAddDialog.newFiles?.length !== 1 ? "s" : ""}, or add to the existing ones?
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5, pt: 1, gap: 1 }}>
+        <DialogActions sx={{ px: 2.5, pb: 2.5, pt: 1, gap: 1, justifyContent: "flex-end" }}>
           <Button
             onClick={() => setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 })}
-            color="inherit"
-            sx={{ borderRadius: 2, textTransform: "none" }}
+            variant="text"
+            sx={{
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 600,
+              px: 2,
+              py: 0.75,
+              color: theme.palette.text.secondary,
+              "&:hover": { bgcolor: alpha(theme.palette.text.primary, isDark ? 0.12 : 0.06) },
+              "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.primary.main, 0.5)}`, outlineOffset: 2 },
+            }}
           >
             Cancel
           </Button>
@@ -1126,7 +1147,20 @@ export const ChatPanel = memo(({
               setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 });
             }}
             variant="outlined"
-            sx={{ borderRadius: 2, textTransform: "none" }}
+            sx={{
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 600,
+              px: 2,
+              py: 0.75,
+              borderColor: alpha(theme.palette.primary.main, isDark ? 0.6 : 0.5),
+              color: theme.palette.primary.main,
+              "&:hover": {
+                borderColor: theme.palette.primary.main,
+                bgcolor: alpha(theme.palette.primary.main, isDark ? 0.12 : 0.06),
+              },
+              "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.primary.main, 0.5)}`, outlineOffset: 2 },
+            }}
           >
             Replace
           </Button>
@@ -1139,7 +1173,23 @@ export const ChatPanel = memo(({
               setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 });
             }}
             variant="contained"
-            sx={{ borderRadius: 2, textTransform: "none" }}
+            disableElevation
+            sx={{
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 700,
+              px: 2,
+              py: 0.75,
+              bgcolor: theme.palette.primary.main,
+              color: "#ffffff !important",
+              "&:hover": {
+                bgcolor: theme.palette.primary.dark,
+              },
+              "&:focus-visible": { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
+              "& .MuiButton-label": {
+                color: "#ffffff !important",
+              },
+            }}
           >
             Add
           </Button>

@@ -18,6 +18,7 @@ import {
   Forward,
   Smartphone,
   Smile,
+  Play,
 } from "lucide-react";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Keyboard, Mousewheel, Navigation } from "swiper/modules";
@@ -627,19 +628,41 @@ const MediaViewerComponent = ({
                   )}
                   {item.type === "video" && (
                     <div className="thumbnail-video">
-                      <img
-                        src="/icons/video.png"
-                        alt="Video"
-                        className="thumbnail-video-icon"
+                      <video
+                        src={item.src}
+                        preload="metadata"
+                        muted
+                        playsInline
+                        aria-label={`Video thumbnail ${index}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />
+                      <div className="thumbnail-video-play">
+                        <Play size={16} color="#fff" fill="#fff" />
+                      </div>
                     </div>
                   )}
                   {item.type === "pdf" && (
-                    <div className="thumbnail-document">
-                      <div className="thumbnail-icon pdf">
-                        <FileText size={22} />
-                      </div>
-                    </div>
+                    (() => {
+                      const meta = getDocumentMeta(item.name || "file.pdf");
+                      return (
+                        <div className="thumbnail-document">
+                          <div
+                            className={`thumbnail-icon ${meta.iconUrl ? "" : meta.tone}`}
+                            style={meta.iconUrl ? { background: "none", padding: 0 } : {}}
+                          >
+                            {meta.iconUrl ? (
+                              <img
+                                src={meta.iconUrl}
+                                alt={meta.label}
+                                style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                              />
+                            ) : (
+                              <FileText size={22} />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()
                   )}
                   {item.type === "document" && (
                     (() => {

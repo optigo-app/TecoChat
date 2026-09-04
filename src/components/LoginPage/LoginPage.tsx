@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import "./LoginPage.scss";
 import {
   TextField,
@@ -21,9 +22,11 @@ import loginPageLottie from "../../assets/lotties/loginPage.json";
 import { emitInternalStoreSocketData, initializeSocket } from "../../socket";
 import { useLoginContext } from "../../context/LoginData";
 import { getToken } from "../../API/GetToken/GetToken";
-import Lottie from "lottie-react";
 import { setCookie, eraseCookie, getCookie } from "../../utils/cookieUtils";
 import { useIsMobile } from "../../hooks/useIsMobile";
+
+// Lazy-load Lottie — only shown on desktop login page
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export const commonTextFieldProps = {
   fullWidth: true,

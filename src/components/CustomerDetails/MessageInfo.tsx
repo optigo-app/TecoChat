@@ -253,7 +253,7 @@ const MessageInfo = ({ messageInfo, localGroupData, auth, selectedCustomer, mess
                           >
                             <img
                               src={item.url}
-                              alt=""
+                              alt={item.name || (isVideo ? "Video thumbnail" : "Media thumbnail")}
                               style={{ width: "100%", height: "100%", objectFit: "cover" }}
                             />
                             {isVideo && !showOverflow && (

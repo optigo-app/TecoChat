@@ -562,8 +562,11 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         setIsDragging(false);
         dragCounter.current = 0;
         if (e.dataTransfer.files?.length > 0 && processFiles) {
-          processFiles(Array.from(e.dataTransfer.files));
+          const files = Array.from(e.dataTransfer.files);
           e.dataTransfer.clearData();
+          // Defer file processing to next tick so the drop handler returns immediately
+          // and the overlay disappears without lag
+          requestAnimationFrame(() => processFiles(files));
         }
       },
       [processFiles, isExternalFileDrag]
