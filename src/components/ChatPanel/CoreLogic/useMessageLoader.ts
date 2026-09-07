@@ -102,7 +102,6 @@ export function useMessageLoader({
             selectedId === selectedCustomer?.ConversationId
           ) {
             dispatchMsg({ type: MSG.LOAD, data: cached, total: cached.length });
-            dispatchMsg({ type: MSG.SET_HAS_MORE, value: false });
             dispatchMsg({ type: MSG.SET_LOADING, value: false });
             didShowCache = true;
           }

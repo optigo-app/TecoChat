@@ -1,8 +1,9 @@
 "use client";
 
 import { memo } from "react";
-import { Box, Typography, useTheme } from "@mui/material";
+import { Box, Typography, Avatar, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import { getWhatsAppAvatarConfig, getSoftAvatarColors } from "../../../../utils/globalFunc";
 import type { TypingStatus } from "../../../../types/message";
 
 interface TypingIndicatorProps {
@@ -13,6 +14,13 @@ interface TypingIndicatorProps {
 const TypingIndicatorComponent = ({ typingStatus, isGroup }: TypingIndicatorProps) => {
   const theme = useTheme();
   if (!typingStatus) return null;
+
+  const userName = typingStatus.UserName || "Someone";
+  const profileImage = typingStatus.ProfileImageUrl || typingStatus.ProfileImage;
+  const avatarConfig = getWhatsAppAvatarConfig(userName, 38);
+  const senderColor = theme.palette.mode === "dark"
+    ? getSoftAvatarColors(userName).fgDark
+    : getSoftAvatarColors(userName).fg;
 
   return (
     <Box
@@ -27,6 +35,14 @@ const TypingIndicatorComponent = ({ typingStatus, isGroup }: TypingIndicatorProp
         },
       }}
     >
+      {isGroup && (
+        <Avatar
+          src={profileImage || undefined}
+          sx={{ ...avatarConfig.sx, width: 38, height: 38, fontSize: 38 * 0.4 }}
+        >
+          {avatarConfig.children}
+        </Avatar>
+      )}
       <Box
         sx={{
           display: "flex",
@@ -44,12 +60,12 @@ const TypingIndicatorComponent = ({ typingStatus, isGroup }: TypingIndicatorProp
             variant="caption"
             sx={{
               fontWeight: 600,
-              color: theme.palette.primary.main,
+              color: senderColor,
               fontSize: "0.75rem",
               mb: 0.2,
             }}
           >
-            {typingStatus.UserName}
+            {userName}
           </Typography>
         )}
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, height: "14px" }}>
@@ -60,7 +76,7 @@ const TypingIndicatorComponent = ({ typingStatus, isGroup }: TypingIndicatorProp
                 width: 5,
                 height: 5,
                 borderRadius: "50%",
-                backgroundColor: theme.palette.text.secondary,
+                backgroundColor: isGroup ? senderColor : theme.palette.text.secondary,
                 opacity: 0.4,
                 animation: "typingDot 1.4s infinite ease-in-out",
                 animationDelay: `${i * 0.2}s`,

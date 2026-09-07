@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { fetchConversationLists } from "../API/ConverLists/ConversationLists";
+import { fetchConversationLists, preLoadConversations } from "../API/ConverLists/ConversationLists";
 import { muteConversationApi } from "../API/ConversationMute/MuteConversationApi";
 import {
   processApiResponse,
@@ -38,6 +38,8 @@ import type {
 } from "../types/conversation";
 import type { AuthData } from "../context/LoginData";
 import { getConversations, putConversations, upsertConversation } from "../db/conversationCache";
+import { putMessages } from "../db/messageCache";
+import { normalizeServerMessages } from "../utils/messageUtils";
 import { getAllDrafts } from "../db/draftCache";
 
 interface UseConversationListOptions {
@@ -278,8 +280,6 @@ export const useConversationList = ({
   // ── handleSocketUpdate: the core real-time update function ────────────────
   const handleSocketUpdate = useCallback(
     (incoming: Record<string, unknown>, isStatusChange = false) => {
-      // Collect notification info inside the updater, but call notify() outside
-      // to avoid side effects inside a React state updater (anti-pattern).
       let pendingNotify: Record<string, unknown> | null = null;
 
       setChatMembers((prev) => {
@@ -289,9 +289,6 @@ export const useConversationList = ({
         if (conversationId == null) return prev;
 
         const resolvedName = resolveConversationName(incoming, (c) => getCustomerDisplayName(c as Parameters<typeof getCustomerDisplayName>[0]));
-        // For outgoing messages, the conversation name should be the RECEIVER's name,
-        // not the sender's (which is the login user). resolveConversationName prioritizes
-        // SenderName/FirstName/LastName, so for outgoing we resolve from receiver fields.
         const myId = Number(auth?.id ?? auth?.userId);
         const senderId = Number((incoming.SenderId as string | number) ?? (incoming.Sender as string | number));
         const isOutgoing = myId && senderId && myId === senderId;
@@ -301,8 +298,6 @@ export const useConversationList = ({
               (incoming.ConversationName as string) ||
               (incoming.MemberName as string) ||
               (incoming.name as string) ||
-              // Only use RecieverName if it's NOT the login user's own name
-              // (old emit code incorrectly set RecieverName = senderName)
               ((incoming.RecieverName as string) &&
                 String(incoming.RecieverName).trim() !== senderName &&
                 String(incoming.RecieverName).trim() !== String(auth?.username ?? "")
@@ -344,18 +339,8 @@ export const useConversationList = ({
           Number(selectedConversationIdRef.current) === Number(conversationId) &&
           Boolean(isConversationReadingRef.current);
 
-        // Use document.hasFocus() here for the shouldNotify decision.
-        // The final notification display check in showBrowserNotification
-        // uses a more reliable event-based focus tracker.
-        // The shouldNotify check is more lenient (fires even if focused
-        // when conversation is not open) — showBrowserNotification decides
-        // whether to actually show the popup vs just play sound.
         const isWindowFocused = typeof document !== "undefined" && document.hasFocus();
 
-        // ── Mute check with mention override ────────────────────────────────
-        // If the conversation is muted, suppress notifications UNLESS the
-        // current user is mentioned (WhatsApp behavior — mentions always
-        // override mute). @all (MentionType 2) also overrides.
         const muted = isConversationMuted(
           (existingChat as any)?.IsMuted,
           (existingChat as any)?.MuteExpiresAt
@@ -365,17 +350,10 @@ export const useConversationList = ({
           auth?.id
         );
 
-        // Notify when:
-        // - NOT outgoing (don't notify for our own messages)
-        // - NOT a status change (don't notify for read receipts, etc.)
-        // - AND either the conversation is NOT open, OR the window is NOT focused
-        // - AND (NOT muted OR mentioned) — mentions always override mute
         const shouldNotify = !isOutgoing && !isStatusChange && (!isOpenConversation || !isWindowFocused)
           && (!muted || mentioned);
 
         if (shouldNotify) {
-          // Collect notification data — actual notify() call is deferred outside
-          // the setChatMembers updater to avoid side effects in state updaters
           pendingNotify = {
             senderName: resolvedName,
             message: messagePreviewText,
@@ -492,8 +470,6 @@ export const useConversationList = ({
           updatedData.push(newCustomer);
         }
 
-        // Optimized: instead of full O(n log n) sort on every incoming message,
-        // move only the updated conversation to its correct position.
         if (index !== -1 && updatedData.length > 1) {
           const [moved] = updatedData.splice(index, 1);
           const movedPinned = Number((moved as any).IsPin || 0) === 1;
@@ -528,8 +504,6 @@ export const useConversationList = ({
         return { ...prev, data: updatedData };
       });
 
-      // Fire notification outside the state updater to avoid side effects
-      // in React's functional updater (which can run multiple times in concurrent mode)
       if (pendingNotify) {
         notify(pendingNotify, "NEW_MESSAGE", auth);
       }
@@ -573,9 +547,22 @@ export const useConversationList = ({
             delete typingTimeoutsRef.current[conversationId];
           }
         } else {
+          console.log("[TYPING] Received typing event:", {
+            conversationId,
+            senderId,
+            UserName: data.UserName,
+            ProfileImageUrl: data.ProfileImageUrl,
+            ProfileImage: data.ProfileImage,
+            isTyping: data.isTyping,
+            allKeys: Object.keys(data),
+          });
           setTypingStates((prev) => ({
             ...prev,
-            [conversationId]: { isTyping: true, userName: data.UserName as string },
+            [conversationId]: {
+              isTyping: true,
+              userName: data.UserName as string,
+              profileImage: (data.ProfileImageUrl as string) || (data.ProfileImage as string),
+            },
           }));
           if (typingTimeoutsRef.current[conversationId]) clearTimeout(typingTimeoutsRef.current[conversationId]);
         typingTimeoutsRef.current[conversationId] = setTimeout(() => {
@@ -701,14 +688,54 @@ export const useConversationList = ({
     return () => {
       r1(); r2(); r3();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth?.token, auth?.userId, auth?.id, selectedCustomer?.ConversationId, searchTerm, loadMembers]);
 
-  // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (auth?.token && auth?.userId) {
+    if (!auth?.token || !auth?.userId) return;
+
+    let cancelled = false;
+
+    (async () => {
+      // 1. Check if cache exists
+      let cached: ConversationListEntry[] = [];
+      try {
+        cached = await getConversations(auth);
+        console.log("[RELOAD] Cache read:", cached.length, "conversations found");
+      } catch (err) {
+        console.error("[RELOAD] Cache read error:", err);
+      }
+
+      if (cancelled) return;
+
+      if (cached.length > 0) {
+        // Cache exists → show instantly
+        console.log("[RELOAD] Showing cached list instantly");
+        setChatMembers({ data: cached, total: cached.length });
+        setLoading(false);
+        setShowEmptyState(false);
+      }
+
       loadMembers(1, true, "");
-    }
+
+      preLoadConversations(1, pageSize, auth)
+        .then(({ messagesByConversation }) => {
+          if (cancelled) return;
+          for (const [convId, rawMsgs] of messagesByConversation) {
+            const normalized = normalizeServerMessages(rawMsgs, auth, convId);
+            if (normalized.length > 0) {
+              putMessages(auth, convId, normalized as never).catch(() => {});
+            }
+          }
+          console.log("[RELOAD] Preloaded messages for", messagesByConversation.size, "conversations");
+        })
+        .catch(() => {
+          /* ignore preload errors */
+        });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth?.token, auth?.userId]);
 
@@ -915,7 +942,6 @@ export const useConversationList = ({
   }, [auth?.id, auth?.userId]);
 
   // ── Real-time: UPDATE_CONVERSATION_MUTE ────────────────────────────────────
-  // Syncs mute/unmute state from ChatPanel / CustomerDetails into the list.
   useEffect(() => {
     const handleUpdateMute = (event: Event) => {
       const detail = (event as CustomEvent).detail;
@@ -939,16 +965,6 @@ export const useConversationList = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Auto-unmute expired mutes (single periodic check) ──────────────────────
-  // The backend stores IsMuted=1 + MuteExpiresAt and never flips it back.
-  // We run ONE setInterval (every 1 hour) that scans all conversations for
-  // expired mutes, calls the unmute API to sync the backend, and dispatches
-  // UPDATE_CONVERSATION_MUTE so the UI updates immediately. This scales to
-  // any number of mutes with constant cost (one interval + one array scan).
-  //
-  // The check only runs while the window/tab is visible — no wasted cycles
-  // in the background. When the tab becomes visible again, an immediate
-  // check runs (catches expiries that happened while away), then the hourly
   // interval resumes.
   const authRef = useRef(auth);
   useEffect(() => {

@@ -102,17 +102,20 @@ export const processApiResponse = (apiData: RawConversation[] | null | undefined
   if (!apiData || !Array.isArray(apiData)) return [];
 
   return apiData.map((conversation) => {
-    const rawLastMessage = conversation.LastMessage;
+    // Strip the "message" field (used by PreLoadConversation to embed
+    // messages — not needed on the conversation object itself).
+    const { message: _preloadedMessages, ...convWithoutMessages } = conversation;
+    const rawLastMessage = convWithoutMessages.LastMessage;
 
     const lastMessage = rawLastMessage
       ? {
-          MessageType: mapTypeCodeToMessageType(conversation.LastMessageType),
+          MessageType: mapTypeCodeToMessageType(convWithoutMessages.LastMessageType),
           Message: rawLastMessage,
-          DateTime: conversation.LastMessageDate || conversation.LastUpdatedDate,
-          Status: conversation.LastMessageStatus,
-          Direction: conversation.LastMessageDirection,
-          SystemMsg: conversation.LastMessageSystemMsg ?? conversation.SystemMsg,
-          IsDeletedForEveryone: conversation.IsDeletedForEveryone,
+          DateTime: convWithoutMessages.LastMessageDate || convWithoutMessages.LastUpdatedDate,
+          Status: convWithoutMessages.LastMessageStatus,
+          Direction: convWithoutMessages.LastMessageDirection,
+          SystemMsg: convWithoutMessages.LastMessageSystemMsg ?? convWithoutMessages.SystemMsg,
+          IsDeletedForEveryone: convWithoutMessages.IsDeletedForEveryone,
         }
       : null;
 
@@ -120,24 +123,24 @@ export const processApiResponse = (apiData: RawConversation[] | null | undefined
 
     const lastMessageTimeValue =
       lastMessage?.DateTime ||
-      conversation.LastMessageDate ||
-      conversation.LastUpdatedDate ||
-      conversation.DateTime ||
+      convWithoutMessages.LastMessageDate ||
+      convWithoutMessages.LastUpdatedDate ||
+      convWithoutMessages.DateTime ||
       null;
 
     return {
-      ...conversation,
-      ConversationId: conversation.ConversationId ?? conversation.Id,
-      ReceiverId: conversation.ReceiverId ?? "",
-      LastMessageId: conversation.LastMessageId ?? conversation.MessageId ?? "",
+      ...convWithoutMessages,
+      ConversationId: convWithoutMessages.ConversationId ?? convWithoutMessages.Id,
+      ReceiverId: convWithoutMessages.ReceiverId ?? "",
+      LastMessageId: convWithoutMessages.LastMessageId ?? convWithoutMessages.MessageId ?? "",
       lastMessage: preview.node,
       lastMessageText: preview.text,
       lastMessageTimeValue: lastMessageTimeValue as string | null,
       lastMessageTime: formatDateTime(lastMessageTimeValue, "chatTimestamp"),
-      unreadCount: conversation.UnreadCount ?? conversation.UnReadMsgCount ?? 0,
-      name: conversation.ConversationName || getCustomerDisplayName(conversation),
+      unreadCount: convWithoutMessages.UnreadCount ?? convWithoutMessages.UnReadMsgCount ?? 0,
+      name: convWithoutMessages.ConversationName || getCustomerDisplayName(convWithoutMessages),
       avatar: null,
-      avatarConfig: getWhatsAppAvatarConfig(getCustomerAvatarSeed(conversation)),
+      avatarConfig: getWhatsAppAvatarConfig(getCustomerAvatarSeed(convWithoutMessages)),
     } as Conversation;
   });
 };

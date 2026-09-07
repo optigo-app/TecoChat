@@ -1,11 +1,11 @@
 "use client";
 
 import React, { memo, useState, useRef, useCallback } from "react";
-import { Typography, Badge, IconButton, Tooltip } from "@mui/material";
+import { Typography, Badge, IconButton, Tooltip, Avatar } from "@mui/material";
 import { ChevronDown, Pin, Star, CheckCheck, UploadCloud, BellOff } from "lucide-react";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
 import { highlightText } from "./CustomerListFunc";
-import { normalizeMessageText, stripMarkdownFormatting } from "../../utils/globalFunc";
+import { normalizeMessageText, stripMarkdownFormatting, getWhatsAppAvatarConfig, getSoftAvatarColors } from "../../utils/globalFunc";
 import { renderMessageText } from "../../utils/messageTextRenderer";
 import { queueDroppedFiles } from "../../utils/dropFileQueue";
 import { isConversationMuted } from "../../utils/mentionUtils";
@@ -189,16 +189,38 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
               component="span"
             >
               {showTyping ? (
-                <span className="typing_indecator">
-                  <div className="typing-dots-container sidebar-dots">
-                    <div className="typing-dot"></div>
-                    <div className="typing-dot"></div>
-                    <div className="typing-dot"></div>
-                  </div>
-                  {isGroup && typingState?.userName
-                    ? `${typingState.userName} is typing...`
-                    : "typing..."}
-                </span>
+                (() => {
+                  const typingUserName = typingState?.userName || "";
+                  const typingColor = isGroup && typingUserName
+                    ? getSoftAvatarColors(typingUserName).fg
+                    : undefined;
+                  return (
+                    <span className="typing_indecator" style={typingColor ? { color: typingColor } : undefined}>
+                      {isGroup && typingUserName && (
+                        <Avatar
+                          src={typingState?.profileImage || undefined}
+                          sx={{
+                            ...getWhatsAppAvatarConfig(typingUserName, 16).sx,
+                            width: 16,
+                            height: 16,
+                            fontSize: 9,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {getWhatsAppAvatarConfig(typingUserName, 16).children}
+                        </Avatar>
+                      )}
+                      <div className="typing-dots-container sidebar-dots">
+                        <div className="typing-dot" style={typingColor ? { background: typingColor } : undefined}></div>
+                        <div className="typing-dot" style={typingColor ? { background: typingColor } : undefined}></div>
+                        <div className="typing-dot" style={typingColor ? { background: typingColor } : undefined}></div>
+                      </div>
+                      {typingUserName
+                        ? `${typingUserName} is typing...`
+                        : "typing..."}
+                    </span>
+                  );
+                })()
               ) : showDraft ? (
                 <span title={stripMarkdownFormatting(draftText).replace(/\n|\r/g, " ")}>
                   <span style={{ color: "#7367f0", fontWeight: 500 }}>Draft: </span>

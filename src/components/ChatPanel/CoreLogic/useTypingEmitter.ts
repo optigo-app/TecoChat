@@ -54,6 +54,23 @@ export function useTypingEmitter({
           "";
       }
 
+      console.log("[TYPING EMIT] Sending typing event:", {
+        ConversationId: customer.ConversationId,
+        SenderId: senderId,
+        IsGroup: isGroup ? 1 : 0,
+        UserName: auth?.username || auth?.name,
+        ProfileImageUrl: auth?.ProfileImageUrl || auth?.profileImage || auth?.AvatarUrl || "",
+        ProfileImage: auth?.ProfileImage || auth?.profileImage || auth?.AvatarUrl || "",
+        authKeys: auth ? Object.keys(auth) : [],
+        authProfileImageUrl: (auth as any)?.ProfileImageUrl,
+        authProfileImage: (auth as any)?.ProfileImage,
+        authAvatarUrl: (auth as any)?.AvatarUrl,
+        authProfilePic: (auth as any)?.profilePic,
+        authPic: (auth as any)?.pic,
+        authImage: (auth as any)?.image,
+        authPhoto: (auth as any)?.photo,
+      });
+
       emitInternalTyping({
         ConversationId: customer.ConversationId,
         SenderId: senderId,

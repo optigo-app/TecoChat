@@ -168,7 +168,7 @@ export const Sidebar = ({
             <div className="powered-by">
               <span>Powered by </span>
               <div className="optigo-logo">
-                <Image src="/icons/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
+                <Image src="/icons/brand/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
               </div>
             </div>
           </div>
@@ -231,7 +231,7 @@ export const Sidebar = ({
         <div className={`powered-by ${isCollapsedEffective ? "collapsed" : ""}`}>
           <span>Powered by </span>
           <div className="optigo-logo">
-            <Image src="/icons/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
+            <Image src="/icons/brand/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
           </div>
         </div>
       </div>

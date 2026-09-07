@@ -34,7 +34,7 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
           )}
           <div className="header_brand">
             <Image
-              src="/icons/logo.png"
+              src="/icons/brand/logo.png"
               alt="TeCoChat logo"
               width={120}
               height={36}

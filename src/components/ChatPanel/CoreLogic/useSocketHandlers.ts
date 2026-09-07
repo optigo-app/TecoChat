@@ -1,7 +1,5 @@
 "use client";
 
-
-
 import { useEffect, useRef, useCallback } from "react";
 import {
   addMessageReactionHandler,
@@ -101,7 +99,6 @@ export function useSocketHandlers({
           extra,
         });
 
-        // Play delivered/read sounds only for the current user's outgoing messages
         // (status transitions). Status: 1=sent, 2=delivered, 3=read, 4=failed
         if (messageId) {
           const msgKey = String(messageId);

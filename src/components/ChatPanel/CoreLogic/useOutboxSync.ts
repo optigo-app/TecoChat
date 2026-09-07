@@ -36,7 +36,18 @@ export function useOutboxSync(auth: AuthData | null) {
     (async () => {
       try {
         const pending = await getPendingOutbox(authRef.current);
-        if (cancelled || pending.length === 0) return;
+        if (cancelled) return;
+        if (pending.length > 0) {
+          console.log("[OUTBOX] Found", pending.length, "pending outbox entries:", pending.map(e => ({
+            convId: e.conversationId,
+            msgId: e.messageId,
+            text: e.text,
+            status: e.status,
+            mediaType: e.mediaType,
+            createdAt: new Date(e.createdAt).toISOString(),
+          })));
+        }
+        if (pending.length === 0) return;
 
         for (const entry of pending) {
           if (cancelled) break;

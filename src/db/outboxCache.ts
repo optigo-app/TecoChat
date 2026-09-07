@@ -98,8 +98,22 @@ export async function getPendingOutbox(
         .equals(String(conversationId))
         .toArray()
     : await db.outbox.toArray();
+
+  // Remove stale entries that have no text and no media (should never be sent)
+  const invalid = rows.filter(
+    (row) =>
+      !row.text?.trim() &&
+      (!row.mediaFiles || row.mediaFiles.length === 0) &&
+      !row.replyTo
+  );
+  if (invalid.length > 0) {
+    console.log("[OUTBOX] Removing", invalid.length, "stale empty outbox entries");
+    await db.outbox.bulkDelete(invalid.map((r) => r.key));
+  }
+
+  const validRows = rows.filter((r) => !invalid.includes(r));
   const staleSendingCutoff = Date.now() - 60_000;
-  return rows
+  return validRows
     .filter((row) =>
       row.status === "pending" ||
       row.status === "failed" ||

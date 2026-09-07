@@ -1,0 +1,432 @@
+@use "../../global.scss" as *;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LoginPageV2 — Two-panel login, fully theme-aware
+// Left: brand image (fills panel). Right: form (fluid sizing).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Image aspect ratio (1052x1495 → 0.704)
+$img-ratio: 0.704;
+
+// Main container
+.loginv2-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: var(--safe-top) 0 var(--safe-bottom) 0;
+    background: $sidebar-Bgcolor;
+
+    @media (min-width: 768px) {
+        padding: var(--space-lg);
+    }
+
+    @media (min-width: 1024px) {
+        padding: var(--space-xl);
+    }
+}
+
+// Card wrapper — height fits within viewport, no scrollbar
+.loginv2-card {
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface);
+    border-radius: 0;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-paper);
+    // Mobile: exact viewport height
+    height: 100vh;
+    height: 100dvh;
+
+    // Tablet: fit within viewport minus container padding
+    @media (min-width: 768px) {
+        max-width: 1100px;
+        height: auto;
+        max-height: calc(100dvh - var(--space-lg) * 2);
+        // Aspect ratio: width * 0.45 / 0.704, capped to available height
+        aspect-ratio: 1100 / 703;
+        border-radius: var(--radius-xl);
+        flex-direction: row;
+    }
+
+    // Desktop
+    @media (min-width: 1024px) {
+        max-width: 1200px;
+        max-height: calc(100dvh - var(--space-xl) * 2);
+        aspect-ratio: 1200 / 767;
+    }
+
+    // Large desktop
+    @media (min-width: 1440px) {
+        max-width: 1320px;
+        max-height: calc(100dvh - var(--space-xl) * 2);
+        aspect-ratio: 1320 / 844;
+    }
+}
+
+// ─── Left Brand Panel — image fills completely ─────────────────────────────
+.loginv2-brand {
+    display: none;
+    width: 45%;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+
+    @media (min-width: 768px) {
+        display: block;
+    }
+
+    .brand-mockup {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        display: block;
+    }
+}
+
+// ─── Right Form Panel ──────────────────────────────────────────────────────
+.loginv2-form-panel {
+    width: 100%;
+    background: var(--color-surface);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    // Mobile: full screen with safe areas
+    height: 100dvh;
+    padding: calc(var(--safe-top) + var(--space-md)) var(--space-md) calc(var(--safe-bottom) + var(--space-md));
+    overflow-y: auto;
+
+    @media (min-width: 768px) {
+        width: 55%;
+        height: 100%;
+        overflow: hidden;
+        padding: clamp(var(--space-lg), 3vh, var(--space-2xl)) clamp(var(--space-lg), 3vw, var(--space-xl));
+    }
+}
+
+// Logo row
+.loginv2-logo-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.loginv2-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .icon-bg {
+        position: relative;
+        width: clamp(36px, 4vw, 44px);
+        height: clamp(36px, 4vw, 44px);
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        .icon {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+    }
+
+    .logo-text {
+        font-size: clamp(1.125rem, 1.5vw + 0.5rem, 1.5rem);
+        font-weight: 600;
+        color: $titleColor;
+        letter-spacing: -0.025em;
+        font-family: $font-family;
+    }
+}
+
+// Form content — centered
+.loginv2-form-content {
+    max-width: 420px;
+    width: 100%;
+    margin: 0 auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: var(--space-lg) 0;
+}
+
+// Title + subtitle — fluid
+.loginv2-form-title {
+    font-size: clamp(1.375rem, 1.5vw + 0.75rem, 1.875rem);
+    font-weight: 700;
+    color: $titleColor;
+    letter-spacing: -0.025em;
+    margin-bottom: 6px;
+    font-family: $font-family;
+}
+
+.loginv2-form-subtitle {
+    font-size: clamp(0.8125rem, 0.3vw + 0.7rem, 0.9375rem);
+    color: $text2ndColor;
+    margin-bottom: var(--space-xl);
+    font-family: $font-family;
+}
+
+// Form error banner — auto-hides after 4s
+.loginv2-form-error {
+    font-size: 0.8125rem;
+    color: $error-main;
+    text-align: center;
+    margin-bottom: var(--space-md);
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    background: $error-light-bg;
+    font-family: $font-family;
+    animation: errorFadeIn 0.3s ease;
+}
+
+@keyframes errorFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+// Form field group
+.loginv2-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: var(--space-lg);
+}
+
+.loginv2-field-label {
+    font-size: clamp(0.75rem, 0.2vw + 0.65rem, 0.875rem);
+    font-weight: 600;
+    color: $titleColor;
+    font-family: $font-family;
+}
+
+// Input wrapper
+.loginv2-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+// Pill input — fluid sizing, theme-aware
+.loginv2-input {
+    width: 100%;
+    padding: clamp(12px, 1.5vh, 16px) clamp(14px, 1.5vw, 20px);
+    background: var(--login-input-bg);
+    border: 1px solid var(--login-fieldset-border);
+    border-radius: 9999px;
+    color: $titleColor;
+    font-size: 16px; // 16px mobile to prevent iOS zoom
+    font-family: $font-family;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    -webkit-appearance: none;
+    appearance: none;
+
+    &::placeholder {
+        color: $placeholderColor;
+        opacity: 1;
+    }
+
+    &:focus {
+        border-color: $primary-main;
+        box-shadow: 0 0 0 1px $primary-main;
+    }
+
+    &.has-adornment {
+        padding-right: 48px;
+    }
+
+    @media (min-width: 768px) {
+        font-size: clamp(0.8125rem, 0.3vw + 0.7rem, 0.9375rem);
+    }
+}
+
+// Error state
+.loginv2-input.is-error {
+    border-color: $error-main;
+
+    &:focus {
+        border-color: $error-main;
+        box-shadow: 0 0 0 1px $error-main;
+    }
+}
+
+.loginv2-error-text {
+    font-size: 0.75rem;
+    color: $error-main;
+    margin-top: 2px;
+    margin-left: 4px;
+    font-family: $font-family;
+}
+
+// Check icon
+.loginv2-check-icon {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: $success-main;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+}
+
+// Password eye toggle
+.loginv2-eye-toggle {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: $text2ndColor;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 50%;
+    transition: color 0.2s ease;
+
+    &:hover {
+        color: $titleColor;
+    }
+}
+
+// Options row
+.loginv2-options-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: var(--space-md) 0 var(--space-lg);
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.loginv2-remember {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+
+    input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: $primary-main;
+        cursor: pointer;
+    }
+
+    .remember-label {
+        font-size: clamp(0.75rem, 0.2vw + 0.65rem, 0.875rem);
+        font-weight: 500;
+        color: $titleColor;
+        font-family: $font-family;
+    }
+}
+
+// Back link
+.loginv2-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: clamp(0.75rem, 0.2vw + 0.65rem, 0.875rem);
+    color: $text2ndColor;
+    text-decoration: none;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: $font-family;
+    padding: 4px 0;
+    transition: color 0.2s ease;
+
+    &:hover {
+        text-decoration: underline;
+        color: $titleColor;
+    }
+}
+
+// Submit button — fluid
+.loginv2-submit-btn {
+    width: 100%;
+    padding: clamp(12px, 1.5vh, 16px) 24px;
+    border-radius: 9999px;
+    background: $button-Bgcolor;
+    color: $button-color;
+    font-weight: 600;
+    font-size: clamp(0.875rem, 0.3vw + 0.75rem, 1rem);
+    font-family: $font-family;
+    border: none;
+    cursor: pointer;
+    text-transform: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    transition: opacity 0.2s ease, transform 0.15s ease;
+    box-shadow: 0 4px 14px rgba(115, 103, 240, 0.3);
+    margin-top: var(--space-sm);
+
+    &:hover:not(:disabled) {
+        opacity: 0.95;
+    }
+
+    &:active:not(:disabled) {
+        transform: scale(0.98);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    @media (min-width: 768px) {
+        min-height: clamp(44px, 5vh, 50px);
+    }
+}
+
+// Footer
+.loginv2-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding-top: var(--space-md);
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: $text2ndColor;
+    font-family: $font-family;
+
+    .optigo-logo {
+        display: flex;
+        align-items: center;
+
+        img {
+            width: 80px;
+            height: auto;
+            object-fit: contain;
+        }
+    }
+}

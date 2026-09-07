@@ -4,28 +4,35 @@
 // Shows a banner at the top of the conversation list prompting the user to
 // enable desktop notifications. Disappears when permission is granted or
 // the user dismisses it. Includes a ringing bell animation.
+// Responsive: compact on mobile (xs), full on sm+.
 
 import { useState } from "react";
 import { Box, Typography, Button } from "@mui/material";
 import { Bell, X } from "lucide-react";
 import { useNotificationManager } from "../../contexts/NotificationContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 export const NotificationPermissionBar = () => {
   const { permissionStatus, requestPermission } = useNotificationManager();
   const [dismissed, setDismissed] = useState(false);
+  const isMobile = useIsMobile();
 
   // Show if default OR denied (so we can guide them to unblock)
   if (permissionStatus === "granted" || dismissed) {
     return null;
   }
 
+  const bellSize = isMobile ? 16 : 20;
+  const iconSize = isMobile ? 16 : 18;
+  const avatarSize = isMobile ? 32 : 40;
+
   return (
     <Box
       sx={{
         display: "flex",
         alignItems: "center",
-        gap: 2,
-        p: "12px 16px",
+        gap: isMobile ? 1 : 2,
+        p: isMobile ? "10px 12px" : "12px 16px",
         backgroundColor: "var(--color-hover-bg)",
         borderBottom: "1px solid var(--color-border)",
         animation: "slideDown 0.3s ease-out",
@@ -39,14 +46,13 @@ export const NotificationPermissionBar = () => {
         sx={{
           backgroundColor: "var(--color-primary)",
           borderRadius: "50%",
-          width: 40,
-          height: 40,
+          width: avatarSize,
+          height: avatarSize,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           color: "white",
           flexShrink: 0,
-          // Bell ring animation
           "& svg": {
             animation: "bellRing 2s ease-in-out infinite",
             transformOrigin: "top center",
@@ -65,22 +71,34 @@ export const NotificationPermissionBar = () => {
           },
         }}
       >
-        <Bell size={20} />
+        <Bell size={bellSize} />
       </Box>
 
-      <Box sx={{ flexGrow: 1 }}>
+      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Typography
           variant="subtitle2"
-          sx={{ color: "var(--color-title)", fontWeight: 500 }}
+          sx={{
+            color: "var(--color-title)",
+            fontWeight: 500,
+            fontSize: isMobile ? "0.8125rem" : "0.875rem",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
         >
-          Get notified of new messages
+          {isMobile ? "Enable notifications" : "Get notified of new messages"}
         </Typography>
-        <Typography variant="caption" sx={{ color: "var(--color-text-secondary)" }}>
-          Turn on desktop notifications
-        </Typography>
+        {!isMobile && (
+          <Typography
+            variant="caption"
+            sx={{ color: "var(--color-text-secondary)" }}
+          >
+            Turn on desktop notifications
+          </Typography>
+        )}
       </Box>
 
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
         <Button
           onClick={requestPermission}
           size="small"
@@ -88,6 +106,10 @@ export const NotificationPermissionBar = () => {
             color: "var(--color-primary)",
             fontWeight: 600,
             textTransform: "none",
+            fontSize: isMobile ? "0.75rem" : "0.8125rem",
+            minWidth: "auto",
+            px: isMobile ? 1 : 1.5,
+            py: 0.25,
             "&:hover": {
               backgroundColor: "var(--color-hover-bg-strong)",
             },
@@ -105,12 +127,13 @@ export const NotificationPermissionBar = () => {
             justifyContent: "center",
             p: 0.5,
             borderRadius: "50%",
+            flexShrink: 0,
             "&:hover": {
               backgroundColor: "var(--color-hover-bg-strong)",
             },
           }}
         >
-          <X size={18} />
+          <X size={iconSize} />
         </Box>
       </Box>
     </Box>

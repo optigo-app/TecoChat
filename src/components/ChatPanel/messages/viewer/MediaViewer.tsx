@@ -407,8 +407,8 @@ const MediaViewerComponent = ({
                             onError={() => markLoaded(index)}
                             style={{
                               display: slideLoading ? "none" : "block",
-                              maxWidth: "90%",
-                              maxHeight: "80%",
+                              maxWidth: "99%",
+                              maxHeight: "99%",
                               borderRadius: "12px",
                             }}
                           />
@@ -416,8 +416,6 @@ const MediaViewerComponent = ({
                       )}
 
                       {item?.type === "pdf" && (
-                        // PDFs are now handled by the dedicated PdfViewerDialog.
-                        // If a PDF somehow reaches here, show the generic document card.
                         (() => {
                           const meta = getDocumentMeta(item.name || "");
                           const IconMap: Record<string, React.ComponentType<{ size?: number }>> = {

@@ -1,6 +1,6 @@
 import { CommonAPI, buildCommonBody } from "../InitialApi/CommonApi";
 import type { AuthData } from "../../context/LoginData";
-import type { FetchConversationResult } from "../../types/conversation";
+import type { FetchConversationResult, RawConversation } from "../../types/conversation";
 
 interface AuthLike {
   id?: string;
@@ -82,5 +82,67 @@ export const fetchConversationLists = async (
       hasMore: false,
       serviceDown: false,
     };
+  }
+};
+
+// ─── PreLoadConversation ───────────────────────────────────────────────────
+// Fetches conversations AND their latest messages in a single API call.
+// Each rd item contains conversation metadata + a "message" field (JSON string
+// of recent messages for that conversation).
+export interface PreLoadResult {
+  conversations: RawConversation[];
+  messagesByConversation: Map<number, unknown[]>;
+}
+
+export const preLoadConversations = async (
+  page = 1,
+  pageSize = 50,
+  auth: AuthLike | AuthData | null,
+  signal?: AbortSignal | null
+): Promise<PreLoadResult> => {
+  try {
+    const payload = {
+      Page: page ?? 1,
+      PageSize: pageSize ?? 50,
+      UserId: (auth as AuthLike)?.id ?? "",
+    };
+
+    const body = buildCommonBody(
+      "PreLoadConversation",
+      auth as AuthLike,
+      payload,
+      "List ( Conversation List )"
+    );
+    const response = await CommonAPI(body, signal ? { signal } : undefined);
+
+    const rd: RawConversation[] = response?.Data?.rd || [];
+    const messagesByConversation = new Map<number, unknown[]>();
+
+    for (const item of rd) {
+      const convId = Number(item.ConversationId ?? item.Id ?? 0);
+      if (!convId) continue;
+
+      const rawMessage = (item as Record<string, unknown>).message;
+      if (rawMessage == null) continue;
+
+      let messages: unknown[] = [];
+      try {
+        messages =
+          typeof rawMessage === "string" ? JSON.parse(rawMessage) : rawMessage;
+      } catch {
+        continue;
+      }
+      if (Array.isArray(messages) && messages.length > 0) {
+        messagesByConversation.set(convId, messages);
+      }
+    }
+
+    return { conversations: rd, messagesByConversation };
+  } catch (error) {
+    if (error instanceof Error && error.message === "AbortError") {
+      throw error;
+    }
+    console.error("preLoadConversations error:", error);
+    return { conversations: [], messagesByConversation: new Map() };
   }
 };

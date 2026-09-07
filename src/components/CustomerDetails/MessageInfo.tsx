@@ -312,7 +312,7 @@ const MessageInfo = ({ messageInfo, localGroupData, auth, selectedCustomer, mess
                           messageInfo?.MediaUrl ||
                           mediaItems[0]?.url
                         }
-                        alt="preview"
+                        alt={messageInfo?.fileName || "Media preview"}
                         style={{
                           width: "100%",
                           height: "100%",

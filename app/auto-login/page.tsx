@@ -17,8 +17,12 @@ const decodeAutoLoginData = (raw: string): AutoLoginData | null => {
   try {
     const decoded = atob(raw);
     const parsed = JSON.parse(decoded);
-    if (!parsed?.uid || !parsed?.yc) return null;
-    return parsed as AutoLoginData;
+    // Support both new format (ufcc, userEmail) and legacy format (uid, yc)
+    const ufcc = parsed?.ufcc ?? parsed?.companycode ?? "";
+    const userEmail = parsed?.userEmail ?? parsed?.uid ?? parsed?.email ?? "";
+    const yearcode = parsed?.yc ?? parsed?.yearcode ?? "";
+    if (!ufcc || !userEmail) return null;
+    return { ufcc, userEmail, yearcode, sv: parsed?.sv };
   } catch {
     return null;
   }
@@ -97,10 +101,10 @@ export default function AutoLoginPage() {
         const tokenData = {
           sv: userInfo.svid
             ? userInfo.svid.toString()
-            : data.userId !== undefined
-            ? String(data.userId)
+            : data.sv !== undefined
+            ? String(data.sv)
             : "",
-          yc: userInfo.yearcode || data.yc,
+          yc: userInfo.yearcode || data.yearcode || "",
         };
 
         setToken(tokenData);

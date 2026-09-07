@@ -3,7 +3,7 @@
 
 import { showBrowserNotification } from "./notifications";
 
-const NOTIFICATION_ICON = "/tecoChat_logo.png";
+const NOTIFICATION_ICON = "/icons/brand/tecoChat_logo.png";
 
 const capitalizeWords = (str?: string): string =>
   str

@@ -515,13 +515,13 @@ const LoginPage1 = () => {
                       size="small"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
-                      style={{ color: "#7367f0" }}
+                      className="remember-me-checkbox"
                     />
                   }
                   label={
                     <Typography
                       variant="body2"
-                      style={{ color: "#667781" }}
+                      className="remember-me-label"
                     >
                       Remember me
                     </Typography>

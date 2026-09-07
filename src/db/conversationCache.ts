@@ -61,6 +61,7 @@ export async function putConversations(
   const db = getDbForAuth(auth);
   if (!db || !conversations.length) return;
 
+  console.log("[CACHE] Writing", conversations.length, "conversations to IndexedDB for auth:", auth?.id ?? auth?.userId);
   const rows = conversations.map(toCachedConversation);
   await db.conversations.clear();
   await db.conversations.bulkPut(rows);

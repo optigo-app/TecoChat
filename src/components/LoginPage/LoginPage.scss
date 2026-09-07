@@ -53,6 +53,8 @@ $text-muted: var(--color-placeholder);
     background: $white;
     padding: 0;
     position: relative;
+    // Clip decorative circles at the corners
+    overflow: hidden;
 
     // Tablet : card with rounded corners
     @media (min-width: 768px) {
@@ -195,6 +197,10 @@ $text-muted: var(--color-placeholder);
         display: block;
         // Fluid: 0.75rem → 0.875rem
         font-size: clamp(0.75rem, 0.3vw + 0.65rem, 0.875rem);
+        // Use title color for strong contrast in both light and dark
+        color: $titleColor;
+        font-weight: 600;
+        font-family: $font-family;
     }
 }
 
@@ -279,7 +285,7 @@ $text-muted: var(--color-placeholder);
 // ═══════════════════════════════════════════════════════════════════════════
 .textfieldsClass {
     font-size: 16px; // 16px on mobile to prevent iOS zoom
-    color: $text2ndColor;
+    color: $titleColor;
 
     @media (min-width: 768px) {
         font-size: 14px;
@@ -291,25 +297,41 @@ $text-muted: var(--color-placeholder);
     }
 
     .MuiOutlinedInput-root {
-        color: $text2ndColor;
+        // Use title color for typed values — strong contrast in both modes
+        color: $titleColor;
         border-radius: var(--radius-md) !important;
         // Mobile: taller inputs for touch
         min-height: 48px;
-        // Ensure right padding accommodates the endAdornment icon
-        // (MUI default is 14px; bump to 8px so the icon sits inside)
-        padding-right: 8px !important;
+        // Consistent right padding across ALL fields (Company Code has a
+        // check icon, Password has an eye icon — both need the same right
+        // spacing so the input text rhythm matches)
+        padding-right: 14px !important;
+        background: var(--login-input-bg);
 
         @media (min-width: 768px) {
             min-height: 40px;
         }
 
-        // The actual <input> element — add right padding so typed text
-        // doesn't run under the eye icon
+        // The actual <input> element — consistent right padding so typed
+        // text doesn't run under adornment icons on any field
         input {
-            padding-right: 8px;
+            padding-right: 14px;
+            // Ensure input text inherits the bright color
+            color: $titleColor;
+
+            &::placeholder {
+                // Placeholder should be visible but not compete with real text
+                color: $placeholderColor;
+                opacity: 1;
+            }
         }
 
         &.Mui-focused fieldset {
+            border-color: var(--login-fieldset-border);
+        }
+
+        // Unfocused fieldset — theme-aware border visibility
+        fieldset {
             border-color: var(--login-fieldset-border);
         }
 
@@ -330,9 +352,25 @@ $text-muted: var(--color-placeholder);
         font-family: $font-family;
         // Mobile: 16px to prevent zoom
         font-size: 16px;
+        color: $text2ndColor;
 
         @media (min-width: 768px) {
             font-size: 14px;
+        }
+
+        // Focused label — use primary color for clear focus indication
+        &.Mui-focused {
+            color: $primary-main;
+        }
+    }
+
+    // Helper text (error messages) — ensure visible in dark mode
+    .MuiFormHelperText-root {
+        color: $error-main;
+        font-size: 0.75rem;
+
+        &.Mui-error {
+            color: $error-main;
         }
     }
 }
@@ -367,6 +405,18 @@ $text-muted: var(--color-placeholder);
         .MuiCheckbox-root {
             min-width: 44px;
             min-height: 44px;
+            color: $primary-main;
+
+            &.Mui-checked {
+                color: $primary-main;
+            }
+        }
+
+        // Improve label contrast against dark card surface
+        .MuiTypography-root {
+            font-weight: 500;
+            color: $text2ndColor;
+            opacity: 1;
         }
     }
 }

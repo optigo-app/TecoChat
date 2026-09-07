@@ -128,4 +128,5 @@ export interface FetchConversationResult {
 export interface TypingState {
   isTyping: boolean;
   userName?: string;
+  profileImage?: string;
 }

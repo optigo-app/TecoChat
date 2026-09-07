@@ -8,11 +8,9 @@ import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
 import { getCustomerDisplayName } from "../../utils/globalFunc";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import type { ConversationListEntry } from "../../types/conversation";
-import type { TypingStatus } from "../../types/message";
 
 interface ChatHeaderProps {
   selectedCustomer: ConversationListEntry | null;
-  typingStatus: TypingStatus | null;
   loading: boolean;
   onRefresh: () => void;
   onSearch: () => void;
@@ -28,7 +26,6 @@ interface ChatHeaderProps {
 
 const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
   selectedCustomer,
-  typingStatus,
   loading,
   onRefresh,
   onSearch,
@@ -104,13 +101,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
           <Typography variant="subtitle1" className="chat-header__name" component="span" noWrap>
             {name}
           </Typography>
-          {typingStatus?.isTyping ? (
-            <Typography variant="body2" className="chat-header__typing" component="span" noWrap>
-              {isGroup && typingStatus.UserName
-                ? `${typingStatus.UserName} is typing...`
-                : "typing..."}
-            </Typography>
-          ) : displayEmail ? (
+          {displayEmail ? (
             <Typography variant="body2" className="chat-header__status" component="span" noWrap>
               {displayEmail}
             </Typography>

@@ -450,7 +450,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
           )}
 
           {/* Loading skeletons — stay visible until data is actually bound in the UI */}
-          {(loading || !chatMembers?.data?.length) && !showEmptyState && !serviceDown && (
+          {(loading && !chatMembers?.data?.length) && !showEmptyState && !serviceDown && (
             <>
               {[...Array(12)].map((_, i) => (
                 <li key={`skeleton-${i}`} className="member-item" style={{ pointerEvents: "none" }}>

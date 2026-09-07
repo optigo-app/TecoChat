@@ -122,8 +122,11 @@ const MessageItemComponent = ({
         >
           <ConversationAvatar
             member={{
+              UserName: (msg as { SenderName?: string }).SenderName || (msg as { SenderInfo?: string }).SenderInfo,
+              FirstName: (msg as { FirstName?: string }).FirstName,
+              LastName: (msg as { LastName?: string }).LastName,
               ProfileImageUrl: (msg as { SenderProfilePicture?: string }).SenderProfilePicture,
-              ...msg,
+              IsGroup: 0,
             } as unknown as ConversationListEntry}
             size={38}
           />

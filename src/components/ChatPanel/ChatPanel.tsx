@@ -683,7 +683,6 @@ export const ChatPanel = memo(({
       >
       <ChatHeader
         selectedCustomer={selectedCustomer}
-        typingStatus={typingStatus}
         loading={loading}
         onRefresh={refresh}
         onSearch={handleSearch}

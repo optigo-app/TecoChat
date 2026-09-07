@@ -9,7 +9,7 @@ import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { showToast } from "../utils/toastHelper";
 import { playNotificationSound, unlockAudio } from "../utils/sound";
 
-const NOTIFICATION_ICON = "/tecoChat_logo.png";
+const NOTIFICATION_ICON = "/icons/brand/tecoChat_logo.png";
 
 interface NotificationContextValue {
   enabledOpen: boolean;

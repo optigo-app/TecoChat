@@ -132,9 +132,13 @@ export class TecoChatDatabase extends Dexie {
 const activeDatabases = new Map<string, TecoChatDatabase>();
 
 export function getDb(authId: string | number | undefined | null): TecoChatDatabase | null {
-  if (typeof indexedDB === "undefined" || !authId) return null;
+  if (typeof indexedDB === "undefined" || !authId) {
+    console.log("[DB] getDb returning null — authId:", authId, "indexedDB available:", typeof indexedDB !== "undefined");
+    return null;
+  }
   const id = String(authId);
   if (!activeDatabases.has(id)) {
+    console.log("[DB] Creating new database instance for authId:", id);
     activeDatabases.set(id, new TecoChatDatabase(id));
   }
   return activeDatabases.get(id) ?? null;

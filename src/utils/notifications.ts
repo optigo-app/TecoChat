@@ -6,7 +6,7 @@
 import { showToast } from "./toastHelper";
 import { playNotificationSound } from "./sound";
 
-const NOTIFICATION_ICON = "/tecoChat_logo.png";
+const NOTIFICATION_ICON = "/icons/brand/tecoChat_logo.png";
 
 interface BrowserNotificationOptions {
   title: string;

@@ -84,7 +84,6 @@
   --login-background-light: rgba(115, 103, 240, 0.08);
   --login-fieldset-border: rgba(0, 0, 0, 0.18);
   --login-input-bg: transparent;
-
   /* Toggle switch */
   --color-toggle-off: rgba(0, 0, 0, 0.22);
   --color-toggle-knob: #ffffff;
@@ -104,7 +103,7 @@
   /* Chat message area background */
   --color-chat-bg: #f9fafb;
   --color-chat-pattern: rgba(115, 103, 240, 0.025);
-  --chat-bg-image: url(/icons/bg-3-light.jpg);
+  --chat-bg-image: url(/icons/chat/bg-3-light.jpg);
   --chat-bg-overlay: rgba(249, 250, 251, 0.80);
 
   /* WhatsApp-style surface colors (for CreateGroup, AddConversation, dialogs) */
@@ -183,7 +182,7 @@
   --color-title: #e4e4ef;
   --color-text-secondary: #a0a0b5;
   --color-text-2nd: #a0a0b5;
-  --color-placeholder: #6c6c80;
+  --color-placeholder: #8a8a9e;
   --color-text-white: #ffffff;
   --color-text-light: #34343f;
 
@@ -211,8 +210,8 @@
 
   /* Login-specific */
   --login-background-light: rgba(115, 103, 240, 0.16);
-  --login-fieldset-border: rgba(255, 255, 255, 0.18);
-  --login-input-bg: transparent;
+  --login-fieldset-border: rgba(255, 255, 255, 0.35);
+  --login-input-bg: rgba(255, 255, 255, 0.04);
 
   /* Toggle switch */
   --color-toggle-off: rgba(255, 255, 255, 0.18);
@@ -233,7 +232,7 @@
   /* Chat message area background */
   --color-chat-bg: #161622;
   --color-chat-pattern: rgba(115, 103, 240, 0.04);
-  --chat-bg-image: url(/icons/bg-3-dark.webp);
+  --chat-bg-image: url(/icons/chat/bg-3-dark.webp);
   --chat-bg-overlay: rgba(22, 22, 34, 0.85);
 
   /* WhatsApp-style surface colors (for CreateGroup, AddConversation, dialogs) */
@@ -398,6 +397,11 @@ a {
 @keyframes dropPulse {
   0%, 100% { opacity: 0.85; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.03); }
+}
+
+@keyframes typingDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
 /* App-like scroll container — momentum scrolling on iOS, no scrollbars on mobile */

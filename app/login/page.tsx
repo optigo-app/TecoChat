@@ -1,7 +1,7 @@
 "use client";
 
-import LoginPage from "@/src/components/LoginPage/LoginPage";
+import LoginPageV2 from "@/src/components/LoginPage/LoginPageV2";
 
 export default function LoginPageRoute() {
-  return <LoginPage />;
+  return <LoginPageV2 />;
 }
