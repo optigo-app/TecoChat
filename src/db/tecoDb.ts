@@ -76,6 +76,7 @@ export interface OutboxMessage {
   date?: string;
   dateTime?: string;
   conversationName?: string;
+  tempIds?: string[];
   createdAt: number;
   status: "pending" | "sending" | "failed";
   attempts: number;

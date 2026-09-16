@@ -7,6 +7,7 @@ export type DateTimeFormat =
   | "time"           // "1:30 PM"
   | "chatTimestamp"  // "1:30 PM" | "Yesterday" | "Mon" | "12/01/26"
   | "dateHeader"     // "Today" | "Yesterday" | "Monday" | "12/01/2026"
+  | "dateNumeric"    // "12/01/2026" (always DD/MM/YYYY — no relative labels)
   | "dateLocal"      // "01 Jan 2026"
   | "dateKey"        // "2026-01-12"
   | "full"           // "12/01/2026 at 1:30 PM"
@@ -52,6 +53,10 @@ export const formatDateTime = (
     if (format === "time") return tzTime(date);
 
     if (format === "dateKey") return tzDateKey(date);
+
+    if (format === "dateNumeric") {
+      return new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+    }
 
     if (format === "dateLocal") {
       return new Intl.DateTimeFormat("en-US", {

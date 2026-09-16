@@ -10,7 +10,7 @@ import {
   emitInternalTyping,
   emitInternalMessageDelete,
 } from "../../../socket";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ConversationListEntry } from "../../../types/conversation";
 
 interface AuthLike {

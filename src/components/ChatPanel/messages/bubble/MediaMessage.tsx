@@ -2,10 +2,11 @@
 
 import { memo, useState, useMemo } from "react";
 import { Box, Skeleton, Typography, IconButton, useTheme, alpha } from "@mui/material";
-import { FileText, Download, Play, FileSpreadsheet, FileArchive, FileCode, File, Smartphone } from "lucide-react";
+import { Download, Play, WifiOff } from "lucide-react";
 import UploadProgressOverlay from "./UploadProgressOverlay";
 import { CrossFadeImage, CrossFadeVideo } from "./CrossFadeMedia";
 import PdfThumbnail from "./PdfThumbnail";
+import { DocumentTypeIcon } from "./DocumentTypeIcon";
 import { handleDownloadFile, getDocumentMeta } from "../../../../utils/globalFunc";
 import { isTextFile } from "../../../../utils/txtUtils";
 import type { ChatMessage } from "../../../../types/message";
@@ -21,6 +22,32 @@ interface MediaMessageProps {
 const MAX_GRID_ITEMS = 4;
 const SINGLE_MEDIA_WIDTH = 250;
 const GRID_SIZE = 250;
+
+// ── Media load error overlay (shown when offline / network fails) ──────────
+const MediaLoadError = ({ height = 200 }: { height?: number }) => (
+  <Box
+    sx={{
+      width: "100%",
+      height,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 1,
+      borderRadius: "12px",
+      backgroundColor: "rgba(0, 0, 0, 0.04)",
+      color: "var(--color-text-secondary)",
+    }}
+  >
+    <WifiOff size={28} />
+    <Typography variant="caption" sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
+      Network unavailable
+    </Typography>
+    <Typography variant="caption" sx={{ fontSize: "0.65rem", opacity: 0.7 }}>
+      Media will load when you reconnect
+    </Typography>
+  </Box>
+);
 
 const formatSize = (bytes?: number) => {
   if (!bytes) return "";
@@ -38,6 +65,7 @@ const MediaMessageComponent = ({
 }: MediaMessageProps) => {
   const theme = useTheme();
   const [imageDims, setImageDims] = useState<{ w: number; h: number } | null>(null);
+  const [mediaError, setMediaError] = useState(false);
 
   const initialDims = useMemo(() => {
     const w = Number((msg as { mediaWidth?: number }).mediaWidth);
@@ -155,6 +183,14 @@ const MediaMessageComponent = ({
     const mediaKey = getMediaKey(msg, 0);
     const rawSrc = msg.previewUrl || msg.mediaItems?.[0]?.url || "";
 
+    if (mediaError) {
+      return (
+        <Box sx={{ position: "relative", width: SINGLE_MEDIA_WIDTH }}>
+          <MediaLoadError height={computedHeight} />
+        </Box>
+      );
+    }
+
     return (
       <Box sx={{ position: "relative" }}>
         <Box
@@ -200,6 +236,7 @@ const MediaMessageComponent = ({
                     setImageDims({ w: img.naturalWidth, h: img.naturalHeight });
                   }
                 }}
+                onError={() => setMediaError(true)}
               />
             </Box>
           )}
@@ -338,6 +375,14 @@ const MediaMessageComponent = ({
       ? Math.max(100, Math.min(250, Math.round(SINGLE_MEDIA_WIDTH * (dimsForCalc.h / dimsForCalc.w))))
       : 180;
 
+    if (mediaError) {
+      return (
+        <Box sx={{ position: "relative", width: SINGLE_MEDIA_WIDTH }}>
+          <MediaLoadError height={computedHeight} />
+        </Box>
+      );
+    }
+
     return (
       <Box sx={{ position: "relative" }}>
         <Box
@@ -380,6 +425,7 @@ const MediaMessageComponent = ({
                 loaded={loadedMedia[mediaKey]}
                 markLoaded={markLoaded}
                 keyId={mediaKey}
+                onError={() => setMediaError(true)}
               />
             </Box>
           )}
@@ -467,20 +513,10 @@ const MediaMessageComponent = ({
 
     // ── Non-PDF documents: generic icon + filename row (unchanged) ────────
 
-    const DocIconMap: Record<string, React.ComponentType<{ size?: number }>> = {
-      FileText,
-      FileSpreadsheet,
-      FileArchive,
-      FileCode,
-      File,
-      Smartphone,
-    };
-
     const renderDocumentItem = (itemProps: { url?: string; filename?: string; fileName?: string; size?: number; mimeType?: string }, index: number) => {
       const href = itemProps.url || "";
       const name = itemProps.filename || itemProps.fileName || "Document";
       const meta = getDocumentMeta(name);
-      const DocIcon = DocIconMap[meta.iconName] || File;
       const isTxt = isTextFile(name, itemProps.mimeType);
 
       return (
@@ -525,15 +561,7 @@ const MediaMessageComponent = ({
               flex: "0 0 auto",
             }}
           >
-            {meta.iconUrl ? (
-              <img
-                src={meta.iconUrl}
-                alt={meta.label}
-                style={{ width: "100%", height: "100%", objectFit: "contain" }}
-              />
-            ) : (
-              <DocIcon size={24} />
-            )}
+            <DocumentTypeIcon filename={name} size={24} />
           </Box>
 
           {/* FILE INFO */}

@@ -13,6 +13,10 @@ export function scrollToBottomInstant(outer: HTMLElement): void {
   setScrollTop(outer, outer.scrollHeight);
 }
 
+export function scrollToTopInstant(outer: HTMLElement): void {
+  setScrollTop(outer, 0);
+}
+
 export function scrollToBottomSmooth(
   outer: HTMLElement,
   behavior: ScrollBehavior = "smooth"

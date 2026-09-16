@@ -13,7 +13,6 @@ import {
   User,
   FileText,
 } from "lucide-react";
-import { Emoji } from "emoji-picker-react";
 import {
   getCustomerDisplayName,
   getWhatsAppAvatarConfig,
@@ -24,6 +23,7 @@ import {
 import { formatDateTime } from "../../../../utils/dateUtils";
 import { charToUnified, parseReactions } from "../../../../utils/EmojiUtils";
 import { QuickReactionMenu, ReactionDetailsMenu } from "../interactions";
+import { useIsTablet } from "../../../../hooks/useIsMobile";
 import type { ChatMessage } from "../../../../types/message";
 import type { ConversationListEntry } from "../../../../types/conversation";
 
@@ -79,6 +79,7 @@ function MediaViewerHeaderComponent({
   extraToolbar,
 }: MediaViewerHeaderProps) {
   const theme = useTheme();
+  const isTablet = useIsTablet();
   const reactionButtonRef = useRef<HTMLButtonElement | null>(null);
   const [reactionAnchorEl, setReactionAnchorEl] = useState<HTMLElement | null>(null);
   const [detailAnchorEl, setDetailAnchorEl] = useState<HTMLElement | null>(null);
@@ -141,7 +142,9 @@ function MediaViewerHeaderComponent({
               <div className="media-viewer-timestamp">
                 PDF
                 {fileSize != null && ` · ${formatSize(fileSize)}`}
-                {filePageCount != null && filePageCount > 0 && ` · ${filePageCount} pages`}
+                {/* Hide page count on mobile+tablet — the page navigation
+                   footer already shows "current / total" there. */}
+                {!isTablet && filePageCount != null && filePageCount > 0 && ` · ${filePageCount} pages`}
               </div>
             </div>
           </>
@@ -187,6 +190,7 @@ function MediaViewerHeaderComponent({
           )}
           {zoom?.zoomLevel != null && (
             <span
+              className="zoom-level-label"
               style={{
                 fontSize: 12,
                 fontWeight: 600,

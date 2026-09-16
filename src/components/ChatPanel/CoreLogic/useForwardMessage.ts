@@ -7,7 +7,7 @@ import { getLocalTime } from "./messageHelpers";
 import { emitInternalMessageSend } from "../../../socket";
 import { forwardMessageApi } from "../../../API/SendMessage/forwardMessageApi";
 import { showToast } from "../../../utils/toastHelper";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
 

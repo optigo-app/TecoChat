@@ -5,14 +5,13 @@ import { Typography, Avatar, alpha, useTheme, Box, IconButton, Skeleton } from "
 import {
   CheckCheck,
   Play,
-  FileText,
   Download,
-  File,
+  FileText,
   Image as ImageIcon,
   Video as VideoIcon,
   Forward,
 } from "lucide-react";
-import { Emoji, EmojiStyle } from "emoji-picker-react";
+import { SafeEmoji } from "../ChatPanel/input/SafeEmoji";
 import {
   getWhatsAppAvatarConfig,
   getDocumentMeta,
@@ -20,6 +19,7 @@ import {
 import { formatDateTime } from "../../utils/dateUtils";
 import { readMessageMemberList } from "../../API/Groups/ReadMessageMemberListApi";
 import { charToUnified } from "../../utils/EmojiUtils";
+import { DocumentTypeIcon } from "../ChatPanel/messages/bubble/DocumentTypeIcon";
 
 interface MessageInfoMember {
   UserId?: string | number;
@@ -416,7 +416,6 @@ const MessageInfo = ({ messageInfo, localGroupData, auth, selectedCustomer, mess
             (() => {
               const name = messageInfo?.fileName || "Document";
               const meta = getDocumentMeta(name);
-              const DocIcon = meta.iconName === "FileText" ? FileText : File;
 
               return (
                 <Box
@@ -437,11 +436,7 @@ const MessageInfo = ({ messageInfo, localGroupData, auth, selectedCustomer, mess
                   <Box
                     sx={{ color: theme.palette.primary.main, display: "flex", alignItems: "center" }}
                   >
-                    {meta.iconUrl ? (
-                      <img src={meta.iconUrl} alt="" style={{ width: 28, height: 28 }} />
-                    ) : (
-                      <DocIcon size={28} />
-                    )}
+                    <DocumentTypeIcon filename={name} size={28} />
                   </Box>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
@@ -533,7 +528,7 @@ const MessageInfo = ({ messageInfo, localGroupData, auth, selectedCustomer, mess
                         return (
                           <Box key={idx} sx={{ display: "flex", alignItems: "center" }}>
                             {unified ? (
-                              <Emoji unified={unified} size={14} emojiStyle={EmojiStyle.APPLE} />
+                              <SafeEmoji unified={unified} emoji={emojiChar} size={14} />
                             ) : (
                               <span style={{ fontSize: "12px" }}>{emojiChar}</span>
                             )}

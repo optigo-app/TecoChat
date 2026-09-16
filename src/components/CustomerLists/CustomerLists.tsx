@@ -2,8 +2,8 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Box, Skeleton, Typography, Menu, MenuItem, ListItemIcon, ListItemText, Divider, CircularProgress } from "@mui/material";
-import { Archive, ArchiveRestore, Pin, PinOff, Star, StarOff } from "lucide-react";
-import { useLoginContext } from "../../context/LoginData";
+import { Archive, ArchiveRestore, Pin, PinOff, Star, StarOff, MessageSquare, MessageSquarePlus, Users } from "lucide-react";
+import { useLoginContext } from "../../contexts/LoginData";
 import { useConversationList } from "../../hooks/useConversationList";
 import { updateConversationApi } from "../../API/SendMessage/updateConversationApi";
 import { showToast } from "../../utils/toastHelper";
@@ -11,10 +11,12 @@ import { getCustomerDisplayName } from "../../utils/globalFunc";
 import { ConversationItem } from "./ConversationItem";
 import { CustomerListsHeader } from "./CustomerListsHeader";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
+import { MobileBottomNav, type MobileNavItem } from "../MobileBottomNav/MobileBottomNav";
 import { highlightText } from "./CustomerListFunc";
 import { conversationComparator } from "./CustomerListFunc";
 import AddConversation from "../AddConversation/AddConversation";
 import CreateGroup from "../AddConversation/CreateGroup";
+import SyncingScreen from "../SyncingScreen/SyncingScreen";
 import { NotificationPermissionBar } from "../ReusableComponent/NotificationPermissionBar";
 import { useFaviconBadge } from "../../hooks/useFaviconBadge";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
@@ -43,6 +45,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
   const {
     chatMembers,
     loading,
+    preloading,
     searchLoading,
     hasMore,
     currentPage,
@@ -53,6 +56,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
     drafts,
     loadMembers,
     handleSearchChange,
+    clearSearch,
     setChatMembers,
     setShowEmptyState,
     searchTerm,
@@ -189,13 +193,29 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
     return () => clearTimeout(timeout);
   }, [loading, chatMembers, filteredMembers.length, setShowEmptyState]);
 
+  // Clear click debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    };
+  }, []);
+
   // ── Click handler (debounced — short delay to prevent double-clicks) ──────
   const handleCustomerClick = useCallback(
     (member: ConversationListEntry) => {
       if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+      // Close the search panel immediately: blur the input to dismiss the
+      // keyboard, and clear the search term so the search results disappear
+      // and the list returns to its default state (WhatsApp-like).
+      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      if (searchTerm) {
+        clearSearch();
+      }
       clickTimeoutRef.current = setTimeout(() => onCustomerSelect(member), 50);
     },
-    [onCustomerSelect]
+    [onCustomerSelect, searchTerm, clearSearch]
   );
 
   // ── Keyboard navigation (Arrow Up/Down, Enter, Escape) ────────────────────
@@ -350,6 +370,23 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
     } catch (error) {
       console.error("Error updating conversation:", error);
       showToast("Something went wrong.", "error");
+      // Revert optimistic update on error
+      setChatMembers((prev) => {
+        if (!prev?.data) return prev;
+        const index = prev.data.findIndex(
+          (m) => Number((m as { ConversationId?: string | number }).ConversationId ?? 0) === Number(convId)
+        );
+        if (index === -1) return prev;
+        const updatedData = [...prev.data];
+        updatedData[index] = {
+          ...updatedData[index],
+          IsPin: (member as { IsPin?: number }).IsPin ?? 0,
+          IsStar: (member as { IsStar?: number }).IsStar ?? 0,
+          IsArchived: (member as { IsArchived?: number }).IsArchived ?? 0,
+        } as ConversationListEntry;
+        updatedData.sort(conversationComparator);
+        return { ...prev, data: updatedData };
+      });
     }
   };
 
@@ -384,7 +421,46 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
     { label: "Favorite", value: 2 },
   ];
 
+  // ── Mobile bottom navigation (chat list screen only) ──────────────────────
+  // WhatsApp-like bottom bar. Hosts the primary list destinations (Chats /
+  // Archived) plus the two create actions relocated from the header so they're
+  // reachable with one-hand use. Rendered only on mobile by MobileBottomNav
+  // itself (returns null on desktop). Hides when the keyboard opens via the
+  // .hide-on-keyboard helper so it never covers the search field.
+  const bottomNavItems: MobileNavItem[] = [
+    {
+      key: "chats",
+      label: "Chats",
+      icon: <MessageSquare size={22} />,
+      onClick: () => setIsArchiveOpen(false),
+    },
+    {
+      key: "archived",
+      label: "Archived",
+      icon: <Archive size={22} />,
+      badge: archivedCount,
+      onClick: () => setIsArchiveOpen(true),
+    },
+    {
+      key: "new-chat",
+      label: "New Chat",
+      icon: <MessageSquarePlus size={22} />,
+      onClick: () => setShowNewChat(true),
+    },
+    {
+      key: "create-group",
+      label: "New Group",
+      icon: <Users size={22} />,
+      onClick: () => setShowCreateGroup(true),
+    },
+  ];
+  const bottomNavActiveKey = isArchiveOpen ? "archived" : "chats";
+
   // ── Render ────────────────────────────────────────────────────────────────
+  if (preloading) {
+    return <SyncingScreen />;
+  }
+
   return (
     <div className="customer_lists_mainDiv">
       {profileOpen && <ProfilePanel onBack={() => setProfileOpen(false)} />}
@@ -483,6 +559,13 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
           )}
 
           {/* Conversation items (exclude search results) */}
+          {searchTerm && filteredMembers.some((m) => !(m as { isSearchResult?: boolean }).isSearchResult) && (
+            <li className="search-section-label">
+              <Typography variant="caption" className="search-section-label-text">
+                Conversations
+              </Typography>
+            </li>
+          )}
           {filteredMembers
             .filter((member) => !(member as { isSearchResult?: boolean }).isSearchResult)
             .map((member, index) => {
@@ -524,9 +607,14 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
             );
           })}
 
-          {/* Search results (separate section, like old app) */}
+          {/* Search results (separate section — contacts not in conversations) */}
           {searchTerm && filteredMembers.some((m) => (m as { isSearchResult?: boolean }).isSearchResult) && (
-            <div className="search-results-group">
+            <div className={`search-results-group ${filteredMembers.some((m) => !(m as { isSearchResult?: boolean }).isSearchResult) ? "" : "no-border"}`}>
+              <li className="search-section-label">
+                <Typography variant="caption" className="search-section-label-text">
+                  Other contacts
+                </Typography>
+              </li>
               {filteredMembers
                 .filter((member) => (member as { isSearchResult?: boolean }).isSearchResult)
                 .map((member, srIndex) => {
@@ -571,9 +659,16 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
           {/* Empty state */}
           {showEmptyState && !loading && filteredMembers.length === 0 && (
             <li className="empty-state">
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 4 }}>
-                No conversations found.
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 3 }}>
+                {searchTerm
+                  ? `No matches found for "${searchTerm}"`
+                  : "No conversations found."}
               </Typography>
+              {searchTerm && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", textAlign: "center", pb: 2, opacity: 0.7 }}>
+                  Try a different name, email, or phone number.
+                </Typography>
+              )}
             </li>
           )}
         </ul>
@@ -696,6 +791,14 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
           />
         </Box>
       )}
+
+      {/* Mobile bottom navigation — chat list screen only.
+          MobileBottomNav returns null on desktop. Wrapped in .hide-on-keyboard
+          so it disappears when the on-screen keyboard opens (keeps the search
+          field visible and avoids covering content). */}
+      <div className="hide-on-keyboard">
+        <MobileBottomNav items={bottomNavItems} activeKey={bottomNavActiveKey} />
+      </div>
     </div>
   );
 };

@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { IconButton } from "@mui/material";
 import logo from "@/src/assets/logo.png";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
+import { useColorMode } from "@/src/theme/ThemeRegistry";
 import { ProfileAvatar } from "@/src/components/ProfileAvatar/ProfileAvatar";
 import "./Sidebar.scss";
 
@@ -27,13 +28,9 @@ const menuItems: MenuItem[] = [
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "internal_sidebar_collapsed";
 
 interface SidebarProps {
-  /** Controlled collapsed state (desktop). */
   isCollapsed?: boolean;
-  /** Callback when collapse state changes (desktop). */
   onCollapsedChange?: (collapsed: boolean) => void;
-  /** Mobile drawer open state (controlled from parent). */
   mobileOpen?: boolean;
-  /** Callback to toggle mobile drawer. */
   onMobileOpenChange?: (open: boolean) => void;
 }
 
@@ -45,19 +42,17 @@ export const Sidebar = ({
 }: SidebarProps) => {
   const pathname = usePathname();
   const isMobile = useIsMobile();
+  const { resolvedMode } = useColorMode();
+  const isDark = resolvedMode === "dark";
+  const brandLogo = isDark ? "/icons/brand/brandlogodark.svg" : "/icons/brand/brandlogolight.png";
 
-  // Desktop manual collapse state (persisted in localStorage)
   const [internalCollapsed, setInternalCollapsed] = useState(false);
 
-  // Breakpoint auto-collapse (<= 1440px)
   const [breakpointCollapsed, setBreakpointCollapsed] = useState(false);
 
-  // Init from localStorage + viewport
-  // Default to collapsed (mini mode) unless the user has explicitly expanded
   useEffect(() => {
     try {
       const stored = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-      // No stored preference → default to collapsed (mini mode)
       setInternalCollapsed(stored == null ? true : stored === "true");
     } catch {
       setInternalCollapsed(true);
@@ -69,7 +64,6 @@ export const Sidebar = ({
     }
   }, []);
 
-  // Listen for viewport changes
   useEffect(() => {
     const handleResize = () => {
       setBreakpointCollapsed(window.innerWidth <= 1440);
@@ -78,7 +72,6 @@ export const Sidebar = ({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Persist manual collapse
   useEffect(() => {
     try {
       localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(internalCollapsed));
@@ -87,17 +80,14 @@ export const Sidebar = ({
     }
   }, [internalCollapsed]);
 
-  // Use controlled or internal state
   const manualCollapsed = controlledCollapsed ?? internalCollapsed;
   const setCollapsed = (v: boolean) => {
     if (onCollapsedChange) onCollapsedChange(v);
     else setInternalCollapsed(v);
   };
 
-  // Effective collapsed = manual OR breakpoint (desktop only)
   const isCollapsedEffective = !isMobile && (manualCollapsed || breakpointCollapsed);
 
-  // Close mobile drawer on route change
   useEffect(() => {
     if (onMobileOpenChange) onMobileOpenChange(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,7 +103,6 @@ export const Sidebar = ({
     }
   };
 
-  // ── Mobile: render drawer + overlay ────────────────────────────────────
   if (isMobile) {
     return (
       <>
@@ -168,7 +157,7 @@ export const Sidebar = ({
             <div className="powered-by">
               <span>Powered by </span>
               <div className="optigo-logo">
-                <Image src="/icons/brand/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
+                <Image src={brandLogo} alt="Optigo logo" width={80} height={42} draggable={false} />
               </div>
             </div>
           </div>
@@ -177,7 +166,6 @@ export const Sidebar = ({
     );
   }
 
-  // ── Desktop: fixed sidebar ─────────────────────────────────────────────
   return (
     <aside
       className={`sidebar_mainDiv ${isCollapsedEffective ? "collapsed" : ""}`}
@@ -231,7 +219,7 @@ export const Sidebar = ({
         <div className={`powered-by ${isCollapsedEffective ? "collapsed" : ""}`}>
           <span>Powered by </span>
           <div className="optigo-logo">
-            <Image src="/icons/brand/logo1.png" alt="Optigo logo" width={80} height={42} draggable={false} />
+            <Image src={brandLogo} alt="Optigo logo" width={80} height={42} draggable={false} />
           </div>
         </div>
       </div>

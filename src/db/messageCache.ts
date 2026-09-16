@@ -2,7 +2,7 @@
 
 import { getDb } from "./tecoDb";
 import type { ChatMessage } from "../types/message";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 
 const MESSAGES_PER_CONVERSATION = 2000;
 

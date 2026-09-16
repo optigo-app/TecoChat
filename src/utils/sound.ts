@@ -458,10 +458,19 @@ export const needsUserGesture = (): boolean => needsGesture;
 // ── Wake/sleep detection ────────────────────────────────────────────────────
 // Safari's AudioContext can become a zombie after sleep/wake.
 // Recreate it when the page becomes visible again.
+//
+// Listeners/interval are stored at module scope so destroySoundManager() can
+// remove them explicitly (HMR, unit tests, SPA teardown). pagehide still acts
+// as a safety-net auto-cleanup.
+
+let pageshowHandler: ((e: PageTransitionEvent) => void) | null = null;
+let visibilityHandler: (() => void) | null = null;
+let timeJumpInterval: ReturnType<typeof setInterval> | null = null;
+let pagehideCleanup: (() => void) | null = null;
 
 if (typeof window !== "undefined") {
   // pageshow fires on bfcache restore and some wake scenarios
-  const pageshowHandler = (e: PageTransitionEvent) => {
+  pageshowHandler = (e: PageTransitionEvent) => {
     if (e.persisted) {
       recreateAudioContext();
     }
@@ -469,7 +478,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("pageshow", pageshowHandler);
 
   // visibilitychange catches most desktop Safari wake scenarios
-  const visibilityHandler = () => {
+  visibilityHandler = () => {
     if (typeof document === "undefined") return;
     if (document.visibilityState === "visible" && audioContext) {
       // Try to resume first — if it's just suspended, this fixes it
@@ -490,7 +499,7 @@ if (typeof window !== "undefined") {
   // Time-jump detection: if the system clock jumps forward by more than 5
   // seconds in a single event loop tick, the device likely went to sleep.
   let lastTimeCheck = Date.now();
-  const timeJumpInterval = setInterval(() => {
+  timeJumpInterval = setInterval(() => {
     const now = Date.now();
     if (now - lastTimeCheck > 10000) {
       // Clock jumped — device likely slept and woke
@@ -499,15 +508,41 @@ if (typeof window !== "undefined") {
     lastTimeCheck = now;
   }, 5000);
 
-  // Clean up listeners and interval on pagehide to prevent leaks
+  // Safety-net auto-cleanup on pagehide to prevent leaks
   // (important for HMR, unit tests, and SPA navigation)
-  const cleanup = () => {
-    window.removeEventListener("pageshow", pageshowHandler);
-    if (typeof document !== "undefined") {
-      document.removeEventListener("visibilitychange", visibilityHandler);
-    }
-    clearInterval(timeJumpInterval);
-    window.removeEventListener("pagehide", cleanup);
+  pagehideCleanup = () => {
+    destroySoundManager();
   };
-  window.addEventListener("pagehide", cleanup);
+  window.addEventListener("pagehide", pagehideCleanup);
 }
+
+/**
+ * Tear down all module-level listeners, clear the time-jump interval, and
+ * close the AudioContext. Safe to call multiple times. Intended for HMR,
+ * unit tests, and explicit SPA teardown — pagehide auto-calls this too.
+ */
+export const destroySoundManager = (): void => {
+  if (typeof window !== "undefined") {
+    if (pageshowHandler) {
+      window.removeEventListener("pageshow", pageshowHandler);
+      pageshowHandler = null;
+    }
+    if (pagehideCleanup) {
+      window.removeEventListener("pagehide", pagehideCleanup);
+      pagehideCleanup = null;
+    }
+  }
+  if (typeof document !== "undefined" && visibilityHandler) {
+    document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = null;
+  }
+  if (timeJumpInterval !== null) {
+    clearInterval(timeJumpInterval);
+    timeJumpInterval = null;
+  }
+  if (audioContext) {
+    audioContext.close().catch(() => {});
+    audioContext = null;
+  }
+  isUnlocked = false;
+};

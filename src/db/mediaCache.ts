@@ -1,7 +1,7 @@
 "use client";
 
 import { getDb } from "./tecoDb";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 
 const MAX_MEDIA_ENTRIES = 500;
 const MAX_TOTAL_MEDIA_BYTES = 100 * 1024 * 1024;

@@ -1,5 +1,5 @@
 import { CommonAPI, buildCommonBody } from "../InitialApi/CommonApi";
-import type { AuthData } from "../../context/LoginData";
+import type { AuthData } from "../../contexts/LoginData";
 import type { FetchConversationResult, RawConversation } from "../../types/conversation";
 
 interface AuthLike {

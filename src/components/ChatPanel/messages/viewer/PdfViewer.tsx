@@ -75,6 +75,16 @@ const PdfViewerComponent = ({
       setError(false);
       setLoadedPages(new Set());
 
+      // Fast offline check — skip loadPdf entirely for remote URLs when
+      // offline, so the error fallback shows instantly instead of waiting
+      // for network timeouts.
+      const isRemote = !src.startsWith("blob:") && !src.startsWith("data:");
+      if (isRemote && typeof navigator !== "undefined" && navigator.onLine === false) {
+        setError(true);
+        setLoading(false);
+        return;
+      }
+
       try {
         const pdf = await loadPdf(src);
         if (cancelled) {
@@ -352,7 +362,7 @@ const PdfViewerComponent = ({
           flexDirection: "column",
           alignItems: "center",
           gap: 2,
-          padding: "16px 8px 80px 8px",
+          padding: { xs: "8px 4px 80px 4px", sm: "12px 8px 80px 8px", md: "16px 8px 80px 8px" },
           // Hide scrollbar but keep vertical scrolling
           scrollbarWidth: "none", // Firefox
           msOverflowStyle: "none", // IE/Edge
@@ -380,6 +390,8 @@ const PdfViewerComponent = ({
               flexShrink: 0,
               display: "flex",
               justifyContent: "center",
+              width: "100%",
+              maxWidth: BASE_RENDER_WIDTH * zoom,
             }}
           >
             {/* Page number label */}
@@ -405,7 +417,9 @@ const PdfViewerComponent = ({
                 variant="rectangular"
                 animation="wave"
                 sx={{
-                  width: BASE_RENDER_WIDTH * zoom,
+                  // Fit container width — no overflow on mobile
+                  width: "100%",
+                  maxWidth: BASE_RENDER_WIDTH * zoom,
                   height: 500 * zoom,
                   borderRadius: "8px",
                 }}

@@ -38,23 +38,22 @@ const MediaSection = ({
   onMediaClick,
   paginationFlag,
 }: MediaSectionProps) => {
-  // Combine images and videos
-  const combinedMedia = [...(mediaItems.images || []), ...(mediaItems.videos || [])];
-  const isVideosOnly = (mediaItems.videos?.length || 0) > 0 && (mediaItems.images?.length || 0) === 0;
-  const isImagesOnly = (mediaItems.images?.length || 0) > 0 && (mediaItems.videos?.length || 0) === 0;
+  const images = mediaItems.images || [];
+  const videos = mediaItems.videos || [];
+  const isVideosOnly = videos.length > 0 && images.length === 0;
 
   // Smooth empty-state transition
   const [showEmptyState, setShowEmptyState] = useState(false);
   useEffect(() => {
-    if (!isLoading && combinedMedia.length === 0) {
+    if (!isLoading && images.length === 0 && videos.length === 0) {
       const timer = setTimeout(() => setShowEmptyState(true), 180);
       return () => clearTimeout(timer);
     } else {
       setShowEmptyState(false);
     }
-  }, [isLoading, combinedMedia.length]);
+  }, [isLoading, images.length, videos.length]);
 
-  // Lazy loading hook
+  // Lazy loading hook — attach to the very last item across both sections
   const lastMediaElementRef = useLazyLoading(onLoadMore, hasMore && paginationFlag, isLoading);
 
   const renderSkeletons = () => (
@@ -86,12 +85,12 @@ const MediaSection = ({
   );
 
   // Show nothing if loading and no items
-  if (isLoading && combinedMedia.length === 0) {
+  if (isLoading && images.length === 0 && videos.length === 0) {
     return renderSkeletons();
   }
 
   // Show "No items" message if no items after loading
-  if (combinedMedia.length === 0) {
+  if (images.length === 0 && videos.length === 0) {
     if (!showEmptyState) {
       // Keep showing skeleton briefly to avoid blink
       return renderSkeletons();
@@ -120,105 +119,123 @@ const MediaSection = ({
     );
   }
 
-  return (
-    <Box>
-      <Typography
-        variant="subtitle2"
-        sx={{ color: "text.secondary", fontWeight: 500, mb: 1 }}
-      >
-        {isVideosOnly ? "Videos" : isImagesOnly ? "Media" : "Media"}
-      </Typography>
-      <ImageList cols={3} gap={6} sx={{ m: 0 }}>
-        {combinedMedia.map((item, index) => {
-          const isVideo =
-            item.type?.startsWith("video/") || item.MimeType?.startsWith("video/");
-          const isLastElement = index === combinedMedia.length - 1;
-          const title = item.name || item.FileName || (isVideo ? "Video" : "Image");
-          const src = item.src || item.FileUrl || "";
+  // Render a single grid of items (used for images-only or videos-only tabs)
+  // `isLastSection` — when true, the lazy-loading ref attaches to the last
+  // item in this grid so infinite scroll triggers at the very bottom.
+  const renderGrid = (items: MediaItem[], label: string, isLastSection: boolean) => {
+    if (items.length === 0) return null;
+    const isVideoSection = label === "Videos";
+    return (
+      <Box sx={{ mb: isLastSection ? 0 : 2 }}>
+        <Typography
+          variant="subtitle2"
+          sx={{ color: "text.secondary", fontWeight: 500, mb: 1 }}
+        >
+          {label}
+        </Typography>
+        <ImageList cols={3} gap={6} sx={{ m: 0 }}>
+          {items.map((item, index) => {
+            const isVideo =
+              item.type?.startsWith("video/") || item.MimeType?.startsWith("video/");
+            const isLastElement = isLastSection && index === items.length - 1;
+            const title = item.name || item.FileName || (isVideo ? "Video" : "Image");
+            const src = item.src || item.FileUrl || "";
 
-          return (
-            <ImageListItem
-              ref={isLastElement ? lastMediaElementRef : null}
-              key={item.Id}
-              onClick={() => onMediaClick(item)}
-              title={title}
-              sx={{ cursor: "pointer" }}
-            >
-              <Box
-                sx={{
-                  position: "relative",
-                  width: "100%",
-                  aspectRatio: "1 / 1",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                  bgcolor: "action.hover",
-                }}
+            return (
+              <ImageListItem
+                ref={isLastElement ? lastMediaElementRef : null}
+                key={item.Id}
+                onClick={() => onMediaClick(item)}
+                title={title}
+                sx={{ cursor: "pointer" }}
               >
-                {!src ? (
-                  <Skeleton
-                    variant="rounded"
-                    width="100%"
-                    height="100%"
-                    sx={{ position: "absolute", inset: 0, borderRadius: 0 }}
-                  />
-                ) : isVideo ? (
-                  <Box
-                    component="video"
-                    preload="metadata"
-                    playsInline
-                    muted
-                    sx={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  >
-                    <source src={src} type="video/mp4" />
-                  </Box>
-                ) : (
-                  <Box
-                    component="img"
-                    src={src}
-                    alt="Shared media"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
-                    sx={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  />
-                )}
-
                 <Box
                   sx={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    bgcolor: "rgba(0,0,0,0.28)",
-                    opacity: 0,
-                    transition: "opacity 160ms ease",
-                    "&:hover": { opacity: 1 },
+                    position: "relative",
+                    width: "100%",
+                    aspectRatio: "1 / 1",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    bgcolor: "action.hover",
                   }}
                 >
-                  {src ? (
-                    isVideo ? (
-                      <Play size={22} color="#fff" />
-                    ) : (
-                      <Image size={22} color="#fff" />
-                    )
-                  ) : null}
+                  {!src ? (
+                    <Skeleton
+                      variant="rounded"
+                      width="100%"
+                      height="100%"
+                      sx={{ position: "absolute", inset: 0, borderRadius: 0 }}
+                    />
+                  ) : isVideo ? (
+                    <Box
+                      component="video"
+                      preload="metadata"
+                      playsInline
+                      muted
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    >
+                      <source src={src} type="video/mp4" />
+                    </Box>
+                  ) : (
+                    <Box
+                      component="img"
+                      src={src}
+                      alt="Shared media"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                  )}
+
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      bgcolor: "rgba(0,0,0,0.28)",
+                      opacity: 0,
+                      transition: "opacity 160ms ease",
+                      "&:hover": { opacity: 1 },
+                    }}
+                  >
+                    {src ? (
+                      isVideo ? (
+                        <Play size={22} color="#fff" />
+                      ) : (
+                        <Image size={22} color="#fff" />
+                      )
+                    ) : null}
+                  </Box>
                 </Box>
-              </Box>
-            </ImageListItem>
-          );
-        })}
-      </ImageList>
+              </ImageListItem>
+            );
+          })}
+        </ImageList>
+      </Box>
+    );
+  };
+
+  return (
+    <Box>
+      {isVideosOnly ? renderGrid(videos, "Videos", true) : (
+        <>
+          {renderGrid(images, "Media", videos.length === 0)}
+          {renderGrid(videos, "Videos", true)}
+        </>
+      )}
 
       {!paginationFlag && hasMore ? (
         <Box sx={{ mt: 1.5, display: "flex", justifyContent: "center" }}>

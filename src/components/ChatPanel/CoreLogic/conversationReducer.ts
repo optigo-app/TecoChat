@@ -206,6 +206,26 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       }
       // A socket echo can arrive before the API response and have a different
       // direction or server ID. Reconcile it with the matching optimistic row.
+      // Skip this matching when the incoming message is itself an optimistic
+      // message (Status "pending" or 4) — otherwise new outgoing messages
+      // with the same caption and conversation would overwrite each other.
+      const incomingStatus = incoming.Status as unknown;
+      const incomingIsOptimistic =
+        incomingStatus === "pending" || incomingStatus === 4 || incomingStatus === "4";
+      if (incomingIsOptimistic) {
+        const newArr = [...state.data];
+        const newMsg = incoming as ChatMessage;
+        const newTime = new Date(newMsg.DateTime || 0).getTime();
+        let lo = 0, hi = newArr.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          const midTime = new Date(newArr[mid].DateTime || 0).getTime();
+          if (midTime < newTime) lo = mid + 1;
+          else hi = mid;
+        }
+        newArr.splice(lo, 0, newMsg);
+        return { ...state, data: newArr };
+      }
       const optimisticCandidates = state.data
         .map((m, index) => ({ message: m, index }))
         .filter(({ message: m }) => {

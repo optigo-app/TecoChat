@@ -128,21 +128,22 @@ export default function EmojiPlugin() {
           if (!newNodes || newNodes.length === 0) continue;
 
           // Calculate new selection offset if this node had the cursor
-          let restoreSelection: { offset: number } | null = null;
+          let restoreSelection: { nodeIndex: number; offset: number } | null = null;
           if (anchorOffset !== undefined) {
             let runningLength = 0;
-            for (const newNode of newNodes) {
-              const nodeLen = newNode.getTextContent().length;
+            for (let index = 0; index < newNodes.length; index++) {
+              const nodeLen = newNodes[index].getTextContent().length;
               if (runningLength + nodeLen >= anchorOffset) {
-                restoreSelection = { offset: anchorOffset - runningLength };
+                restoreSelection = { nodeIndex: index, offset: anchorOffset - runningLength };
                 break;
               }
               runningLength += nodeLen;
             }
             // If cursor was at the very end, place it after the last node
             if (!restoreSelection) {
-              const lastLen = newNodes[newNodes.length - 1].getTextContent().length;
-              restoreSelection = { offset: lastLen };
+              const nodeIndex = newNodes.length - 1;
+              const lastLen = newNodes[nodeIndex].getTextContent().length;
+              restoreSelection = { nodeIndex, offset: lastLen };
             }
           }
 
@@ -157,16 +158,13 @@ export default function EmojiPlugin() {
 
           // Restore cursor position on the node that contains the offset
           if (restoreSelection) {
-            let runningLength = 0;
-            for (const newNode of newNodes) {
-              const nodeLen = newNode.getTextContent().length;
-              if (runningLength + nodeLen >= (restoreSelection.offset + runningLength)) {
-                if ("select" in newNode) {
-                  (newNode as TextNode).select(restoreSelection.offset, restoreSelection.offset);
-                }
-                break;
-              }
-              runningLength += nodeLen;
+            const selectionNode = newNodes[restoreSelection.nodeIndex];
+            if ("select" in selectionNode) {
+              (selectionNode as TextNode).select(restoreSelection.offset, restoreSelection.offset);
+            } else if (restoreSelection.offset === 0) {
+              selectionNode.selectPrevious();
+            } else {
+              selectionNode.selectNext();
             }
           }
         }

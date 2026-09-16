@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useMemo } from "react";
 import { getDb, closeDb } from "./tecoDb";
 import type { TecoChatDatabase } from "./tecoDb";
-import { useLoginContext } from "../context/LoginData";
+import { useLoginContext } from "../contexts/LoginData";
 
 const DbContext = createContext<TecoChatDatabase | null>(null);
 

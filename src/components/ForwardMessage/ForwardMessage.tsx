@@ -25,7 +25,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { X, Send, Search } from "lucide-react";
-import { useLoginContext } from "../../context/LoginData";
+import { useLoginContext } from "../../contexts/LoginData";
 import { getForwardListApi } from "../../API/SendMessage/forwardlistApi";
 import { getWhatsAppAvatarConfig } from "../../utils/globalFunc";
 import "./ForwardMessage.scss";
@@ -91,17 +91,31 @@ const ForwardMessage = ({
       const mapItems = (items: any[]): ForwardContact[] => {
         const safeItems = Array.isArray(items) ? items : [];
         return safeItems.map((item: any) => {
-          const rawId = item.ReceiverId || item.ConversationId;
+          // Two flows:
+          // 1. Conversation contacts (rd): have ReceiverId + ConversationId
+          //    → use ReceiverId as the user id
+          // 2. Non-conversation contacts (rd1): have UserId (no ConversationId)
+          //    → use UserId as the user id
+          const userId = item.ReceiverId || item.UserId;
+          const rawId = item.ConversationId || userId;
           const id = Array.isArray(rawId) ? rawId.join("-") : rawId;
+
+          // Display name: prefer UserName, fall back to DisplayName
+          const displayName = item.UserName || item.DisplayName || "";
+          // Subtitle: only show if it's DIFFERENT from the display name
+          // (avoids showing the name twice)
+          const subtitleRaw = item.DisplayName || "";
+          const subtitle = subtitleRaw && subtitleRaw !== displayName ? subtitleRaw : "";
+
           return {
             Type: item.Type,
             ConversationId: item.ConversationId,
-            UserId: item.ReceiverId,
+            UserId: userId,
             UserName: item.UserName ?? "",
-            DisplayName: (item.UserName || item.DisplayName) ?? "",
+            DisplayName: displayName,
             ProfileImageUrl: item.ProfileImageUrl,
             id,
-            subtitle: item.DisplayName ?? "",
+            subtitle,
           };
         });
       };

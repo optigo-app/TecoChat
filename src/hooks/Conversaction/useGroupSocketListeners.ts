@@ -5,7 +5,7 @@
 import { useEffect } from "react";
 import toast from "react-hot-toast";
 import { notify } from "../../utils/notificationTemplates";
-import type { AuthData } from "../../context/LoginData";
+import type { AuthData } from "../../contexts/LoginData";
 
 interface UseGroupSocketListenersParams {
   selectedCustomer: any;

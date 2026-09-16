@@ -7,16 +7,10 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  FileText,
-  FileSpreadsheet,
-  FileArchive,
-  FileCode,
-  File,
   ZoomIn,
   ZoomOut,
   Reply,
   Forward,
-  Smartphone,
   Smile,
   Play,
 } from "lucide-react";
@@ -31,14 +25,14 @@ import {
   getWhatsAppAvatarConfig,
   getCustomerAvatarSeed,
   hasCustomerName,
-  getDocumentMeta,
 } from "../../../../utils/globalFunc";
 import { formatDateTime } from "../../../../utils/dateUtils";
-import { Emoji, EmojiStyle } from "emoji-picker-react";
+import { SafeEmoji } from "../../input/SafeEmoji";
 import { charToUnified, parseReactions } from "../../../../utils/EmojiUtils";
 import { User } from "lucide-react";
 import { QuickReactionMenu, ReactionDetailsMenu } from "../interactions";
 import MediaViewerHeader from "./MediaViewerHeader";
+import { DocumentTypeIcon } from "../bubble/DocumentTypeIcon";
 import type { MediaViewerItem } from "../../CoreLogic/uiReducer";
 import type { ChatMessage } from "../../../../types/message";
 import type { ConversationListEntry } from "../../../../types/conversation";
@@ -417,29 +411,11 @@ const MediaViewerComponent = ({
 
                       {item?.type === "pdf" && (
                         (() => {
-                          const meta = getDocumentMeta(item.name || "");
-                          const IconMap: Record<string, React.ComponentType<{ size?: number }>> = {
-                            FileText,
-                            FileSpreadsheet,
-                            FileArchive,
-                            FileCode,
-                            File,
-                            Smartphone,
-                          };
-                          const DocIcon = IconMap[meta.iconName] || File;
                           return (
                             <div className="document-preview">
                               <div className="document-header">
-                                <div className={`document-icon ${meta.tone}`}>
-                                  {meta.iconUrl ? (
-                                    <img
-                                      src={meta.iconUrl}
-                                      alt={meta.label}
-                                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                                    />
-                                  ) : (
-                                    <DocIcon size={32} />
-                                  )}
+                                <div className="document-icon pdf">
+                                  <DocumentTypeIcon filename={item.name || "file.pdf"} size={32} />
                                 </div>
                                 <div className="document-info">
                                   <div className="document-name">{item.name}</div>
@@ -462,16 +438,6 @@ const MediaViewerComponent = ({
 
                       {item?.type === "document" && (
                         (() => {
-                          const meta = getDocumentMeta(item.name || "");
-                          const IconMap: Record<string, React.ComponentType<{ size?: number }>> = {
-                            FileText,
-                            FileSpreadsheet,
-                            FileArchive,
-                            FileCode,
-                            File,
-                            Smartphone,
-                          };
-                          const DocIcon = IconMap[meta.iconName] || File;
                           const formatSize = (bytes?: number) => {
                             if (!bytes) return "";
                             if (bytes < 1024) return `${bytes} B`;
@@ -482,19 +448,8 @@ const MediaViewerComponent = ({
                           return (
                             <div className="document-preview">
                               <div className="document-header">
-                                <div
-                                  className={`document-icon ${meta.iconUrl ? "" : meta.tone}`}
-                                  style={meta.iconUrl ? { background: "none", padding: 0 } : {}}
-                                >
-                                  {meta.iconUrl ? (
-                                    <img
-                                      src={meta.iconUrl}
-                                      alt={meta.label}
-                                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                                    />
-                                  ) : (
-                                    <DocIcon size={36} />
-                                  )}
+                                <div className="document-icon">
+                                  <DocumentTypeIcon filename={item.name || "Document"} size={36} />
                                 </div>
                                 <div className="document-info">
                                   <div className="document-name">{item.name || "Document"}</div>
@@ -540,11 +495,11 @@ const MediaViewerComponent = ({
                                         {uniqueEmojis.map((emojiChar, idx) => {
                                           const unified = charToUnified(emojiChar);
                                           return unified ? (
-                                            <Emoji
+                                            <SafeEmoji
                                               key={idx}
                                               unified={unified}
+                                              emoji={emojiChar}
                                               size={20}
-                                              emojiStyle={EmojiStyle.APPLE}
                                             />
                                           ) : (
                                             <span key={idx}>{emojiChar}</span>
@@ -641,22 +596,10 @@ const MediaViewerComponent = ({
                   )}
                   {item.type === "pdf" && (
                     (() => {
-                      const meta = getDocumentMeta(item.name || "file.pdf");
                       return (
                         <div className="thumbnail-document">
-                          <div
-                            className={`thumbnail-icon ${meta.iconUrl ? "" : meta.tone}`}
-                            style={meta.iconUrl ? { background: "none", padding: 0 } : {}}
-                          >
-                            {meta.iconUrl ? (
-                              <img
-                                src={meta.iconUrl}
-                                alt={meta.label}
-                                style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                              />
-                            ) : (
-                              <FileText size={22} />
-                            )}
+                          <div className="thumbnail-icon">
+                            <DocumentTypeIcon filename={item.name || "file.pdf"} size={22} />
                           </div>
                         </div>
                       );
@@ -664,31 +607,10 @@ const MediaViewerComponent = ({
                   )}
                   {item.type === "document" && (
                     (() => {
-                      const meta = getDocumentMeta(item.name || "");
-                      const IconMap: Record<string, React.ComponentType<{ size?: number }>> = {
-                        FileText,
-                        FileSpreadsheet,
-                        FileArchive,
-                        FileCode,
-                        File,
-                        Smartphone,
-                      };
-                      const DocIcon = IconMap[meta.iconName] || File;
                       return (
                         <div className="thumbnail-document">
-                          <div
-                            className={`thumbnail-icon ${meta.iconUrl ? "" : meta.tone}`}
-                            style={meta.iconUrl ? { background: "none", padding: 0 } : {}}
-                          >
-                            {meta.iconUrl ? (
-                              <img
-                                src={meta.iconUrl}
-                                alt={meta.label}
-                                style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                              />
-                            ) : (
-                              <DocIcon size={22} />
-                            )}
+                          <div className="thumbnail-icon">
+                            <DocumentTypeIcon filename={item.name || "Document"} size={22} />
                           </div>
                         </div>
                       );

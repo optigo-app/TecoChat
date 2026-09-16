@@ -39,8 +39,22 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
   const cancelledRef = useRef(false);
   const renderIdRef = useRef(0); // increments on each render attempt
 
+  // Fast offline detection — if the browser is offline and the src is a
+  // remote URL (not blob:/data:), skip the fetch entirely and show the
+  // fallback icon instantly instead of hanging on a loading skeleton.
+  const isRemoteUrl = src && !src.startsWith("blob:") && !src.startsWith("data:");
+  const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const skipRender = isOffline && isRemoteUrl;
+
   const renderThumbnail = useCallback(async () => {
     if (!src || !canvasRef.current) return;
+    // Skip render entirely when offline with a remote URL — fallback icon shows
+    if (typeof navigator !== "undefined" && navigator.onLine === false &&
+        !src.startsWith("blob:") && !src.startsWith("data:")) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
     const myRenderId = ++renderIdRef.current;
 
     // Cancel any previous render
@@ -134,6 +148,30 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
     };
   }, [renderThumbnail]);
 
+  // Listen for online/offline transitions — re-render when connectivity
+  // changes so a previously-skipped thumbnail can retry when back online.
+  useEffect(() => {
+    const handleOnline = () => {
+      if (isRemoteUrl) {
+        setError(false);
+        setLoading(true);
+        renderThumbnail();
+      }
+    };
+    const handleOffline = () => {
+      if (isRemoteUrl) {
+        setError(true);
+        setLoading(false);
+      }
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [isRemoteUrl, renderThumbnail]);
+
   return (
     <Box
       sx={{
@@ -161,7 +199,7 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
           overflow: "hidden",
         }}
       >
-        {loading && (
+        {(loading && !skipRender) && (
           <Skeleton
             variant="rectangular"
             animation="wave"
@@ -169,7 +207,7 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
           />
         )}
 
-        {error ? (
+        {(error || skipRender) ? (
           // Fallback: show a large PDF icon if rendering fails
           <Box
             sx={{
@@ -201,7 +239,7 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
         )}
 
         {/* Hover overlay with eye icon (WhatsApp-style "tap to open") */}
-        {!loading && !error && (
+        {!loading && !error && !skipRender && (
           <Box
             className="pdf-thumb-overlay"
             sx={{
@@ -238,7 +276,7 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
         )}
 
         {/* Page count badge (top-right) */}
-        {!loading && !error && pageCount != null && (
+        {!loading && !error && !skipRender && pageCount != null && (
           <Box
             sx={{
               position: "absolute",

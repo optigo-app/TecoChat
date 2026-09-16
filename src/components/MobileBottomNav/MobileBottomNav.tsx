@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Box, IconButton, Typography } from "@mui/material";
-import { useIsMobile } from "../../hooks/useIsMobile";
+import { useIsTablet } from "../../hooks/useIsMobile";
 
 export interface MobileNavItem {
   key: string;
@@ -22,8 +22,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   items,
   activeKey,
 }) => {
-  const isMobile = useIsMobile();
-  if (!isMobile) return null;
+  const isTablet = useIsTablet();
+  if (!isTablet) return null;
 
   return (
     <Box

@@ -2,7 +2,7 @@
 
 import { getDb } from "./tecoDb";
 import type { ChatMessage } from "../types/message";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 import type { OutboxMediaFile, OutboxMessage } from "./tecoDb";
 
 function getDbForAuth(auth: AuthData | null) {
@@ -25,6 +25,7 @@ export async function addToOutbox(
     date?: string;
     dateTime?: string;
     conversationName?: string;
+    tempIds?: string[];
   }
 ): Promise<void> {
   const db = getDbForAuth(auth);
@@ -50,6 +51,7 @@ export async function addToOutbox(
     date: media?.date,
     dateTime: media?.dateTime,
     conversationName: media?.conversationName,
+    tempIds: media?.tempIds,
     createdAt: Date.now(),
     status: "pending",
     attempts: 0,

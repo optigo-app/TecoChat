@@ -27,7 +27,7 @@ import {
 import { Search, X as Clear, Check } from "lucide-react";
 import { fetchCustomerLists } from "../../API/CustomerLists/CustomerLists";
 import { PastParticipantListApi } from "../../API/Groups/PastParticipantListApi";
-import { useLoginContext } from "../../context/LoginData";
+import { useLoginContext } from "../../contexts/LoginData";
 import {
   getCustomerDisplayName,
   getWhatsAppAvatarConfig,
@@ -110,7 +110,14 @@ const AddMemberDialog = ({
       const filtered = groupMembers.filter((m: any) => {
         const name = getCustomerDisplayName(m).toLowerCase();
         const phone = m.Phone || m.MobileNo || "";
-        return name.includes(lowerSearch) || phone.includes(search);
+        const userId = String(m.UserId ?? m.Id ?? m.id ?? "");
+        const email = String(m.UserEmail ?? m.DisplayEmail ?? m.Email ?? "").toLowerCase();
+        return (
+          name.includes(lowerSearch) ||
+          phone.includes(search) ||
+          userId.includes(search) ||
+          email.includes(lowerSearch)
+        );
       });
       const transformed = filtered.map((item: any) => ({
         ...item,
@@ -312,7 +319,7 @@ const AddMemberDialog = ({
           <TextField
             fullWidth
             variant="outlined"
-            placeholder="Search name or number"
+            placeholder="Search name, number, email or user id"
             size="small"
             value={searchTerm}
             onChange={handleSearchChange}

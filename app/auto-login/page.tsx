@@ -6,7 +6,7 @@ import { Box, Typography } from "@mui/material";
 import Lottie from "lottie-react";
 import { toast } from "react-hot-toast";
 import loader from "@/src/assets/lotties/loader.json";
-import { useLoginContext } from "@/src/context/LoginData";
+import { useLoginContext } from "@/src/contexts/LoginData";
 import {
   fetchAutoLoginApi,
   AutoLoginData,

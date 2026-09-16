@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducer, useRef, useCallback, useEffect, useMemo, useState } from "react";
-import { useLoginContext } from "../context/LoginData";
+import { useLoginContext } from "../contexts/LoginData";
 import {
   messagesReducer,
   msgInitialState,
@@ -39,7 +39,7 @@ import { getMembers, putMembers } from "../db/groupMembersCache";
 import { getSearchCache, setSearchCache } from "../db/searchCache";
 import { useOutboxSync } from "../components/ChatPanel/CoreLogic/useOutboxSync";
 import { useReconnectSync } from "../components/ChatPanel/CoreLogic/useReconnectSync";
-import { useSocketContext } from "../context/SocketContext";
+import { useSocketContext } from "../contexts/SocketContext";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { liveQuery } from "dexie";
 import { getDb } from "../db/tecoDb";
@@ -283,12 +283,20 @@ export const useConversation = ({
     const handleOutboxSent = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.tempId) return;
+      // Sentinel event: serverId is null when multiple documents were split
+      // into individual messages. The individual OUTBOX_MESSAGE_SENT events
+      // have already been dispatched — just remove the original temp message.
+      if (detail.serverId == null) {
+        dispatchMsg({ type: MSG.DELETE_ME, messageId: detail.tempId });
+        return;
+      }
       dispatchMsg({
         type: MSG.UPSERT,
         id: detail.tempId,
         msg: {
           Id: detail.serverId ?? detail.tempId,
           MessageId: detail.serverId ?? detail.tempId,
+          ClientMessageId: detail.tempId,
           Status: "sent",
           ...(detail.MessageType ? {
             Message: detail.Message,
@@ -748,6 +756,10 @@ export const useConversation = ({
           null
         );
 
+        // Guard: bail if the user switched conversations while the request
+        // was in flight, so we don't overwrite the new chat with stale data.
+        if (selectedCustomerRef.current?.ConversationId !== convId) return;
+
         const serverMessages = response.data as ChatMessage[];
         if (!serverMessages.length) {
           dispatchUI({ type: UI.SET_BLINK, value: null });
@@ -784,7 +796,7 @@ export const useConversation = ({
         dispatchMsg({ type: MSG.SET_LOADING, value: false });
       }
     },
-    [dispatchUI, dispatchMsg, auth]
+    [dispatchUI, dispatchMsg, auth, selectedCustomerRef]
   );
 
   // ── Clear search highlight on user interaction ────────────────────────────
@@ -830,6 +842,8 @@ export const useConversation = ({
       try {
         const convId = selectedCustomer.ConversationId;
         const cached = await getSearchCache(auth, convId, query);
+        // Guard: bail if the user switched conversations while awaiting cache.
+        if (selectedCustomerRef.current?.ConversationId !== convId) return;
         if (cached) {
           dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: cached });
           return;
@@ -842,6 +856,8 @@ export const useConversation = ({
           null,
           query
         );
+        // Guard: bail if the user switched conversations while awaiting network.
+        if (selectedCustomerRef.current?.ConversationId !== convId) return;
         const results = (response.data as ChatMessage[]) || [];
         setSearchCache(auth, convId, query, results).catch(() => {});
         dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: results });
@@ -851,7 +867,7 @@ export const useConversation = ({
         dispatchUI({ type: UI.SET_SEARCHING, value: false });
       }
     },
-    [selectedCustomer?.ConversationId, auth, dispatchUI]
+    [selectedCustomer?.ConversationId, selectedCustomerRef, auth, dispatchUI]
   );
 
   // ── Search messages by date ──────────────────────────────────────────────
@@ -880,6 +896,8 @@ export const useConversation = ({
           0,
           date
         );
+        // Guard: bail if the user switched conversations while awaiting network.
+        if (selectedCustomerRef.current?.ConversationId !== convId) return;
         const results = response.data as ChatMessage[];
         if (results.length > 0) {
           dispatchMsg({
@@ -900,7 +918,7 @@ export const useConversation = ({
         dispatchMsg({ type: MSG.SET_LOADING, value: false });
       }
     },
-    [selectedCustomer?.ConversationId, auth, dispatchMsg]
+    [selectedCustomer?.ConversationId, selectedCustomerRef, auth, dispatchMsg]
   );
 
   // ── Public API ───────────────────────────────────────────────────────────

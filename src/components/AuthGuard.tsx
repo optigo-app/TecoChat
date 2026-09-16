@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Box } from "@mui/material";
 import loader from "../assets/lotties/loader.json";
-import { useLoginContext } from "../context/LoginData";
+import { useLoginContext } from "../contexts/LoginData";
 import { disconnectSocket, isSocketConnected } from "../socket";
 import { eraseCookie } from "../utils/cookieUtils";
 

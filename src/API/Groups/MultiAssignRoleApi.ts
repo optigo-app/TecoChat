@@ -1,6 +1,6 @@
 import { CommonAPI, buildCommonBody } from "../InitialApi/CommonApi";
 import { getGroupMemberIds } from "../../utils/groupSocketHelpers";
-import type { AuthData } from "../../context/LoginData";
+import type { AuthData } from "../../contexts/LoginData";
 
 export interface AdminChange {
   UserId: number | string;

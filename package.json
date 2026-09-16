@@ -9,16 +9,16 @@
     "Edge >= 100"
   ],
   "scripts": {
-    "dev": "next dev -p 6026",
-    "build": "next build",
-    "start": "next start -p 6026",
+    "dev": "npx fix-react2shell-next && next dev -p 6008",
+    "build": "npx fix-react2shell-next && next build",
+    "start": "npx fix-react2shell-next && next start -p 6008",
     "lint": "eslint"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@lexical/code": "^0.45.0",
-    "@lexical/link": "^0.45.0",
+    "@lexical/link": "^0.45.0", 
     "@lexical/list": "^0.45.0",
     "@lexical/markdown": "^0.45.0",
     "@lexical/react": "^0.45.0",

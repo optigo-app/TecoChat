@@ -15,7 +15,8 @@ import {
   Divider,
 } from "@mui/material";
 import { X, ArrowLeft, ArrowRight, Check, Smile, User, ChevronRight } from "lucide-react";
-import EmojiPicker from "emoji-picker-react";
+import dynamic from "next/dynamic";
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 import "./AddConversation.scss";
 import "./CreateGroup.scss";
 import {
@@ -25,7 +26,7 @@ import {
   hasCustomerName,
 } from "../../utils/globalFunc";
 import { fetchCustomerLists } from "../../API/CustomerLists/CustomerLists";
-import { LoginContext, useLoginContext } from "../../context/LoginData";
+import { LoginContext, useLoginContext } from "../../contexts/LoginData";
 import { createGroupApi } from "../../API/Groups/CreateGroupApi";
 import { toast } from "react-hot-toast";
 import ProfileAvatarUpload from "../ReusableComponent/ProfileAvatarUpload";

@@ -1,5 +1,5 @@
 import { CommonAPI, buildCommonBody } from "../InitialApi/CommonApi";
-import type { AuthData } from "../../context/LoginData";
+import type { AuthData } from "../../contexts/LoginData";
 import type { ChatMessage, ConversationViewResponse } from "../../types/message";
 import { normalizeServerMessages, sortMessagesByDate } from "../../utils/messageUtils";
 

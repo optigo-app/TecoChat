@@ -536,8 +536,31 @@ a {
   color: #fff !important;
 }
 .MuiPickersDay-root.Mui-disabled {
-  color: var(--color-text-secondary);
-  opacity: 0.4;
+  /* Clearly muted so disabled dates are distinguishable from enabled ones
+     in both light and dark mode. Use a low-contrast grey + reduced opacity
+     and prevent interaction. */
+  color: var(--color-text-disabled, #b0b0b0);
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: default;
+  font-weight: 400;
+}
+/* Light mode: disabled dates are a light grey (clearly different from the
+   dark enabled text #444050). */
+[data-theme="light"] .MuiPickersDay-root.Mui-disabled {
+  color: #c4c4c4;
+  opacity: 1;
+}
+/* Dark mode: disabled dates are a dim grey. */
+[data-theme="dark"] .MuiPickersDay-root.Mui-disabled {
+  color: #5a5a6e;
+  opacity: 1;
+}
+/* Disabled today indicator — keep the border but mute it so it's clearly
+   not selectable. */
+.MuiPickersDay-root.MuiPickersDay-today.Mui-disabled {
+  border-color: var(--color-text-disabled, #b0b0b0);
+  opacity: 0.6;
 }
 
 /* Year / month views */
@@ -584,10 +607,18 @@ a {
   background-color: var(--color-surface-elevated);
 }
 
-/* Mobile dialog */
-.MuiDialog-paper {
-  border-radius: 16px;
-  background-color: var(--color-surface-elevated);
+/* Mobile dialog — bottom-sheet style: top corners rounded, bottom square.
+   Override the generic .MuiDialog-paper (16px all corners) so the inner
+   calendar content and the outer dialog paper have consistent corners
+   (no square-edge glitch at the bottom). */
+.MuiDialog-paper:has(.MuiPickersLayout-root) {
+  border-radius: 16px 16px 0 0 !important;
+  overflow: hidden;
+}
+/* Fallback for browsers without :has() — scope via the pickers layout's
+   closest dialog paper through the mobilePaper slot sx (see ChatPanel.tsx). */
+.MuiPickersLayout-root {
+  border-radius: 0;
 }
 
 /* Prevent text selection on UI chrome (buttons, nav) for a native-app feel.

@@ -14,7 +14,9 @@ import {
   Typography,
 } from "@mui/material";
 import useLazyLoading from "./useLazyLoading";
+import { useSafeLink } from "../../hooks/useSafeLink";
 import { Link, Share2 } from "lucide-react";
+import ConfirmationDialog from "../ReusableComponent/ConfirmationDialog";
 
 interface LinkItem {
   Id?: string | number;
@@ -42,6 +44,9 @@ const LinksSection = ({
 }: LinksSectionProps) => {
   // Lazy loading hook
   const lastLinkElementRef = useLazyLoading(onLoadMore, hasMore && paginationFlag, isLoading);
+
+  // Safe-link inspection — shows confirmation dialog for suspicious URLs
+  const { linkDialog, openLinkSafely } = useSafeLink();
 
   // Smooth empty-state transition
   const [showEmptyState, setShowEmptyState] = useState(false);
@@ -127,7 +132,7 @@ const LinksSection = ({
               <ListItem disableGutters disablePadding>
                 <ListItemButton
                   onClick={() => {
-                    if (url) window.open(url, "_blank");
+                    if (url) openLinkSafely(url);
                   }}
                   sx={{ borderRadius: 2 }}
                 >
@@ -176,6 +181,20 @@ const LinksSection = ({
           </Button>
         </Box>
       ) : null}
+
+      {/* Suspicious-link confirmation dialog */}
+      <ConfirmationDialog
+        isOpen={linkDialog.isOpen}
+        onClose={linkDialog.close}
+        onConfirm={linkDialog.confirm}
+        title={linkDialog.title}
+        description={linkDialog.description}
+        confirmText={linkDialog.confirmText}
+        cancelText="Cancel"
+        variant={linkDialog.variant}
+        icon={linkDialog.icon}
+        loading={linkDialog.loading}
+      />
     </Box>
   );
 };

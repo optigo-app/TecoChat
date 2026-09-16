@@ -12,7 +12,6 @@ import {
   $isRangeSelection,
   $getRoot,
   $createParagraphNode,
-  $createTextNode,
   type LexicalEditor,
 } from "lexical";
 import { LexicalChatEditor } from "./LexicalChatEditor";
@@ -243,28 +242,25 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   );
 
   // ── Emoji insertion ──────────────────────────────────────────────────────────
+  // The emoji button uses onMouseDown preventDefault to keep the editor
+  // focused, so the cursor position is always current when the picker opens.
+
   const onEmojiClick = useCallback(
     (emojiData: { emoji: string }) => {
       const emoji = emojiData?.emoji || "";
       if (editorRef.current) {
         editorRef.current.update(() => {
+          const root = $getRoot();
+          if (!root.getLastChild()) root.append($createParagraphNode());
+          root.selectEnd();
           const selection = $getSelection();
-          if ($isRangeSelection(selection)) {
-            selection.insertText(emoji);
-          } else {
-            const root = $getRoot();
-            let p = root.getLastChild();
-            if (!p) {
-              p = $createParagraphNode();
-              root.append(p as ReturnType<typeof $createParagraphNode>);
-            }
-            (p as ReturnType<typeof $createParagraphNode>).append($createTextNode(emoji));
-          }
+          if ($isRangeSelection(selection)) selection.insertText(emoji);
         });
         editorRef.current.focus();
       } else {
         textRef.current = textRef.current + emoji;
       }
+      setShowEmoji(false);
     },
     []
   );
@@ -622,6 +618,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               ref={emojiButtonRef}
               size="small"
               className="chat-input-btn"
+              onMouseDown={(e) => {
+                // Prevent the editor from losing focus when the emoji button
+                // is pressed. This keeps the cursor position intact so emoji
+                // insertion happens at the right spot.
+                e.preventDefault();
+              }}
               onClick={() => setShowEmoji((v) => !v)}
               disabled={disabled}
             >

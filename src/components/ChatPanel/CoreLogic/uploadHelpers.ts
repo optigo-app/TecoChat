@@ -54,17 +54,29 @@ export const getMediaDimensions = (
 ): Promise<{ width: number; height: number } | null> => {
   return new Promise((resolve) => {
     if (file.type.startsWith("image/")) {
+      const url = URL.createObjectURL(file);
       const img = new Image();
-      img.onload = () =>
+      img.onload = () => {
+        URL.revokeObjectURL(url);
         resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = () => resolve(null);
-      img.src = URL.createObjectURL(file);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
     } else if (file.type.startsWith("video/")) {
+      const url = URL.createObjectURL(file);
       const video = document.createElement("video");
-      video.onloadedmetadata = () =>
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
         resolve({ width: video.videoWidth, height: video.videoHeight });
-      video.onerror = () => resolve(null);
-      video.src = URL.createObjectURL(file);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      video.src = url;
     } else {
       resolve(null);
     }

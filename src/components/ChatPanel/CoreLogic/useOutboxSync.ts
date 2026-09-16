@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSocketContext } from "../../../context/SocketContext";
+import { useSocketContext } from "../../../contexts/SocketContext";
 import { getPendingOutbox, removeFromOutbox, updateOutboxStatus } from "../../../db/outboxCache";
 import { sendTextMessage, sendImageMessage, sendDocumentMessage, sendVideoMessage } from "../../../API/SendMessage/SendMessageApi";
 import { buildMediaPayload, uploadFiles } from "./uploadHelpers";
 import { emitMediaMessage } from "./socketHelpers";
 import { replyToMessageApi } from "../../../API/SendMessage/replyToMessageApi";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { OutboxMessage } from "../../../db/tecoDb";
 
@@ -37,16 +37,6 @@ export function useOutboxSync(auth: AuthData | null) {
       try {
         const pending = await getPendingOutbox(authRef.current);
         if (cancelled) return;
-        if (pending.length > 0) {
-          console.log("[OUTBOX] Found", pending.length, "pending outbox entries:", pending.map(e => ({
-            convId: e.conversationId,
-            msgId: e.messageId,
-            text: e.text,
-            status: e.status,
-            mediaType: e.mediaType,
-            createdAt: new Date(e.createdAt).toISOString(),
-          })));
-        }
         if (pending.length === 0) return;
 
         for (const entry of pending) {
@@ -133,49 +123,124 @@ export function useOutboxSync(auth: AuthData | null) {
                   size: file.size,
                   attachmentId: String(serverAttachments[index]?.Id ?? serverAttachments[index]?.id ?? "") || null,
                 }));
-                emitMediaMessage(
-                  buildMediaPayload({
-                    auth: authRef.current,
-                    selectedCustomer: {
-                      ConversationId: entry.conversationId,
-                      ReceiverId: Array.isArray(entry.receiverId)
-                        ? entry.receiverId.map(String)
-                        : entry.receiverId ?? undefined,
-                      ConversationName: entry.conversationName,
+
+                // ── Documents: backend returns comma-separated MessageIds
+                // (one per document). Emit individual socket messages and
+                // individual OUTBOX_MESSAGE_SENT events for each document.
+                const sentIds = rd.MessageId
+                  ? String(rd.MessageId).split(",").map((id) => id.trim()).filter(Boolean)
+                  : [];
+
+                if (entry.mediaType === "document" && sentIds.length > 1 && sentIds.length === uploadedFiles.length) {
+                  for (let index = 0; index < sentIds.length; index++) {
+                    const messageId = sentIds[index];
+                    const singleMediaItem = [mediaItems[index]];
+                    const tid = entry.tempIds?.[index] ?? `${entry.messageId}-${index}`;
+
+                    emitMediaMessage(
+                      buildMediaPayload({
+                        auth: authRef.current,
+                        selectedCustomer: {
+                          ConversationId: entry.conversationId,
+                          ReceiverId: Array.isArray(entry.receiverId)
+                            ? entry.receiverId.map(String)
+                            : entry.receiverId ?? undefined,
+                          ConversationName: entry.conversationName,
+                        },
+                        sentId: messageId,
+                        tempId: tid,
+                        type: entry.mediaType,
+                        uploadedUrls: [uploadedUrls[index]],
+                        mediaItems: singleMediaItem,
+                        caption: entry.text,
+                        time: entry.time || "",
+                        date: entry.date || "",
+                        dateTime: entry.dateTime || "",
+                        isGroup: entry.isGroup ?? false,
+                        memberIds: entry.memberIds ?? [],
+                      })
+                    );
+
+                    window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_SENT", {
+                      detail: {
+                        tempId: tid,
+                        serverId: messageId,
+                        conversationId: entry.conversationId,
+                        Message: entry.text,
+                        MessageType: entry.mediaType,
+                        mediaItems: singleMediaItem,
+                        previewUrl: uploadedUrls[index],
+                        Time: entry.time,
+                        Date: entry.date,
+                        DateTime: entry.dateTime,
+                        Direction: 1,
+                        SenderId: authRef.current?.id,
+                      },
+                    }));
+                  }
+                  // Also dispatch a sentinel event to remove the original temp message
+                  window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_SENT", {
+                    detail: {
+                      tempId: entry.messageId,
+                      serverId: null,
+                      conversationId: entry.conversationId,
                     },
-                    sentId: rd.MessageId,
+                  }));
+                } else {
+                  // Single message (images, videos, or single document)
+                  emitMediaMessage(
+                    buildMediaPayload({
+                      auth: authRef.current,
+                      selectedCustomer: {
+                        ConversationId: entry.conversationId,
+                        ReceiverId: Array.isArray(entry.receiverId)
+                          ? entry.receiverId.map(String)
+                          : entry.receiverId ?? undefined,
+                        ConversationName: entry.conversationName,
+                      },
+                      sentId: rd.MessageId,
+                      tempId: entry.messageId,
+                      type: entry.mediaType,
+                      uploadedUrls,
+                      mediaItems,
+                      caption: entry.text,
+                      time: entry.time || "",
+                      date: entry.date || "",
+                      dateTime: entry.dateTime || "",
+                      isGroup: entry.isGroup ?? false,
+                      memberIds: entry.memberIds ?? [],
+                    })
+                  );
+                  window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_SENT", {
+                    detail: {
+                      tempId: entry.messageId,
+                      serverId: rd.MessageId,
+                      conversationId: entry.conversationId,
+                      ...(mediaItems ? {
+                        Message: entry.text,
+                        MessageType: entry.mediaType,
+                        mediaItems,
+                        previewUrl: uploadedUrls[0],
+                        Time: entry.time,
+                        Date: entry.date,
+                        DateTime: entry.dateTime,
+                        Direction: 1,
+                        SenderId: authRef.current?.id,
+                      } : {}),
+                    },
+                  }));
+                }
+              } else {
+                // Text message
+                window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_SENT", {
+                  detail: {
                     tempId: entry.messageId,
-                    type: entry.mediaType,
-                    uploadedUrls,
-                    mediaItems,
-                    caption: entry.text,
-                    time: entry.time || "",
-                    date: entry.date || "",
-                    dateTime: entry.dateTime || "",
-                    isGroup: entry.isGroup ?? false,
-                    memberIds: entry.memberIds ?? [],
-                  })
-                );
+                    serverId: rd.MessageId,
+                    conversationId: entry.conversationId,
+                  },
+                }));
               }
               await removeFromOutbox(authRef.current, entry.conversationId, entry.messageId);
-              window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_SENT", {
-                detail: {
-                  tempId: entry.messageId,
-                  serverId: rd.MessageId,
-                  conversationId: entry.conversationId,
-                  ...(mediaItems ? {
-                    Message: entry.text,
-                    MessageType: entry.mediaType,
-                    mediaItems,
-                    previewUrl: uploadedUrls[0],
-                    Time: entry.time,
-                    Date: entry.date,
-                    DateTime: entry.dateTime,
-                    Direction: 1,
-                    SenderId: authRef.current?.id,
-                  } : {}),
-                },
-              }));
             } else {
               await updateOutboxStatus(authRef.current, entry.conversationId, entry.messageId, "failed");
               window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_FAILED", {

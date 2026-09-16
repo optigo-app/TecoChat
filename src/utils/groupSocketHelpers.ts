@@ -3,7 +3,7 @@
 // permission checks, notification formatting, and socket payload building.
 
 import { fetchGroupDetails } from "../API/Groups/FetchGroupDetails";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 
 /**
  * Get all member IDs for a group.

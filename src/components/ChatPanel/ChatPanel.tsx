@@ -2,10 +2,12 @@
 
 import { useCallback, useState, useRef, useEffect, memo } from "react";
 import { Box, Typography, Menu, MenuItem, ListItemIcon, ListItemText, Divider, IconButton, useTheme, Popover, Avatar, alpha, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
-import { MessageSquare, MoreVertical, BellOff, Bell, X, Info, CheckSquare, Star, CircleMinus, LogOut, Trash2 } from "lucide-react";
+import { MessageSquare, MoreVertical, BellOff, Bell, X, Info, CheckSquare, Star, CircleMinus, LogOut, Trash2, Calendar } from "lucide-react";
+import { DatePicker, MobileDatePicker } from "@mui/x-date-pickers";
+import dynamic from "next/dynamic";
 import { MessageContextMenu } from "./messages/interactions";
-import { useLoginContext, type AuthData } from "../../context/LoginData";
-import { useSocketContext } from "../../context/SocketContext";
+import { useLoginContext, type AuthData } from "../../contexts/LoginData";
+import { useSocketContext } from "../../contexts/SocketContext";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useConversation } from "../../hooks/useConversation";
 import { useColorMode } from "../../theme/ThemeRegistry";
@@ -17,13 +19,15 @@ import { useConfirmModal } from "../../hooks/useConfirmModal";
 import { useDrawerState } from "../../hooks/Conversaction/useDrawerState";
 import { useGroupSocketListeners } from "../../hooks/Conversaction/useGroupSocketListeners";
 import { useGroupSocket } from "../../contexts/GroupSocketContext";
-import { useBreakpointDown } from "../../hooks/useIsMobile";
+import { useBreakpointDown, useIsMobile } from "../../hooks/useIsMobile";
 import { updateConversationApi } from "../../API/SendMessage/updateConversationApi";
 import { showToast } from "../../utils/toastHelper";
 import { ChatHeader } from "./ChatHeader";
 import MessageList, { type MessageListRef } from "./MessageList";
 import { ChatInput } from "./ChatInput";
-import { MediaViewer, PdfViewerDialog, TxtViewerDialog } from "./messages/viewer";
+const MediaViewer = dynamic(() => import("./messages/viewer/MediaViewer"), { ssr: false });
+const PdfViewerDialog = dynamic(() => import("./messages/viewer/PdfViewerDialog"), { ssr: false });
+const TxtViewerDialog = dynamic(() => import("./messages/viewer/TxtViewerDialog"), { ssr: false });
 import MediaPreview from "./messages/MediaPreview";
 import EditMessageDialog from "./EditMessageDialog";
 import MuteNotificationDialog from "./MuteNotificationDialog";
@@ -41,7 +45,7 @@ import "./ChatPanel.scss";
 interface ChatPanelProps {
   selectedCustomer: ConversationListEntry | null;
   onConversationRead?: ((read: boolean) => void) | null;
-  onCustomerSelect?: ((customer: ConversationListEntry) => void) | null;
+  onCustomerSelect?: ((customer: ConversationListEntry | null) => void) | null;
   onDetailsPanelOpenChange?: ((open: boolean) => void) | null;
   onBack?: () => void;
 }
@@ -59,6 +63,11 @@ export const ChatPanel = memo(({
   const { auth } = useLoginContext();
   const messageListRef = useRef<MessageListRef>(null);
   const containerRef = useRef<HTMLElement | null>(null);
+  // Ref to avoid stale closure in async guards after conversation switch
+  const selectedCustomerRef = useRef(selectedCustomer);
+  useEffect(() => {
+    selectedCustomerRef.current = selectedCustomer;
+  }, [selectedCustomer]);
 
   // ── Details panel state (drawer/panel for contact/group info + search) ────
   const {
@@ -97,6 +106,7 @@ export const ChatPanel = memo(({
 
   // Responsive: narrow screen → drawer overlay; wider → docked side panel
   const isNarrowScreen = useBreakpointDown("lg"); // <= 1024px
+  const isMobile = useIsMobile(); // <= 768px
   const { status: socketStatus } = useSocketContext();
   const isOnline = useOnlineStatus();
   const isOffline = !isOnline || socketStatus === "disconnected" || socketStatus === "error";
@@ -325,7 +335,7 @@ export const ChatPanel = memo(({
     if (isGroup && convId && auth) {
       fetchAndCacheGroupMembers(convId)
         .then((groupData: any) => {
-          if (selectedCustomer?.ConversationId !== convId) return;
+          if (selectedCustomerRef.current?.ConversationId !== convId) return;
           if (groupData?.groupDetails) {
             updateGroupAdminMode(convId, groupData.groupDetails.SendNewMessage === 0);
             const currentUser = groupData.members?.find(
@@ -360,10 +370,21 @@ export const ChatPanel = memo(({
       const stat = rd?.stat;
       if (stat === 1 || response?.Status === "200" || response?.success === true) {
         showToast(newIsStar ? "Added to favorites" : "Removed from favorites", "success");
-        if (selectedCustomer) {
-          (selectedCustomer as any).IsStar = newIsStar;
-        }
         if (refresh) refresh();
+
+        // Real-time sync: notify the conversation list so its star icon
+        // updates immediately. CustomerLists/useConversationList listens for
+        // UPDATE_CONVERSATION_ITEM and merges IsStar into its local state.
+        // Without this, the list only updates on next full reload.
+        window.dispatchEvent(
+          new CustomEvent("UPDATE_CONVERSATION_ITEM", {
+            detail: {
+              ConversationId: selectedCustomer.ConversationId,
+              IsStar: newIsStar,
+              isStatusChange: true,
+            },
+          })
+        );
       } else {
         updateFavoriteStatus(selectedCustomer.ConversationId, isFavorite ? 1 : 0);
         showToast("Failed to update favorite status", "error");
@@ -417,7 +438,7 @@ export const ChatPanel = memo(({
       if (action === "groupInfo") {
         openInfo();
       } else if (action === "close") {
-        onCustomerSelect?.(null as any);
+        onCustomerSelect?.(null);
       } else if (action === "mute") {
         if (isCurrentlyMuted) {
           // Already muted → unmute directly
@@ -550,12 +571,64 @@ export const ChatPanel = memo(({
   }, [drawerOpen, drawerViewState, openSearch, closeDrawer]);
 
   const handleSearchByDateFromPanel = useCallback(
-    (date: string) => {
-      searchByDate?.(date);
+    async (date: string) => {
+      // Prevent MessageList from auto-scrolling to bottom when MSG.LOAD replaces rows.
+      messageListRef.current?.setSkipNextAutoScroll();
+      await searchByDate?.(date);
       closeDrawer();
+      // Jump-to-date: show the latest message from that date at the top
+      // (like WhatsApp). Wait for the new messages to render before scrolling.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          messageListRef.current?.scrollToTop();
+        });
+      });
     },
     [searchByDate, closeDrawer]
   );
+
+  // Wrapper for desktop (non-narrow) date search — also scrolls to top.
+  const handleSearchByDate = useCallback(
+    async (date: string) => {
+      messageListRef.current?.setSkipNextAutoScroll();
+      await searchByDate?.(date);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          messageListRef.current?.scrollToTop();
+        });
+      });
+    },
+    [searchByDate]
+  );
+
+  // ── Jump-to-date picker (lifted from ChatHeader so it can also be opened
+  //    from the mobile More menu). Anchored to a hidden element in the header.
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const datePickerAnchorRef = useRef<HTMLElement | null>(null);
+
+  const toApiDate = (date: Date | null): string => {
+    if (!date) return "";
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const handleDateAccept = useCallback(
+    (value: Date | null) => {
+      const apiDate = toApiDate(value);
+      setDatePickerOpen(false);
+      if (apiDate) {
+        handleSearchByDate(apiDate);
+      }
+    },
+    [handleSearchByDate]
+  );
+
+  const openDatePicker = useCallback(() => {
+    setMenuAnchor(null);
+    setDatePickerOpen(true);
+  }, []);
 
   // ── Context menu for messages ─────────────────────────────────────────────
   const handleContextMenu = useCallback((e: React.MouseEvent, msg: ChatMessage) => {
@@ -594,7 +667,7 @@ export const ChatPanel = memo(({
       fetchAndCacheGroupMembers(convId).then(
         (res) => {
           // Discard result if the user switched conversations while fetching
-          if (selectedCustomer?.ConversationId !== convId) return;
+          if (selectedCustomerRef.current?.ConversationId !== convId) return;
           if (res?.members) setGroupMembers(res.members as typeof groupMembers);
         }
       );
@@ -618,7 +691,7 @@ export const ChatPanel = memo(({
 
   const handleChatAreaClose = useCallback(() => {
     setChatAreaMenu(null);
-    onCustomerSelect?.(null as any);
+    onCustomerSelect?.(null);
   }, [onCustomerSelect]);
 
   // ── Close chat on Escape ─────────────────────────────────────────────────
@@ -628,7 +701,7 @@ export const ChatPanel = memo(({
       if (e.key === "Escape") {
         // Don't close chat when media preview is open — let it handle Esc
         if (mediaFiles.length > 0) return;
-        onCustomerSelect?.(null as any);
+        onCustomerSelect?.(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -692,7 +765,8 @@ export const ChatPanel = memo(({
         starFilter={starFilter}
         onToggleStarFilter={handleToggleStarFilter}
         starNewMessageCount={starNewMessageCount}
-        onSearchByDate={searchByDate ?? undefined}
+        onSearchByDate={handleSearchByDate}
+        onOpenDatePicker={openDatePicker}
         isOffline={isOffline}
       />
 
@@ -861,6 +935,26 @@ export const ChatPanel = memo(({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
+        {/* Mobile-only actions relocated from the header to keep it compact */}
+        {isMobile && (
+          <MenuItem onClick={openDatePicker}>
+            <ListItemIcon><Calendar size={18} /></ListItemIcon>
+            <ListItemText primary="Jump to date" />
+          </MenuItem>
+        )}
+        {isMobile && handleToggleStarFilter && (
+          <MenuItem onClick={() => { setMenuAnchor(null); handleToggleStarFilter(); }}>
+            <ListItemIcon>
+              <Star
+                size={18}
+                fill={starFilter ? "#FFD700" : "none"}
+                color={starFilter ? "#FFD700" : "currentColor"}
+              />
+            </ListItemIcon>
+            <ListItemText primary={starFilter ? "Show all messages" : "Show starred only"} />
+          </MenuItem>
+        )}
+        {isMobile && <Divider sx={{ my: 0.5 }} />}
         <MenuItem onClick={() => handleMenuAction("groupInfo")}>
           <ListItemIcon><Info size={18} /></ListItemIcon>
           <ListItemText primary={isGroup ? "Group Info" : "Contact Info"} />
@@ -911,6 +1005,80 @@ export const ChatPanel = memo(({
           </MenuItem>
         )}
       </Menu>
+
+      {/* Jump-to-date picker (opened from the header calendar button on desktop
+          or from the More menu on mobile). On mobile we use MobileDatePicker so
+          the calendar renders as a bottom-sheet dialog (native-app feel) instead
+          of a desktop Popper. */}
+      <Box
+        ref={datePickerAnchorRef}
+        aria-hidden
+        sx={{ position: "absolute", top: 64, right: 24, width: 0, height: 0, pointerEvents: "none" }}
+      />
+      {isMobile ? (
+        <MobileDatePicker
+          open={datePickerOpen}
+          onClose={() => setDatePickerOpen(false)}
+          onAccept={handleDateAccept}
+          value={null}
+          onChange={() => {}}
+          maxDate={new Date()}
+          closeOnSelect={false}
+          slotProps={{
+            textField: { sx: { display: "none" } },
+            mobilePaper: {
+              sx: {
+                // Bottom-sheet: top corners rounded, bottom square. The
+                // matching .MuiDialog-paper radius is enforced in globals.css
+                // via :has(.MuiPickersLayout-root) so both layers agree and
+                // no square-edge glitch shows at the bottom.
+                borderRadius: "16px 16px 0 0",
+                backgroundColor: "var(--color-surface-elevated)",
+                pb: "var(--safe-bottom)",
+                overflow: "hidden",
+              },
+            },
+            dialog: {
+              sx: {
+                "& .MuiDialog-paper": {
+                  borderRadius: "16px 16px 0 0 !important",
+                  overflow: "hidden",
+                },
+              },
+            },
+          }}
+        />
+      ) : (
+        <DatePicker
+          open={datePickerOpen}
+          onClose={() => setDatePickerOpen(false)}
+          onAccept={handleDateAccept}
+          value={null}
+          onChange={() => {}}
+          maxDate={new Date()}
+          slotProps={{
+            textField: {
+              sx: {
+                position: "absolute",
+                width: 0,
+                height: 0,
+                opacity: 0,
+                overflow: "hidden",
+                pointerEvents: "none",
+              },
+            },
+            desktopPaper: {
+              sx: {
+                borderRadius: "16px",
+                backgroundColor: "var(--color-surface-elevated)",
+                border: "1px solid var(--color-border-light)",
+                boxShadow: "var(--shadow-picker)",
+                overflow: "hidden",
+              },
+            },
+          }}
+        />
+      )}
 
       {/* Message context menu */}
       <MessageContextMenu
@@ -1310,7 +1478,7 @@ export const ChatPanel = memo(({
           searchResults={searchResults}
           isSearching={isSearching}
           onSearchMessages={searchMessages}
-          onSearchByDate={isNarrowScreen ? handleSearchByDateFromPanel : searchByDate}
+          onSearchByDate={isNarrowScreen ? handleSearchByDateFromPanel : handleSearchByDate}
           containerRef={containerRef}
         />
       )}

@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useEffect, memo, useRef } from "react";
 import { Dialog, IconButton, Tooltip, Box, useTheme, alpha } from "@mui/material";
-import { PanelLeftClose, PanelLeft, Pencil, Square, Undo2, X } from "lucide-react";
+import { PanelLeftClose, PanelLeft, Pencil, Square, Undo2, X, ChevronUp, ChevronDown } from "lucide-react";
 import { handleDownloadFile } from "../../../../utils/globalFunc";
+import { useIsTablet } from "../../../../hooks/useIsMobile";
 import PdfViewer, { type PdfHighlight } from "./PdfViewer";
 import MediaViewerHeader from "./MediaViewerHeader";
 import { renderPageToCanvas, type PdfDocument } from "../../../../utils/pdfUtils";
@@ -58,11 +59,14 @@ const PdfViewerDialogComponent = ({
   onRemoveReaction,
 }: PdfViewerDialogProps) => {
   const theme = useTheme();
+  const isTablet = useIsTablet();
   const [zoom, setZoom] = useState(1);
   const [pageCount, setPageCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [scrollToPageTrigger, setScrollToPageTrigger] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Sidebar: open by default on desktop, hidden on mobile+tablet (saves space).
+  // On mobile+tablet it opens as a floating overlay instead of taking layout space.
+  const [sidebarOpen, setSidebarOpen] = useState(!isTablet);
   const pdfDocRef = useRef<PdfDocument | null>(null);
   // Track which thumbnails have been rendered — use REF (not state) as the
   // primary guard so concurrent renderThumbnails calls see updates instantly
@@ -265,14 +269,23 @@ const PdfViewerDialogComponent = ({
           fileSize={fileSize}
           filePageCount={pageCount}
           onDownload={() => item.src && handleDownloadFile(item.src, fileName)}
-          onReply={onReply}
-          onForward={onForward}
-          onQuickReaction={onQuickReaction}
-          onRemoveReaction={onRemoveReaction}
+          // On mobile+tablet, hide message action tools (reply/react/forward)
+          // from the header — they're less relevant in a PDF viewer and the
+          // toolbar is space-constrained. Download + close + zoom + annotation
+          // are the essential tools on mobile.
+          onReply={isTablet ? undefined : onReply}
+          onForward={isTablet ? undefined : onForward}
+          onQuickReaction={isTablet ? undefined : onQuickReaction}
+          onRemoveReaction={isTablet ? undefined : onRemoveReaction}
           onClose={onClose}
-          zoom={{ zoomIn: handleZoomIn, zoomOut: handleZoomOut, zoomLevel: zoom, onResetZoom: handleZoomReset }}
+          // Zoom buttons hidden on mobile+tablet — mobile users pinch-to-zoom
+          // instead. Zoom state is kept for keyboard shortcuts (desktop only).
+          zoom={isTablet ? undefined : { zoomIn: handleZoomIn, zoomOut: handleZoomOut, zoomLevel: zoom, onResetZoom: handleZoomReset }}
           extraToolbar={
             <>
+              {/* ── Annotation tools (pen / rect / undo) ─────────────────────
+                  Temporarily hidden — will be re-enabled in a future update
+                  once both mobile + desktop annotation modes are implemented.
               <Tooltip title="Draw marker" arrow>
                 <IconButton
                   className="toolbar-btn"
@@ -308,6 +321,7 @@ const PdfViewerDialogComponent = ({
                   </IconButton>
                 </span>
               </Tooltip>
+              ──────────────────────────────────────────────────────────── */}
               <IconButton
                 className="toolbar-btn"
                 onClick={() => setSidebarOpen((v) => !v)}
@@ -330,8 +344,10 @@ const PdfViewerDialogComponent = ({
             position: "relative",
           }}
         >
-          {/* ── Left sidebar: page thumbnails ────────────────────────────── */}
-          {sidebarOpen && pageCount > 0 && (
+          {/* ── Left sidebar: page thumbnails (DESKTOP — docked) ─────────── */}
+          {/* On mobile+tablet the sidebar is rendered as a full-screen overlay
+             outside this body div (see below) so it covers the header too. */}
+          {sidebarOpen && pageCount > 0 && !isTablet && (
             <div
               className="pdf-thumb-sidebar"
               style={{
@@ -425,6 +441,189 @@ const PdfViewerDialogComponent = ({
             />
           </div>
         </div>
+
+        {/* ── Page navigation footer (mobile+tablet) ──────────────────────── */}
+        {/* Touch-friendly prev/next + page indicator. Hidden on desktop where
+           keyboard arrows and the sidebar are the primary navigation. */}
+        {isTablet && pageCount > 0 && (
+          <div
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 16,
+              padding: "8px 16px",
+              paddingBottom: "calc(8px + var(--safe-bottom, 0px))",
+              backgroundColor: "var(--color-surface)",
+              borderTop: "1px solid var(--color-border)",
+              zIndex: 100,
+            }}
+          >
+            <IconButton
+              onClick={goToPrevPage}
+              disabled={currentPage <= 1}
+              size="small"
+              className="tap-target"
+              aria-label="Previous page"
+            >
+              <ChevronUp size={22} />
+            </IconButton>
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                minWidth: 60,
+                textAlign: "center",
+                color: "var(--color-title)",
+                userSelect: "none",
+              }}
+            >
+              {currentPage} / {pageCount}
+            </span>
+            <IconButton
+              onClick={goToNextPage}
+              disabled={currentPage >= pageCount}
+              size="small"
+              className="tap-target"
+              aria-label="Next page"
+            >
+              <ChevronDown size={22} />
+            </IconButton>
+          </div>
+        )}
+
+        {/* ── Full-screen thumbnail sidebar overlay (MOBILE+TABLET only) ─── */}
+        {/* Covers the entire dialog including the header. Has its own
+           mini-header with a close button. Opens when sidebarOpen is true. */}
+        {isTablet && sidebarOpen && pageCount > 0 && (
+          <>
+            {/* Backdrop */}
+            <div
+              onClick={() => setSidebarOpen(false)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 200,
+                backgroundColor: "rgba(0,0,0,0.5)",
+              }}
+            />
+            {/* Sidebar panel — full height, covers header */}
+            <div
+              className="pdf-thumb-sidebar pdf-thumb-sidebar--overlay"
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 200,
+                zIndex: 201,
+                height: "100%",
+                overflowY: "auto",
+                overflowX: "hidden",
+                backgroundColor: "var(--color-surface)",
+                boxShadow: "4px 0 20px rgba(0,0,0,0.3)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* Mini-header for the overlay sidebar */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  paddingTop: "calc(8px + var(--safe-top, 0px))",
+                  minHeight: "calc(48px + var(--safe-top, 0px))",
+                  borderBottom: "1px solid var(--color-border)",
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "var(--color-title)",
+                  }}
+                >
+                  Pages
+                </span>
+                <IconButton
+                  onClick={() => setSidebarOpen(false)}
+                  size="small"
+                  className="tap-target"
+                  aria-label="Close thumbnails"
+                >
+                  <X size={20} />
+                </IconButton>
+              </div>
+              {/* Thumbnails list */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: "8px 0",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                {Array.from({ length: pageCount }, (_, i) => i + 1).map((pageNum) => (
+                  <div
+                    key={pageNum}
+                    onClick={() => {
+                      goToPage(pageNum);
+                      setSidebarOpen(false);
+                    }}
+                    style={{
+                      cursor: "pointer",
+                      padding: 4,
+                      borderRadius: 8,
+                      border: `2px solid ${
+                        currentPage === pageNum
+                          ? theme.palette.primary.main
+                          : "transparent"
+                      }`,
+                      transition: "border-color 0.15s, transform 0.15s",
+                      transform: currentPage === pageNum ? "scale(1.02)" : "scale(1)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 2,
+                    }}
+                  >
+                    <canvas
+                      ref={(el: HTMLCanvasElement | null) => {
+                        thumbCanvasRefs.current[pageNum - 1] = el;
+                      }}
+                      style={{
+                        display: "block",
+                        maxWidth: THUMB_WIDTH,
+                        maxHeight: 160,
+                        borderRadius: 4,
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                        background: "#fff",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: currentPage === pageNum
+                          ? theme.palette.primary.main
+                          : alpha(theme.palette.text.primary, 0.5),
+                      }}
+                    >
+                      {pageNum}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </Dialog>
   );

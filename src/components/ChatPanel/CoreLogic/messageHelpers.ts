@@ -5,7 +5,7 @@
 import { formatDateTime } from "../../../utils/dateUtils";
 import type { ChatMessage } from "../../../types/message";
 import { putMessages, getMessagesAround } from "../../../db/messageCache";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 
 /** Stable string ID for any message shape. */
 export const getMessageId = (msg: ChatMessage | null | undefined): string => {

@@ -3,7 +3,7 @@
 import { getDb } from "./tecoDb";
 import type { CachedConversation } from "./tecoDb";
 import type { ConversationListEntry } from "../types/conversation";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 
 function getDbForAuth(auth: AuthData | null) {
   return getDb(auth?.id ?? auth?.userId);

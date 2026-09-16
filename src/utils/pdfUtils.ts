@@ -65,6 +65,13 @@ async function fetchPdfData(url: string): Promise<ArrayBuffer> {
     return await res.arrayBuffer();
   }
 
+  // Fast offline check — don't wait for network timeouts when the browser
+  // is offline and the URL is a remote server URL. This makes the fallback
+  // icon appear instantly instead of hanging on a loading skeleton.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new Error("Offline: cannot fetch remote PDF");
+  }
+
   try {
     const proxyUrl = `/api/pdf-proxy?url=${encodeURIComponent(resolvedUrl)}`;
     const res = await fetch(proxyUrl);

@@ -3,6 +3,8 @@
 import React from "react";
 import { TextField, InputAdornment, IconButton, Box, Typography, Tooltip } from "@mui/material";
 import { Search, X, MessageSquarePlus, Users, ArrowLeft, WifiOff } from "lucide-react";
+import { ProfileAvatar } from "../ProfileAvatar/ProfileAvatar";
+import { useIsTablet } from "../../hooks/useIsMobile";
 
 interface CustomerListsHeaderProps {
   isArchiveOpen: boolean;
@@ -29,12 +31,16 @@ export const CustomerListsHeader = ({
   mobileMenuTrigger,
   isOffline = false,
 }: CustomerListsHeaderProps) => {
+  const isTablet = useIsTablet();
   return (
     <>
       {/* Title row */}
       <div className="customer_lists_header">
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-          {mobileMenuTrigger}
+          {/* Hamburger only on desktop (>1024) where the sidebar drawer still
+              exists. On mobile+tablet the sidebar is gone and profile is
+              accessed via the avatar on the right (WhatsApp-like). */}
+          {!isTablet && mobileMenuTrigger}
           {isArchiveOpen && (
             <Tooltip title="Back" arrow placement="top">
               <IconButton size="small" onClick={onBack} className="back-button" aria-label="Back">
@@ -67,7 +73,9 @@ export const CustomerListsHeader = ({
               </Box>
             </Tooltip>
           )}
-          {!isArchiveOpen && (
+          {/* New Chat / Create Group icons — desktop only. On mobile+tablet
+              these live in the bottom navigation bar to keep the header clean. */}
+          {!isArchiveOpen && !isTablet && (
             <>
               <Tooltip title={isOffline ? "You're offline — new chat unavailable" : "New Chat"} arrow placement="top">
                 <span>
@@ -96,6 +104,13 @@ export const CustomerListsHeader = ({
                 </span>
               </Tooltip>
             </>
+          )}
+          {/* Profile avatar — mobile+tablet only (WhatsApp-like). Replaces the
+              sidebar profile menu. Opens a dropdown (Profile, Theme, Log out). */}
+          {isTablet && (
+            <Box sx={{ flexShrink: 0, ml: 0.5 }}>
+              <ProfileAvatar collapsed headerVariant />
+            </Box>
           )}
         </div>
       </div>

@@ -214,6 +214,33 @@
             background: $hover-bg;
         }
     }
+
+    // ── Mobile keyboard: collapse the header to reclaim message space ──
+    // Triggered by the JS-set [data-keyboard="open"] attribute on <html>
+    // (see ThemeRegistry themeNoFlashScript). Pure CSS — no JS reflow.
+    @media (max-width: 768px) {
+        transition: min-height 0.18s ease, padding-top 0.18s ease;
+
+        [data-keyboard="open"] & {
+            // Drop the safe-top padding (keyboard covers the status bar) and
+            // shrink to a single-line compact bar.
+            padding-top: 0;
+            min-height: 44px;
+
+            // Hide the secondary line (email / group description) — the primary
+            // name stays so the user always knows which conversation is open.
+            .chat-header__status,
+            .chat-header__typing {
+                display: none;
+            }
+
+            // Tighten the avatar slightly
+            .chat-header__left > div:first-of-type {
+                width: 32px !important;
+                height: 32px !important;
+            }
+        }
+    }
 }
 
 // ── Message list ─────────────────────────────────────────────────────────────
@@ -296,6 +323,35 @@
     // Desktop: more padding
     @media (min-width: 768px) {
         padding: 8px 16px;
+    }
+}
+
+// ── Auto-hide scrollbar (mobile only) ─────────────────────────────────────────
+// The scroll container (MessageList outerRef) gets a `scrollbar-active` class
+// while the user is scrolling (toggled in JS, no re-render). The thumb is
+// transparent at idle and appears only while scrolling. Only the thumb color
+// changes — never the width — so there are no layout shifts. Desktop keeps the
+// always-visible scrollbar (handled by inline sx on the container).
+@media (max-width: 768px) {
+    .message-list-scroll {
+        // Firefox: keep a thin scrollbar but transparent at idle
+        scrollbar-width: none;
+    }
+    .message-list-scroll.scrollbar-active {
+        scrollbar-width: thin;
+    }
+    .message-list-scroll::-webkit-scrollbar {
+        width: 6px;
+    }
+    .message-list-scroll::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .message-list-scroll::-webkit-scrollbar-thumb {
+        background-color: transparent;
+        border-radius: 3px;
+    }
+    .message-list-scroll.scrollbar-active::-webkit-scrollbar-thumb {
+        background-color: rgba(115, 103, 240, 0.4);
     }
 }
 

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useSocketContext } from "../../../context/SocketContext";
+import { useSocketContext } from "../../../contexts/SocketContext";
 import { conversationViewCursor, type CursorDirection } from "../../../API/ConversationView/ConversationView";
 import { setSyncState, getSyncState } from "../../../db/outboxCache";
 import { saveConversationToCache } from "./messageHelpers";
 import { MSG, type MsgAction } from "./conversationReducer";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 
 export function useReconnectSync(

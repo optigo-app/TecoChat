@@ -68,9 +68,11 @@ export const ThemeRegistry = ({ children }: { children: React.ReactNode }) => {
   // has a chance to read it.
   // (This is a "use client" component, so the initializer runs in the browser
   // where localStorage and matchMedia are available.)
+  // Read the stored preference once — both state initializers share the same
+  // value so getInitialMode() (which hits localStorage) runs a single time.
   const [mode, setModeState] = useState<ColorMode>(() => getInitialMode());
   const [resolvedMode, setResolvedMode] = useState<ResolvedColorMode>(() =>
-    resolveMode(getInitialMode())
+    resolveMode(mode)
   );
 
   // Apply data-theme to <html> + persist whenever mode or resolvedMode changes.
@@ -137,4 +139,4 @@ export const ThemeRegistry = ({ children }: { children: React.ReactNode }) => {
  *    (enables CSS rules like .hide-on-keyboard).
  * Inject this in <head> via next/script or a <script dangerouslySetInnerHTML>.
  */
-export const themeNoFlashScript = `(function(){try{var k='tecochat-color-mode';var s=localStorage.getItem(k);var resolved;if(s==='light'||s==='dark'){resolved=s;}else{resolved=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}var d=document.documentElement;d.setAttribute('data-theme',resolved);d.style.colorScheme=resolved;}catch(e){}})();(function(){var d=document.documentElement;var h=window.innerHeight,w=window.innerWidth;function upd(){var nh=window.innerHeight;if(w<=768&&nh<h*0.7){d.setAttribute('data-keyboard','open');}else{d.removeAttribute('data-keyboard');}h=nh;}window.addEventListener('resize',upd);window.addEventListener('orientationchange',upd);})();`;
+export const themeNoFlashScript = `(function(){try{var k='tecochat-color-mode';var s=localStorage.getItem(k);var resolved;if(s==='light'||s==='dark'){resolved=s;}else{resolved=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}var d=document.documentElement;d.setAttribute('data-theme',resolved);d.style.colorScheme=resolved;}catch(e){}})();(function(){if(window.__tecochatKeyboardInit)return;window.__tecochatKeyboardInit=true;var d=document.documentElement;var h=window.innerHeight,w=window.innerWidth;function upd(){var nh=window.innerHeight;if(w<=768&&nh<h*0.7){d.setAttribute('data-keyboard','open');}else{d.removeAttribute('data-keyboard');}h=nh;}window.addEventListener('resize',upd);window.addEventListener('orientationchange',upd);window.addEventListener('pagehide',function(){window.removeEventListener('resize',upd);window.removeEventListener('orientationchange',upd);delete window.__tecochatKeyboardInit;});})();`;

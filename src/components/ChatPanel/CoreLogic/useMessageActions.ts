@@ -18,7 +18,7 @@ import { showToast } from "../../../utils/toastHelper";
 import { updateMessageEdit, updateMessageStar } from "../../../db/messageCache";
 import { addToOutbox, removeFromOutbox, updateOutboxStatus } from "../../../db/outboxCache";
 import { playSound } from "../../../utils/sound";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
 import type { MentionData } from "../input/MentionPlugin";
@@ -31,7 +31,7 @@ interface UseMessageActionsProps {
     inputValue: string;
     replyToMessage: ReplyToMessage | null;
     storeMessData: { messageId: string };
-    mediaFiles: Array<{ file: File }>;
+    mediaFiles: MediaFileItem[];
   };
   dispatchUI: React.Dispatch<UIAction>;
   dispatchMsg: React.Dispatch<MsgAction>;
@@ -39,9 +39,11 @@ interface UseMessageActionsProps {
   tempConversationId: string | number | null;
   uploadAndSendMedia?: (params: {
     files: File[];
+    fileItems: MediaFileItem[];
     caption: string;
     type: string;
     tempId: string;
+    tempIds?: string[];
     time: string;
     date: string;
     dateTime: string;
@@ -84,7 +86,7 @@ export function useMessageActions({
         dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
         dispatchUI({ type: UI.SET_MEDIA_FILES, value: [] });
 
-        const byType: Record<string, Array<{ file: File }>> = {
+        const byType: Record<string, MediaFileItem[]> = {
           image: [],
           video: [],
           document: [],
@@ -97,40 +99,84 @@ export function useMessageActions({
             : file.type.startsWith("video/")
             ? "video"
             : "document";
-          byType[t].push({ file });
+          byType[t].push(media);
         }
 
         for (const [type, list] of Object.entries(byType).filter(([, l]) => l.length > 0)) {
-          const tempId = `${Date.now()}-${type}-batch`;
-          const files = list.map(({ file }) => file);
-          const tempMediaItems = list.map(({ file }) => ({
-            url: URL.createObjectURL(file),
-            filename: file.name,
-            mimeType: file.type,
-            size: file.size,
-          }));
-          dispatchMsg({
-            type: MSG.UPSERT,
-            id: tempId,
-            msg: {
-              Id: tempId,
-              ClientMessageId: tempId,
-              Direction: 1,
-              Status: "pending",
-              MessageType: type,
-              previewUrl: URL.createObjectURL(files[0]),
-              Message: caption,
-              isUploading: true,
-              percent: 0,
-              Time: time,
-              Date: date,
-              DateTime: dateTime,
-              mediaItems: tempMediaItems,
-              ConversationId: customer?.ConversationId || tempConversationId,
-            } as Partial<ChatMessage>,
-          });
-          if (scrollToBottom) scrollToBottom();
-          await uploadAndSendMedia({ files, caption, type, tempId, time, date, dateTime });
+          const files = list.map((item) => item.file);
+          const batchTs = Date.now();
+
+          // ── Documents: create individual optimistic messages (one per file)
+          // because the backend returns individual MessageIds for each document.
+          // Images/videos stay grouped in one message with all attachments.
+          if (type === "document" && list.length > 1) {
+            const tempIds: string[] = [];
+            for (let i = 0; i < list.length; i++) {
+              const file = list[i].file;
+              const perFileTempId = `${batchTs}-${type}-${i}`;
+              tempIds.push(perFileTempId);
+              const tempMediaItem = {
+                url: URL.createObjectURL(file),
+                filename: file.name,
+                mimeType: file.type,
+                size: file.size,
+              };
+              dispatchMsg({
+                type: MSG.UPSERT,
+                id: perFileTempId,
+                msg: {
+                  Id: perFileTempId,
+                  ClientMessageId: perFileTempId,
+                  Direction: 1,
+                  Status: "pending",
+                  MessageType: type,
+                  previewUrl: URL.createObjectURL(file),
+                  Message: caption,
+                  isUploading: true,
+                  percent: 0,
+                  Time: time,
+                  Date: date,
+                  DateTime: dateTime,
+                  mediaItems: [tempMediaItem],
+                  ConversationId: customer?.ConversationId || tempConversationId,
+                } as Partial<ChatMessage>,
+              });
+            }
+            if (scrollToBottom) scrollToBottom();
+            const batchTempId = `${batchTs}-${type}-batch`;
+            await uploadAndSendMedia({ files, fileItems: list, caption, type, tempId: batchTempId, tempIds, time, date, dateTime });
+          } else {
+            // ── Images/videos or single document: one optimistic message
+            const tempId = `${batchTs}-${type}-batch`;
+            const tempMediaItems = list.map(({ file }) => ({
+              url: URL.createObjectURL(file),
+              filename: file.name,
+              mimeType: file.type,
+              size: file.size,
+            }));
+            dispatchMsg({
+              type: MSG.UPSERT,
+              id: tempId,
+              msg: {
+                Id: tempId,
+                ClientMessageId: tempId,
+                Direction: 1,
+                Status: "pending",
+                MessageType: type,
+                previewUrl: URL.createObjectURL(files[0]),
+                Message: caption,
+                isUploading: true,
+                percent: 0,
+                Time: time,
+                Date: date,
+                DateTime: dateTime,
+                mediaItems: tempMediaItems,
+                ConversationId: customer?.ConversationId || tempConversationId,
+              } as Partial<ChatMessage>,
+            });
+            if (scrollToBottom) scrollToBottom();
+            await uploadAndSendMedia({ files, fileItems: list, caption, type, tempId, time, date, dateTime });
+          }
         }
         // Play send sound once after all media batches are uploaded successfully
         playSound("send");
@@ -627,7 +673,7 @@ export function useMessageActions({
         showToast("Error updating star", "error");
       }
     },
-    [auth, dispatchMsg]
+    [auth, dispatchMsg, selectedCustomer, selectedCustomerRef]
   );
 
   return {

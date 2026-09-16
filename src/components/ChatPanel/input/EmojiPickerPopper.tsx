@@ -117,16 +117,20 @@ const EmojiPickerPopperComponent = ({
           onClick={(e) => e.stopPropagation()}
         >
           <Box sx={{ width: 380, maxWidth: "100%" }}>
-            <EmojiPicker
-              onEmojiClick={onEmojiClick}
-              width="100%"
-              height={height}
-              searchDisabled={false}
-              skinTonesDisabled={true}
-              previewConfig={{ showPreview: true }}
-              emojiStyle={emojiEnums?.EmojiStyle.APPLE}
-              theme={darkMode ? emojiEnums?.EmojiTheme.DARK : emojiEnums?.EmojiTheme.LIGHT}
-            />
+            {emojiEnums ? (
+              <EmojiPicker
+                onEmojiClick={onEmojiClick}
+                width="100%"
+                height={height}
+                searchDisabled={false}
+                skinTonesDisabled={true}
+                previewConfig={{ showPreview: true }}
+                emojiStyle={emojiEnums.EmojiStyle.APPLE}
+                theme={darkMode ? emojiEnums.EmojiTheme.DARK : emojiEnums.EmojiTheme.LIGHT}
+              />
+            ) : (
+              <Box sx={{ width: 380, height, display: "flex", alignItems: "center", justifyContent: "center" }} />
+            )}
           </Box>
         </Paper>
       </ClickAwayListener>

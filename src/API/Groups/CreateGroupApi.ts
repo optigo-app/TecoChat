@@ -1,6 +1,6 @@
 import { CommonAPI, buildCommonBody } from "../InitialApi/CommonApi";
 import { emitGroupCreated } from "../../socket";
-import type { AuthData } from "../../context/LoginData";
+import type { AuthData } from "../../contexts/LoginData";
 
 export interface GroupPermissionsInput {
   editGroupSettings?: boolean;

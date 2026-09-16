@@ -1,8 +1,7 @@
 "use client";
 
-import { memo, useState, useCallback, useRef } from "react";
+import { memo } from "react";
 import { Typography, IconButton, Tooltip, Box } from "@mui/material";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { RefreshCw, Search, EllipsisVertical, Star, ArrowLeft, Calendar, WifiOff } from "lucide-react";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
 import { getCustomerDisplayName } from "../../utils/globalFunc";
@@ -21,6 +20,9 @@ interface ChatHeaderProps {
   onToggleStarFilter?: () => void;
   starNewMessageCount?: number;
   onSearchByDate?: (date: string) => void;
+  /** Trigger the jump-to-date picker (raised into ChatPanel so the picker can
+   *  also be opened from the mobile More menu). */
+  onOpenDatePicker?: () => void;
   isOffline?: boolean;
 }
 
@@ -36,30 +38,10 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
   onToggleStarFilter,
   starNewMessageCount = 0,
   onSearchByDate,
+  onOpenDatePicker,
   isOffline = false,
 }) => {
   const isMobile = useIsMobile();
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const calendarBtnRef = useRef<HTMLButtonElement | null>(null);
-
-  const toApiDate = (date: Date | null): string => {
-    if (!date) return "";
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  };
-
-  const handleDateAccept = useCallback(
-    (value: Date | null) => {
-      const apiDate = toApiDate(value);
-      if (apiDate && onSearchByDate) {
-        onSearchByDate(apiDate);
-      }
-      setDatePickerOpen(false);
-    },
-    [onSearchByDate]
-  );
 
   if (!selectedCustomer) return null;
 
@@ -149,63 +131,21 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
             <Search size={isMobile ? 22 : 20} />
           </IconButton>
         </Tooltip>
-        {onSearchByDate && (
+        {/* Calendar (jump-to-date) — desktop only. On mobile it lives in the
+            More menu to keep the header compact (WhatsApp-like). */}
+        {!isMobile && onSearchByDate && (
           <Tooltip title="Jump to date" arrow>
             <IconButton
-              ref={calendarBtnRef}
               size="small"
-              onClick={() => setDatePickerOpen(true)}
+              onClick={() => onOpenDatePicker?.()}
               className="chat-header__btn"
             >
-              <Calendar size={isMobile ? 22 : 20} />
+              <Calendar size={20} />
             </IconButton>
           </Tooltip>
         )}
-        {onSearchByDate && (
-          <DatePicker
-            open={datePickerOpen}
-            onClose={() => setDatePickerOpen(false)}
-            onAccept={handleDateAccept}
-            value={null}
-            onChange={() => {}}
-            maxDate={new Date()}
-            slotProps={{
-              textField: {
-                sx: {
-                  // Keep in DOM but invisible so the Popper can anchor to it.
-                  // Position it over the calendar button so the picker opens there.
-                  position: "absolute",
-                  width: 0,
-                  height: 0,
-                  opacity: 0,
-                  overflow: "hidden",
-                  pointerEvents: "none",
-                  left: calendarBtnRef.current?.offsetLeft ?? 0,
-                  top: calendarBtnRef.current?.offsetTop ?? 0,
-                },
-              },
-              desktopPaper: {
-                sx: {
-                  borderRadius: "16px",
-                  backgroundColor: "var(--color-surface-elevated)",
-                  border: "1px solid var(--color-border-light)",
-                  boxShadow: "var(--shadow-picker)",
-                  overflow: "hidden",
-                },
-              },
-              mobilePaper: {
-                sx: {
-                  borderRadius: "16px",
-                  backgroundColor: "var(--color-surface-elevated)",
-                  border: "1px solid var(--color-border-light)",
-                  boxShadow: "var(--shadow-picker)",
-                  overflow: "hidden",
-                },
-              },
-            }}
-          />
-        )}
-        {onToggleStarFilter && (
+        {/* Star filter — desktop only. On mobile it lives in the More menu. */}
+        {!isMobile && onToggleStarFilter && (
           <Tooltip title={starFilter ? "Show all messages" : "Show starred only"} arrow>
             <IconButton
               size="small"

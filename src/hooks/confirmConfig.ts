@@ -64,6 +64,13 @@ export const CONFIRM_CONFIG: Record<string, ConfirmConfigEntry> = {
     variant: "danger",
     showCancel: true,
   },
+  suspiciousLink: {
+    title: "This link may be unsafe",
+    description: "This link looks suspicious. Please check before opening:/n/n{n}",
+    confirmText: "Open Anyway",
+    variant: "danger",
+    showCancel: true,
+  },
 };
 
 export const getConfirmProps = (

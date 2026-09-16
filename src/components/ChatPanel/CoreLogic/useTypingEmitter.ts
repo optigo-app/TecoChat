@@ -6,9 +6,9 @@
 // Throttled to 1 second between emits, with auto-stop after 1 second of
 // inactivity.
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { emitInternalTyping } from "../../../socket";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ConversationListEntry } from "../../../types/conversation";
 
 interface UseTypingEmitterOptions {
@@ -27,6 +27,11 @@ export function useTypingEmitter({
   const lastTypingEmitRef = useRef(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevConversationRef = useRef<ConversationListEntry | null>(null);
+  const selectedCustomerRef = useRef<ConversationListEntry | null>(selectedCustomer);
+
+  useEffect(() => {
+    selectedCustomerRef.current = selectedCustomer;
+  }, [selectedCustomer]);
 
   const emitTypingEvent = useCallback(
     async (isTyping: boolean, customer: ConversationListEntry | null) => {
@@ -59,16 +64,6 @@ export function useTypingEmitter({
         SenderId: senderId,
         IsGroup: isGroup ? 1 : 0,
         UserName: auth?.username || auth?.name,
-        ProfileImageUrl: auth?.ProfileImageUrl || auth?.profileImage || auth?.AvatarUrl || "",
-        ProfileImage: auth?.ProfileImage || auth?.profileImage || auth?.AvatarUrl || "",
-        authKeys: auth ? Object.keys(auth) : [],
-        authProfileImageUrl: (auth as any)?.ProfileImageUrl,
-        authProfileImage: (auth as any)?.ProfileImage,
-        authAvatarUrl: (auth as any)?.AvatarUrl,
-        authProfilePic: (auth as any)?.profilePic,
-        authPic: (auth as any)?.pic,
-        authImage: (auth as any)?.image,
-        authPhoto: (auth as any)?.photo,
       });
 
       emitInternalTyping({
@@ -125,7 +120,14 @@ export function useTypingEmitter({
         // Auto-stop after 1 second of no new input
         const customerAtSetTime = selectedCustomer;
         typingTimeoutRef.current = setTimeout(() => {
-          emitTypingEvent(false, customerAtSetTime);
+          // Only emit stop-typing if the user is still on the same conversation
+          const currentCustomer = selectedCustomerRef.current;
+          if (
+            currentCustomer?.ConversationId &&
+            customerAtSetTime?.ConversationId === currentCustomer.ConversationId
+          ) {
+            emitTypingEvent(false, customerAtSetTime);
+          }
           typingTimeoutRef.current = null;
         }, 1000);
       } else {

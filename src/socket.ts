@@ -1,20 +1,5 @@
 import { io, type Socket } from "socket.io-client";
-
-const LOCAL_HOSTNAMES = (process.env.NEXT_PUBLIC_LOCAL_HOSTS || "localhost,nzen,tecochat.web,web")
-  .split(",")
-  .map((h) => h.trim())
-  .filter(Boolean);
-
-const isLocal = (): boolean => {
-  if (typeof window === "undefined") return false;
-  return LOCAL_HOSTNAMES.includes(window.location.hostname);
-};
-
-const API_SOCKET_BASE_URL = isLocal()
-  ? process.env.NEXT_PUBLIC_SOCKET_URL_LOCAL || "http://newnextjs.web"
-  : process.env.NEXT_PUBLIC_SOCKET_URL_PROD || "https://apilx.optigoapps.com";
-
-const getSocketURL = (): string => API_SOCKET_BASE_URL;
+import { getSocketURL } from "./API/InitialApi/Config";
 
 export type SocketStatus = "connected" | "disconnected" | "error" | "connecting";
 

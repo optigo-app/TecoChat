@@ -7,20 +7,18 @@ import { useRouter } from "next/navigation";
 import { fetchLoginApi } from "../../API/LoginAPI/LoginAPI";
 import { getToken } from "../../API/GetToken/GetToken";
 import { setCookie, eraseCookie, getCookie } from "../../utils/cookieUtils";
-import { useLoginContext } from "../../context/LoginData";
-import { useColorMode } from "../../theme/ThemeRegistry";
-import { initializeSocket, emitInternalStoreSocketData } from "../../socket";
-import { Eye, EyeOff, Check, ArrowLeft } from "lucide-react";
+import { useLoginContext } from "../../contexts/LoginData";
+import { initializeSocket } from "../../socket";
+import { Eye, EyeOff, Check, ArrowLeft, Loader2 } from "lucide-react";
 import Image from "next/image";
 import logo from "@/src/assets/logo.png";
 
 const LoginPageV2 = () => {
   const router = useRouter();
   const { setAuth, token, setToken } = useLoginContext();
-  const { resolvedMode } = useColorMode();
-  const isDark = resolvedMode === "dark";
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState<"company" | "signin">("company");
   const [credentials, setCredentials] = useState({
@@ -129,8 +127,15 @@ const LoginPageV2 = () => {
 
   const handleCompanyCodeBlur = async (): Promise<boolean> => {
     if (!credentials.companycode.trim()) return false;
+    setIsVerifying(true);
     try {
       const tokenData = await getToken(credentials.companycode.trim());
+      if (!tokenData || !tokenData?.rd?.[0]) {
+        setErrors((prev) => ({ ...prev, companycode: "Invalid company code" }));
+        setToken({ sv: "", yc: "" });
+        setCompanyVerified(false);
+        return false;
+      }
       if (tokenData?.rd?.[0]?.stat === 0) {
         setErrors((prev) => ({ ...prev, companycode: "Invalid company code" }));
         setToken({ sv: "", yc: "" });
@@ -143,16 +148,20 @@ const LoginPageV2 = () => {
         setCompanyVerified(true);
         return true;
       }
+      setErrors((prev) => ({ ...prev, companycode: "Unable to verify company code" }));
+      setCompanyVerified(false);
+      return false;
     } catch {
       setErrors((prev) => ({ ...prev, companycode: "Error validating company code" }));
       setCompanyVerified(false);
       return false;
+    } finally {
+      setIsVerifying(false);
     }
-    return false;
   };
 
-  const handleCompanySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCompanySubmit = async (e?: React.FormEvent | React.KeyboardEvent) => {
+    e?.preventDefault?.();
     if (!credentials.companycode.trim()) {
       setErrors((prev) => ({ ...prev, companycode: "Company code is required" }));
       return;
@@ -164,7 +173,7 @@ const LoginPageV2 = () => {
     }
   };
 
-  const handleSignInSubmit = async (e?: React.FormEvent) => {
+  const handleSignInSubmit = async (e?: React.FormEvent | React.KeyboardEvent) => {
     e?.preventDefault?.();
     setIsLoading(true);
     showFormError("");
@@ -200,7 +209,7 @@ const LoginPageV2 = () => {
         return;
       }
 
-      const socket = initializeSocket(userInfo.token);
+      initializeSocket(userInfo.token);
       const username = [userInfo.firstname, userInfo.middlename, userInfo.lastname]
         .filter(Boolean)
         .join(" ");
@@ -216,41 +225,31 @@ const LoginPageV2 = () => {
         ufcc: userInfo.companycode ?? "",
       };
 
-      socket?.on("connect", () => {
-        emitInternalStoreSocketData({
-          userId: userData.id ?? "",
-          ufcc: userData.ufcc ?? "",
-        });
+      // Persist session data and set auth immediately — SocketContext
+      // owns the socket "connect" event and will emitInternalStoreSocketData
+      // when the connection is established.
+      sessionStorage.setItem("userData", JSON.stringify(userData));
+      sessionStorage.setItem("isLoggedIn", "true");
 
-        sessionStorage.setItem("userData", JSON.stringify(userData));
-        sessionStorage.setItem("isLoggedIn", "true");
+      if (rememberMe) {
         localStorage.setItem("remembered_companycode", credentials.companycode);
         localStorage.setItem("remembered_userId", credentials.userId);
+        setCookie("userData", userData, 15);
+        setCookie("token", token, 15);
+        setCookie("remembered_creds", {
+          companycode: credentials.companycode,
+          userId: credentials.userId,
+        }, 15);
+      } else {
+        eraseCookie("userData");
+        eraseCookie("token");
+        eraseCookie("remembered_creds");
+      }
 
-        if (rememberMe) {
-          setCookie("userData", userData, 15);
-          setCookie("token", token, 15);
-          setCookie("remembered_creds", {
-            companycode: credentials.companycode,
-            userId: credentials.userId,
-          }, 15);
-        } else {
-          eraseCookie("userData");
-          eraseCookie("token");
-          eraseCookie("remembered_creds");
-        }
-
-        setAuth(userData);
-        showFormError("");
-        toast.success("Login successful! Welcome back!", { icon: "🎉" });
-        router.replace("/");
-        setIsLoading(false);
-      });
-
-      socket?.on("connect_error", () => {
-        showFormError("Socket connection failed");
-        setIsLoading(false);
-      });
+      setAuth(userData);
+      showFormError("");
+      toast.success("Login successful! Welcome back!", { icon: "🎉" });
+      router.replace("/");
     } catch {
       showFormError("Login failed. Please try again.");
       toast.error("Login failed. Please try again.");
@@ -274,14 +273,21 @@ const LoginPageV2 = () => {
       <div className="loginv2-card">
         {/* ─── Left Brand Panel — image only, theme-aware ─── */}
         <div className="loginv2-brand">
+          {/* Both images rendered; CSS toggles visibility via data-theme on <html>.
+              This avoids a hydration flash from next/image swapping src. */}
           <Image
-            src={isDark
-              ? "/login/login-mockup-dark.webp"
-              : "/login/login-mockup-light.webp"
-            }
+            src="/login/login-mockup-light.webp"
             alt="Tecochat mobile chat preview"
             fill
-            className="brand-mockup"
+            className="brand-mockup brand-mockup-light"
+            priority
+            sizes="(max-width: 768px) 0px, 50vw"
+          />
+          <Image
+            src="/login/login-mockup-dark.webp"
+            alt="Tecochat mobile chat preview"
+            fill
+            className="brand-mockup brand-mockup-dark"
             priority
             sizes="(max-width: 768px) 0px, 50vw"
           />
@@ -336,6 +342,11 @@ const LoginPageV2 = () => {
                         value={credentials.companycode}
                         onChange={handleChange}
                         onBlur={handleCompanyCodeBlur}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" && e.key !== "Tab") return;
+                          e.preventDefault();
+                          handleCompanySubmit(e);
+                        }}
                         autoComplete="organization"
                         autoCapitalize="none"
                         autoCorrect="off"
@@ -355,9 +366,16 @@ const LoginPageV2 = () => {
                   <button
                     type="submit"
                     className="loginv2-submit-btn"
-                    disabled={isLoading}
+                    disabled={isVerifying}
                   >
-                    {isLoading ? "Verifying..." : "Continue"}
+                    {isVerifying ? (
+                      <>
+                        <Loader2 size={18} className="loginv2-spinner" />
+                        Verifying...
+                      </>
+                    ) : (
+                      "Continue"
+                    )}
                   </button>
                 </form>
               </>
@@ -388,6 +406,20 @@ const LoginPageV2 = () => {
                         placeholder="Email or Username"
                         value={credentials.userId}
                         onChange={handleChange}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" && e.key !== "Tab") return;
+                          e.preventDefault();
+                          const userId = credentials.userId.trim();
+                          if (!userId) {
+                            setErrors((prev) => ({ ...prev, userId: "User ID is required" }));
+                            return;
+                          }
+                          if (credentials.password.trim()) {
+                            handleSignInSubmit(e);
+                            return;
+                          }
+                          passwordRef.current?.focus?.();
+                        }}
                         autoComplete="username"
                         autoCapitalize="none"
                         autoCorrect="off"
@@ -416,6 +448,11 @@ const LoginPageV2 = () => {
                         placeholder="Password"
                         value={credentials.password}
                         onChange={handleChange}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" && e.key !== "Tab") return;
+                          e.preventDefault();
+                          handleSignInSubmit(e);
+                        }}
                         autoComplete="current-password"
                       />
                       <button
@@ -456,7 +493,14 @@ const LoginPageV2 = () => {
                     className="loginv2-submit-btn"
                     disabled={isLoading}
                   >
-                    {isLoading ? "Signing in..." : "Sign In"}
+                    {isLoading ? (
+                      <>
+                        <Loader2 size={18} className="loginv2-spinner" />
+                        Signing in...
+                      </>
+                    ) : (
+                      "Sign In"
+                    )}
                   </button>
                 </form>
               </>
@@ -468,11 +512,20 @@ const LoginPageV2 = () => {
             <span>Powered by </span>
             <div className="optigo-logo">
               <Image
-                src="/icons/brand/logo1.png"
+                src="/icons/brand/brandlogolight.png"
                 alt="Optigo logo"
                 width={80}
                 height={42}
                 draggable={false}
+                className="optigo-logo-light"
+              />
+              <Image
+                src="/icons/brand/brandlogodark.svg"
+                alt="Optigo logo"
+                width={80}
+                height={42}
+                draggable={false}
+                className="optigo-logo-dark"
               />
             </div>
           </div>

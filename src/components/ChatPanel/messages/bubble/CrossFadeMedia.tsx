@@ -33,6 +33,24 @@ export const CrossFadeImage = ({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [newLoaded, setNewLoaded] = useState(false);
   const srcRef = useRef(src);
+  const prevSrcRef = useRef<string | null>(null);
+
+  // Revoke the previous blob URL (if any) and clear the ref.
+  const revokePrevSrc = () => {
+    if (prevSrcRef.current?.startsWith("blob:")) {
+      URL.revokeObjectURL(prevSrcRef.current);
+    }
+    prevSrcRef.current = null;
+  };
+
+  // Revoke any held blob URL on unmount.
+  useEffect(() => {
+    return () => {
+      if (prevSrcRef.current?.startsWith("blob:")) {
+        URL.revokeObjectURL(prevSrcRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (src === srcRef.current) return;
@@ -40,6 +58,7 @@ export const CrossFadeImage = ({
     srcRef.current = src;
 
     if (!src) {
+      revokePrevSrc();
       setCurrentSrc("");
       setPrevSrc(null);
       setIsTransitioning(false);
@@ -52,6 +71,8 @@ export const CrossFadeImage = ({
     // the background `new Image()` preloads. This prevents the flash where
     // prevSrc disappears before the React <img> has rendered the server URL.
     if (oldSrc?.startsWith("blob:") && !src.startsWith("blob:")) {
+      revokePrevSrc();
+      prevSrcRef.current = oldSrc;
       setPrevSrc(oldSrc);
       setCurrentSrc(src);
       setIsTransitioning(true);
@@ -60,6 +81,7 @@ export const CrossFadeImage = ({
       const img = new Image();
       img.src = src;
     } else {
+      revokePrevSrc();
       setCurrentSrc(src);
       setPrevSrc(null);
       setIsTransitioning(false);
@@ -70,6 +92,8 @@ export const CrossFadeImage = ({
   const handleLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     setNewLoaded(true);
     setIsTransitioning(false);
+    revokePrevSrc();
+    setPrevSrc(null);
     if (markLoaded && keyId) markLoaded(keyId);
     if (onLoad) onLoad(e);
   };
@@ -77,6 +101,8 @@ export const CrossFadeImage = ({
   const handleError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     setNewLoaded(true);
     setIsTransitioning(false);
+    revokePrevSrc();
+    setPrevSrc(null);
     if (markLoaded && keyId) markLoaded(keyId);
     if (onError) onError(e);
   };
@@ -134,6 +160,7 @@ interface CrossFadeVideoProps {
   markLoaded?: (key: string) => void;
   keyId?: string;
   style?: React.CSSProperties;
+  onError?: () => void;
 }
 
 export const CrossFadeVideo = ({
@@ -142,12 +169,31 @@ export const CrossFadeVideo = ({
   markLoaded,
   keyId,
   style,
+  onError,
 }: CrossFadeVideoProps) => {
   const [currentSrc, setCurrentSrc] = useState(src);
   const [prevSrc, setPrevSrc] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [newLoaded, setNewLoaded] = useState(false);
   const srcRef = useRef(src);
+  const prevSrcRef = useRef<string | null>(null);
+
+  // Revoke the previous blob URL (if any) and clear the ref.
+  const revokePrevSrc = () => {
+    if (prevSrcRef.current?.startsWith("blob:")) {
+      URL.revokeObjectURL(prevSrcRef.current);
+    }
+    prevSrcRef.current = null;
+  };
+
+  // Revoke any held blob URL on unmount.
+  useEffect(() => {
+    return () => {
+      if (prevSrcRef.current?.startsWith("blob:")) {
+        URL.revokeObjectURL(prevSrcRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (src === srcRef.current) return;
@@ -155,6 +201,7 @@ export const CrossFadeVideo = ({
     srcRef.current = src;
 
     if (!src) {
+      revokePrevSrc();
       setCurrentSrc("");
       setPrevSrc(null);
       setIsTransitioning(false);
@@ -163,6 +210,8 @@ export const CrossFadeVideo = ({
     }
 
     if (oldSrc?.startsWith("blob:") && !src.startsWith("blob:")) {
+      revokePrevSrc();
+      prevSrcRef.current = oldSrc;
       setPrevSrc(oldSrc);
       setCurrentSrc(src);
       setIsTransitioning(true);
@@ -173,6 +222,7 @@ export const CrossFadeVideo = ({
       video.muted = true;
       video.src = src;
     } else {
+      revokePrevSrc();
       setCurrentSrc(src);
       setPrevSrc(null);
       setIsTransitioning(false);
@@ -183,13 +233,18 @@ export const CrossFadeVideo = ({
   const handleLoadedData = () => {
     setNewLoaded(true);
     setIsTransitioning(false);
+    revokePrevSrc();
+    setPrevSrc(null);
     if (markLoaded && keyId) markLoaded(keyId);
   };
 
   const handleError = () => {
     setNewLoaded(true);
     setIsTransitioning(false);
+    revokePrevSrc();
+    setPrevSrc(null);
     if (markLoaded && keyId) markLoaded(keyId);
+    if (onError) onError();
   };
 
   const isLoaded = isTransitioning ? newLoaded : loaded;

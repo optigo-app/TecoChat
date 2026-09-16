@@ -6,7 +6,7 @@ import { removeReactionApi } from "../../../API/SendMessage/removeReactionApi";
 import { emitSendReaction, emitRemoveReaction } from "../../../socket";
 import { MSG, type MsgAction } from "./conversationReducer";
 import type { ChatMessage } from "../../../types/message";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ConversationListEntry } from "../../../types/conversation";
 
 interface UseReactionsProps {

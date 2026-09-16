@@ -8,7 +8,7 @@ import { removeMemberApi } from "../API/Groups/RemoveMemberApi";
 import { clearChatApi } from "../API/ClearChat/ClearChatApi";
 import { deleteConversationApi } from "../API/ConversationView/DeleteConversationApi";
 import { isMessageEditable } from "../utils/globalFunc";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 import { clearConversation } from "../db/messageCache";
 import { deleteConversation as deleteCachedConversation } from "../db/conversationCache";
 import { clearMembers } from "../db/groupMembersCache";
@@ -243,35 +243,42 @@ export function useConfirmModal({
       return selectedCustomer?.AllowDeleteForAll === 1 || selectedCustomer?.AllowDeleteForAll === true;
     })();
 
-    return [
-      ...(isWithinTimeLimit && isOutgoing && canDeleteForAll
-        ? [
-            {
-              label: "Delete for everyone",
-              onClick: () => {
-                handleDeleteMessage(msg?.MessageId ?? msg?.Id, 2);
-                close();
-              },
-              danger: true,
-              variant: "btn-actions",
+    const deleteForEveryone = isWithinTimeLimit && isOutgoing && canDeleteForAll
+      ? [
+          {
+            label: "Delete for everyone",
+            onClick: () => {
+              handleDeleteMessage(msg?.MessageId ?? msg?.Id, 2);
+              close();
             },
-          ]
-        : []),
-      {
-        label: "Delete for me",
-        onClick: () => {
-          handleDeleteMessage(msg?.MessageId ?? msg?.Id, 1);
-          close();
-        },
-        danger: true,
-        variant: "btn-actions",
+            danger: true,
+            variant: "btn-actions",
+          },
+        ]
+      : [];
+
+    const deleteForMe = {
+      label: "Delete for me",
+      onClick: () => {
+        handleDeleteMessage(msg?.MessageId ?? msg?.Id, 1);
+        close();
       },
-      {
-        label: "Cancel",
-        onClick: close,
-        variant: "btn-actions",
-      },
-    ];
+      danger: true,
+      variant: "btn-actions",
+    };
+
+    const cancel = {
+      label: "Cancel",
+      onClick: close,
+      variant: "btn-actions",
+    };
+
+    // 3 actions → vertical: delete options first, Cancel at bottom
+    // 2 actions → horizontal: Cancel left, Delete for me right
+    if (deleteForEveryone.length > 0) {
+      return [...deleteForEveryone, deleteForMe, cancel];
+    }
+    return [cancel, deleteForMe];
   }, [
     selectedMessageForDelete,
     handleDeleteMessage,

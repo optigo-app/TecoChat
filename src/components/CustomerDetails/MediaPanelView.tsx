@@ -92,7 +92,7 @@ const MediaPanelView = ({
       <div className="tab-content">
         {activeTab === "media" && (
           <MediaSection
-            mediaItems={{ images: mediaItems.images, videos: [] }}
+            mediaItems={{ images: mediaItems.images, videos: mediaItems.videos }}
             isLoading={pagination.images.isLoading || initialFetchLoading}
             hasMore={pagination.images.hasMore}
             onLoadMore={onLoadMoreMedia}

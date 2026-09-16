@@ -2,7 +2,7 @@
 
 import { getDb } from "./tecoDb";
 import type { ChatMessage } from "../types/message";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 
 const SEARCH_CACHE_TTL = 5 * 60 * 1000;
 

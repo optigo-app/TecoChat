@@ -20,7 +20,7 @@ import { toast } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import loginPageLottie from "../../assets/lotties/loginPage.json";
 import { emitInternalStoreSocketData, initializeSocket } from "../../socket";
-import { useLoginContext } from "../../context/LoginData";
+import { useLoginContext } from "../../contexts/LoginData";
 import { getToken } from "../../API/GetToken/GetToken";
 import { setCookie, eraseCookie, getCookie } from "../../utils/cookieUtils";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -362,7 +362,7 @@ const LoginPage1 = () => {
                     onChange={handleChange}
                     onBlur={handleCompanyCodeBlur}
                     onKeyDown={async (e) => {
-                      if (e.key !== "Enter") return;
+                      if (e.key !== "Enter" && e.key !== "Tab") return;
                       e.preventDefault();
 
                       const companyCode = credentials.companycode.trim();
@@ -426,7 +426,7 @@ const LoginPage1 = () => {
                   value={credentials.userId}
                   onChange={handleChange}
                   onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
+                    if (e.key !== "Enter" && e.key !== "Tab") return;
                     e.preventDefault();
 
                     const userId = credentials.userId.trim();

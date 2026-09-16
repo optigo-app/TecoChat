@@ -22,7 +22,7 @@ import {
   hasCustomerName,
 } from "../../utils/globalFunc";
 import { fetchCustomerLists } from "../../API/CustomerLists/CustomerLists";
-import { useLoginContext } from "../../context/LoginData";
+import { useLoginContext } from "../../contexts/LoginData";
 
 interface AddConversationMember {
   UserId: string | number;
@@ -367,7 +367,6 @@ const AddConversation = ({
         >
           {[
             { label: "All", value: 0 },
-            { label: "Favorite", value: 2 },
           ].map((item) => {
             const isActive = tabValue === item.value;
 

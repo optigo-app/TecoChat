@@ -1229,10 +1229,22 @@ export default function MediaPreviewStage({
               <>
                 <div style={{ marginBottom: 16 }}>
                   {iconUrl ? (
-                    <img src={iconUrl} alt="" style={{ width: 80, height: 80, objectFit: "contain" }} />
-                  ) : (
-                    <FileText size={80} color={theme.palette.primary.main} />
-                  )}
+                    <img
+                      src={iconUrl}
+                      alt=""
+                      style={{ width: 80, height: 80, objectFit: "contain" }}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                        const fallback = (e.currentTarget as HTMLImageElement).nextElementSibling;
+                        if (fallback) (fallback as HTMLElement).style.display = "block";
+                      }}
+                    />
+                  ) : null}
+                  <FileText
+                    size={80}
+                    color={theme.palette.primary.main}
+                    style={{ display: iconUrl ? "none" : "block" }}
+                  />
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 16, color: titleColor, marginBottom: 4 }}>
                   {currentMedia.name}

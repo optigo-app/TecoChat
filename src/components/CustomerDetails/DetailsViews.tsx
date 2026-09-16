@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Typography } from "@mui/material";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import ProfileSection from "./ProfileSection";
 import ActionButtons from "./ActionButtons";
 import GroupDescription from "./GroupDescription";
@@ -125,6 +126,9 @@ interface DetailsViewsProps {
   onSearchByDate?: (date: string) => void;
   containerRef?: React.RefObject<any>;
   open: boolean;
+  /** Whether an existing conversation exists. When false (new-chat contact),
+   *  conversation-dependent sections are hidden. */
+  hasConversation?: boolean;
 }
 
 const DetailsViews = ({
@@ -193,7 +197,9 @@ const DetailsViews = ({
   onSearchByDate,
   containerRef,
   open,
+  hasConversation = true,
 }: DetailsViewsProps) => {
+  const isMobile = useIsMobile();
   return (
     <div className={`views-container view-${currentViewState} direction-${direction}`}>
       {currentViewState === "info" ? (
@@ -221,16 +227,18 @@ const DetailsViews = ({
                 loading={groupInfoLoading}
               />
 
-              <ActionButtons
-                customer={customer}
-                isCurrentUserAdmin={isCurrentUserAdmin}
-                onAddClick={handleOpenAddMember}
-                onSearchClick={() => {
-                  setDirection("forward");
-                  setCurrentViewState("search");
-                }}
-                groupPermissions={groupPermissions}
-              />
+              {hasConversation && (
+                <ActionButtons
+                  customer={customer}
+                  isCurrentUserAdmin={isCurrentUserAdmin}
+                  onAddClick={handleOpenAddMember}
+                  onSearchClick={() => {
+                    setDirection("forward");
+                    setCurrentViewState("search");
+                  }}
+                  groupPermissions={groupPermissions}
+                />
+              )}
 
               {customer?.IsGroup === 1 && (
                 <>
@@ -269,14 +277,16 @@ const DetailsViews = ({
                   />
                 </>
               )}
-              <MediaPreview
-                mediaItems={mediaItems}
-                onClick={() => {
-                  setDirection("forward");
-                  setCurrentViewState("media");
-                }}
-                onMediaClick={handleMediaClick}
-              />
+              {hasConversation && (
+                <MediaPreview
+                  mediaItems={mediaItems}
+                  onClick={() => {
+                    setDirection("forward");
+                    setCurrentViewState("media");
+                  }}
+                  onMediaClick={handleMediaClick}
+                />
+              )}
               {customer?.IsGroup === 1 && isRemovedFromCurrentGroup && (
                 <Box className="removed-from-group-message" sx={{ textAlign: "center", pb: 2 }}>
                   <Typography
@@ -286,7 +296,7 @@ const DetailsViews = ({
                   </Typography>
                 </Box>
               )}
-              {customer?.IsGroup !== 1 && (
+              {hasConversation && customer?.IsGroup !== 1 && (
                 <>
                   <div
                     className="section-divider"
@@ -300,7 +310,7 @@ const DetailsViews = ({
                 </>
               )}
 
-              {customer?.IsGroup === 1 && (
+              {customer?.IsGroup === 1 && hasConversation && (
                 <>
                   <div
                     className="section-divider"
@@ -327,34 +337,40 @@ const DetailsViews = ({
                 </>
               )}
 
-              <div
-                className="section-divider"
-                style={{ height: "1px", backgroundColor: "var(--color-wa-border-light)", margin: "0 -24px" }}
-              />
+              {hasConversation && (
+                <>
+                  <div
+                    className="section-divider"
+                    style={{ height: "1px", backgroundColor: "var(--color-wa-border-light)", margin: "0 -24px" }}
+                  />
 
-              <SettingsSection
-                isFavorite={isFavorite}
-                onToggleFavorite={handleToggleFavorite}
-                isGroup={customer?.IsGroup === 1}
-                isCurrentUserAdmin={isCurrentUserAdmin}
-                isMuted={isMuted}
-                onToggleMute={onToggleMute}
-                onNavigateToPermissions={() => {
-                  setDirection("forward");
-                  setTimeout(() => setCurrentViewState("permissions"), 0);
-                }}
-              />
+                  <SettingsSection
+                    isFavorite={isFavorite}
+                    onToggleFavorite={handleToggleFavorite}
+                    isGroup={customer?.IsGroup === 1}
+                    isCurrentUserAdmin={isCurrentUserAdmin}
+                    isMuted={isMuted}
+                    onToggleMute={onToggleMute}
+                    onNavigateToPermissions={() => {
+                      setDirection("forward");
+                      setTimeout(() => setCurrentViewState("permissions"), 0);
+                    }}
+                  />
+                </>
+              )}
             </div>
 
-            <div className="danger-zone-wrapper" style={{ marginTop: "auto" }}>
-              <DangerZone
-                onClearChat={handleClearChatClick}
-                isGroup={customer?.IsGroup === 1}
-                onExitGroup={handleExitGroupClick}
-                isRemovedFromCurrentGroup={isRemovedFromCurrentGroup}
-                onDeleteChat={handleDeleteChatClick}
-              />
-            </div>
+            {hasConversation && (
+              <div className="danger-zone-wrapper" style={{ marginTop: "auto" }}>
+                <DangerZone
+                  onClearChat={handleClearChatClick}
+                  isGroup={customer?.IsGroup === 1}
+                  onExitGroup={handleExitGroupClick}
+                  isRemovedFromCurrentGroup={isRemovedFromCurrentGroup}
+                  onDeleteChat={handleDeleteChatClick}
+                />
+              </div>
+            )}
           </div>
         </div>
       ) : currentViewState === "media" ? (
@@ -382,6 +398,11 @@ const DetailsViews = ({
                 if (msgId !== undefined) {
                   scrollToMessage(msgId, containerRef, null, searchQuery || null);
                 }
+              }
+              // On mobile, close the search panel (drawer) after clicking a
+              // result so the user sees the scrolled-to message in the chat.
+              if (isMobile) {
+                onClose();
               }
             }}
             searchResults={searchResults}

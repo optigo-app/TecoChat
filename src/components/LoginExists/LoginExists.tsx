@@ -3,11 +3,10 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useLoginContext } from "../../context/LoginData";
+import { useLoginContext } from "../../contexts/LoginData";
 import "./LoginExists.scss";
 import warning from "../../assets/lotties/warning.json";
 import loader from "../../assets/lotties/loader.json";
-import { LogoutApi } from "../../API/Logout/Logout";
 import { initializeSocket } from "../../socket";
 import { Button } from "@mui/material";
 import { eraseCookie } from "../../utils/cookieUtils";
@@ -42,7 +41,6 @@ const LoginExists = () => {
   const handleStayLoggedIn = async () => {
     try {
       setLoading(true);
-      await LogoutApi(getId?.id ?? "");
       const socket = initializeSocket(getId?.token ?? "");
 
       setAuth({

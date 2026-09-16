@@ -17,13 +17,16 @@ import type { ChatMessage, FlattenedRow } from "../../types/message";
 import type { ConversationListEntry } from "../../types/conversation";
 import { formatDateTime } from "../../utils/dateUtils";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useSafeLink } from "../../hooks/useSafeLink";
 import MessageItem from "./MessageItem";
 import { TypingIndicator, ScrollToBottomButton } from "./messages/list";
 import DragDropOverlay from "../DragDropOverlay/DragDropOverlay";
+import ConfirmationDialog from "../ReusableComponent/ConfirmationDialog";
 import type { TypingStatus } from "../../types/message";
 import {
   scrollToBottomInstant,
   scrollToBottomSmooth,
+  scrollToTopInstant,
   scrollToMessageElement,
   getDistanceFromBottom,
   captureScrollAnchor,
@@ -40,6 +43,8 @@ import {
 export interface MessageListRef {
   scrollToMessage: (messageId: string | number, attachmentId?: string | null) => void;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
+  scrollToTop: () => void;
+  setSkipNextAutoScroll: () => void;
 }
 
 interface MessageListProps {
@@ -155,12 +160,33 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const [listVisible, setListVisible] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
+    const [stickyDate, setStickyDate] = useState<string | null>(null);
+    const [stickyDateVisible, setStickyDateVisible] = useState(false);
     const [expandedMessageIds, setExpandedMessageIds] = useState<Set<string>>(new Set());
     const expandedMessageIdsRef = useRef<Set<string>>(expandedMessageIds);
     useEffect(() => {
       expandedMessageIdsRef.current = expandedMessageIds;
     }, [expandedMessageIds]);
     const isMobile = useIsMobile();
+
+    // ── Safe-link inspection ──────────────────────────────────────────────
+    // Intercepts <a> clicks inside the message list and routes them through
+    // inspectUrl(). Suspicious links show the ConfirmationDialog first.
+    const { linkDialog, openLinkSafely } = useSafeLink();
+
+    const handleListClick = useCallback(
+      (e: React.MouseEvent<HTMLDivElement>) => {
+        // Only intercept clicks on <a> tags with target="_blank" (case-insensitive)
+        const target = e.target as HTMLElement;
+        const anchor = target.closest("a");
+        if (!anchor || anchor.target.trim().toLowerCase() !== "_blank") return;
+        e.preventDefault();
+        const href = anchor.href; // resolved absolute URL
+        if (!href) return;
+        openLinkSafely(href);
+      },
+      [openLinkSafely]
+    );
 
     const dragCounter = useRef(0);
     const distanceFromBottomRef = useRef(0);
@@ -173,6 +199,15 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     const blinkRef = useRef<string | null>(null);
     const suppressScrollLoadRef = useRef(true);
     const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const skipNextAutoScrollRef = useRef(false);
+    const stickyDateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const stickyDateRef = useRef<string | null>(null);
+
+    // Auto-hide scrollbar: while the user is actively scrolling we add a
+    // `scrollbar-active` class to the scroll container so the thumb becomes
+    // visible; it fades out shortly after scrolling stops. Direct DOM
+    // manipulation (no React state) to avoid re-renders on every scroll event.
+    const scrollbarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const pendingNewCountRef = useRef(0);
 
@@ -340,14 +375,25 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       setShowScrollBtn(false);
       setListVisible(false);
       setExpandedMessageIds(new Set());
+      setStickyDate(null);
+      setStickyDateVisible(false);
+      stickyDateRef.current = null;
+      linkDialog.close();
+      // Reset drag state — a drag may have been in progress when the
+      // conversation switched (e.g., clicking a search result), leaving
+      // the overlay stuck visible with stale dragCounter.
+      setIsDragging(false);
+      dragCounter.current = 0;
       if (convLoadTimerRef.current) clearTimeout(convLoadTimerRef.current);
-      // Fallback: if data doesn't arrive in 1.5s, show whatever we have
-      convLoadTimerRef.current = setTimeout(() => setListVisible(true), 1500);
+      // Fallback: if data doesn't arrive in 800ms, show whatever we have
+      convLoadTimerRef.current = setTimeout(() => setListVisible(true), 800);
     }, [selectedCustomer?.ConversationId]);
 
     useEffect(() => {
       return () => {
         if (convLoadTimerRef.current) clearTimeout(convLoadTimerRef.current);
+        if (stickyDateTimerRef.current) clearTimeout(stickyDateTimerRef.current);
+        if (scrollbarHideTimerRef.current) clearTimeout(scrollbarHideTimerRef.current);
       };
     }, []);
 
@@ -437,6 +483,10 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       const curr = msgRowCount;
       prevMsgCountRef.current = curr;
       if (curr <= prev || curr === 0) return;
+      if (skipNextAutoScrollRef.current) {
+        skipNextAutoScrollRef.current = false;
+        return;
+      }
       if (wasLoadingOlderRef.current) {
         wasLoadingOlderRef.current = false;
         return;
@@ -479,6 +529,17 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     const onListScroll = useCallback(() => {
       const outer = outerRef.current;
       if (!outer) return;
+
+      // ── Auto-hide scrollbar (mobile) ──
+      // Show the thumb while scrolling; hide it after scrolling stops.
+      if (!outer.classList.contains("scrollbar-active")) {
+        outer.classList.add("scrollbar-active");
+      }
+      if (scrollbarHideTimerRef.current) clearTimeout(scrollbarHideTimerRef.current);
+      scrollbarHideTimerRef.current = setTimeout(() => {
+        outer.classList.remove("scrollbar-active");
+      }, 700);
+
       const dist = getDistanceFromBottom(outer);
       distanceFromBottomRef.current = dist;
       setShowScrollBtn(dist > 300);
@@ -488,6 +549,42 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
 
       if (atBottom && pendingNewCountRef.current > 0 && onFlushNewMessages) {
         onFlushNewMessages();
+      }
+
+      // ── Sticky date pill ──
+      // Find the date row at or just above the scroll top.
+      // Uses getBoundingClientRect for accuracy (offsetTop depends on offsetParent).
+      const outerRect = outer.getBoundingClientRect();
+      const dateRows = outer.querySelectorAll<HTMLElement>("[data-date-row]");
+      let currentDate: string | null = null;
+      for (let i = dateRows.length - 1; i >= 0; i--) {
+        const el = dateRows[i];
+        const rowTop = el.getBoundingClientRect().top - outerRect.top;
+        if (rowTop <= 4) {
+          currentDate = el.dataset.dateValue || null;
+          break;
+        }
+      }
+
+      // Update the date text only when it actually changes (avoids re-renders).
+      if (currentDate && currentDate !== stickyDateRef.current) {
+        stickyDateRef.current = currentDate;
+        setStickyDate(currentDate);
+      }
+      if (currentDate) {
+        setStickyDateVisible(true);
+      } else {
+        // No date row above the viewport top — hide immediately.
+        setStickyDateVisible(false);
+      }
+
+      // Auto-hide the pill 3s after scrolling stops.
+      // Reset the timer on every scroll event so it stays visible while scrolling.
+      if (stickyDateTimerRef.current) clearTimeout(stickyDateTimerRef.current);
+      if (currentDate) {
+        stickyDateTimerRef.current = setTimeout(() => {
+          setStickyDateVisible(false);
+        }, 3000);
       }
     }, [isAtBottomRef, onFlushNewMessages]);
 
@@ -511,13 +608,30 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       if (outer) scrollToBottomSmooth(outer, behavior);
     }, []);
 
+    const scrollToTop = useCallback(() => {
+      const outer = outerRef.current;
+      if (outer) {
+        scrollToTopInstant(outer);
+        distanceFromBottomRef.current = getDistanceFromBottom(outer);
+        if (isAtBottomRef) isAtBottomRef.current = false;
+        setShowScrollBtn(true);
+        didInitialScroll.current = true;
+        suppressScrollLoadsTemporarily(500);
+        prevMsgCountRef.current = msgRowCount;
+      }
+    }, [suppressScrollLoadsTemporarily, msgRowCount]);
+
     useImperativeHandle(
       ref,
       () => ({
         scrollToMessage,
         scrollToBottom,
+        scrollToTop,
+        setSkipNextAutoScroll: () => {
+          skipNextAutoScrollRef.current = true;
+        },
       }),
-      [scrollToMessage, scrollToBottom]
+      [scrollToMessage, scrollToBottom, scrollToTop]
     );
 
     // ── Drag-and-drop ───────────────────────────────────────────────────────
@@ -572,6 +686,22 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       [processFiles, isExternalFileDrag]
     );
 
+    // Reset drag state if a drag ends outside the message area (e.g., user
+    // drags files in, then releases over another window or the desktop).
+    // Without this, dragCounter can stay > 0 and the overlay stays visible.
+    useEffect(() => {
+      const handleDragEnd = () => {
+        setIsDragging(false);
+        dragCounter.current = 0;
+      };
+      window.addEventListener("dragend", handleDragEnd);
+      window.addEventListener("drop", handleDragEnd);
+      return () => {
+        window.removeEventListener("dragend", handleDragEnd);
+        window.removeEventListener("drop", handleDragEnd);
+      };
+    }, []);
+
     const handlePaste = useCallback(
       (e: React.ClipboardEvent) => {
         if (e.clipboardData?.files?.length > 0 && processFiles) {
@@ -591,6 +721,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
           return (
             <div
               key={`date:${row.date}:${_index}`}
+              data-date-row
+              data-date-value={formatDateTime(row.date, "dateNumeric")}
               style={{ display: "flex", justifyContent: "center", margin: "8px 0 4px 0" }}
             >
               <Typography variant="caption" className="typoDate">
@@ -682,10 +814,9 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     );
 
     const isEmpty = rows.length <= 2;
-    // `loading` is deliberately not set until the cache-first IndexedDB read
-    // completes. Do not use listVisible here: on a conversation switch the
-    // list is hidden while that read is in flight, and treating that as a load
-    // state flashes the full-screen loader before cached rows can arrive.
+    // Show loader when loading AND no messages to display.
+    // loading is now set to true before the cache read (in useMessageLoader),
+    // so this covers the brief IndexedDB read gap too — no more blank state.
     const showLoader = loading && isEmpty;
     const loaderOpacity = showLoader ? 1 : 0;
 
@@ -703,7 +834,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         }}
         sx={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
       >
-        <DragDropOverlay isDragging={isDragging} />
+        {isDragging && <DragDropOverlay isDragging={isDragging} />}
         <Box
           sx={{
             position: "absolute",
@@ -715,18 +846,17 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             flexDirection: "column",
             justifyContent: "center",
             alignItems: "center",
-            backgroundColor: alpha(theme.palette.background.default, 0.97),
+            backgroundColor: alpha(theme.palette.background.default, 0.85),
+            backdropFilter: "blur(4px)",
+            WebkitBackdropFilter: "blur(4px)",
             zIndex: 20,
             gap: 2,
             opacity: loaderOpacity,
             pointerEvents: loaderOpacity > 0 ? "all" : "none",
-            transition: "opacity 0.2s ease",
+            transition: "opacity 0.25s ease",
           }}
         >
-          <CircularProgress size={40} thickness={3.5} sx={{ color: "primary.main", opacity: 0.8 }} />
-          <Typography variant="body2" color="textSecondary" sx={{ fontWeight: 500, opacity: 0.65 }}>
-            Loading messages...
-          </Typography>
+          <CircularProgress size={32} thickness={3} sx={{ color: "primary.main", opacity: 0.7 }} />
         </Box>
 
         <ScrollToBottomButton
@@ -755,14 +885,46 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
           unreadCount={pendingNewMessages.length}
         />
 
+        {/* ── Sticky date pill (WhatsApp-style) ── */}
+        <Box
+          className="sticky-date-pill"
+          sx={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            transform: `translateX(-50%) translateY(${stickyDateVisible ? "0" : "-6px"})`,
+            opacity: stickyDateVisible ? 1 : 0,
+            transition: "opacity 0.35s ease-out, transform 0.35s ease-out",
+            pointerEvents: "none",
+            zIndex: 5,
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              fontFamily: "var(--font-family)",
+              fontSize: "clamp(11px, 0.5vw + 9px, 12px)",
+              fontWeight: 500,
+              color: "var(--color-text-secondary)",
+              backgroundColor: "var(--color-wa-surface-3, var(--color-surface-elevated))",
+              padding: "3px 10px",
+              borderRadius: "16px",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+              display: "block",
+            }}
+          >
+            {stickyDate}
+          </Typography>
+        </Box>
+
         {/* Scrollable list */}
         <Box
           sx={{
             flex: 1,
             minHeight: 0,
             opacity: listVisible ? 1 : 0,
-            transform: listVisible ? "translateY(0)" : "translateY(4px)",
-            transition: "opacity 0.2s ease, transform 0.2s ease",
+            transform: listVisible ? "translateY(0) scale(1)" : "translateY(6px) scale(0.99)",
+            transition: "opacity 0.3s ease, transform 0.3s ease",
             overflow: "hidden",
             pointerEvents: isMediaPreviewOpen ? "none" : "auto",
             filter: isMediaPreviewOpen ? "blur(2px)" : "none",
@@ -770,6 +932,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         >
           <Box
             ref={outerRef}
+            className="message-list-scroll"
             sx={{
               height: "100%",
               overflowY: "auto",
@@ -789,6 +952,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               "&::-webkit-scrollbar-thumb:horizontal": { display: "none !important" },
             }}
             onScroll={onListScroll}
+            onClick={handleListClick}
+            onAuxClick={handleListClick}
           >
             {/* ── TOP SENTINEL (IntersectionObserver target for older pagination) ── */}
             {hasMoreBefore && (
@@ -890,6 +1055,20 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             {/* No manual button — same smooth auto-load as top sentinel */}
           </Box>
         </Box>
+
+        {/* ── Suspicious-link confirmation dialog ── */}
+        <ConfirmationDialog
+          isOpen={linkDialog.isOpen}
+          onClose={linkDialog.close}
+          onConfirm={linkDialog.confirm}
+          title={linkDialog.title}
+          description={linkDialog.description}
+          confirmText={linkDialog.confirmText}
+          cancelText="Cancel"
+          variant={linkDialog.variant}
+          icon={linkDialog.icon}
+          loading={linkDialog.loading}
+        />
       </Box>
     );
   }

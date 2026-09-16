@@ -142,6 +142,12 @@ export function notifyOtherTabs(info: VersionInfo): void {
 
 // ── Service worker cleanup ────────────────────────────────────────────────────
 
+// Only touch service workers and caches that belong to this app.
+// This prevents unregistering SWs or deleting caches from other apps
+// that may share the same origin.
+const APP_SW_PATH = "/sw.js";
+const APP_CACHE_PREFIX = "tecochat";
+
 export async function unregisterStaleServiceWorkers(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
 
@@ -149,12 +155,24 @@ export async function unregisterStaleServiceWorkers(): Promise<void> {
     const registrations = await navigator.serviceWorker.getRegistrations();
     if (registrations.length === 0) return;
 
+    // Only unregister service workers whose scriptURL contains the app's SW path.
+    const appRegistrations = registrations.filter((reg) => {
+      try {
+        const scriptURL = reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || "";
+        return scriptURL.includes(APP_SW_PATH);
+      } catch {
+        return false;
+      }
+    });
+
+    if (appRegistrations.length === 0) return;
+
     console.info(
-      `[versionManager] Found ${registrations.length} service worker(s) — unregistering to prevent stale cache issues.`
+      `[versionManager] Found ${appRegistrations.length} app service worker(s) — unregistering to prevent stale cache issues.`
     );
 
     await Promise.all(
-      registrations.map(async (reg) => {
+      appRegistrations.map(async (reg) => {
         try {
           await reg.unregister();
           console.info("[versionManager] Unregistered SW:", reg.scope);
@@ -166,9 +184,11 @@ export async function unregisterStaleServiceWorkers(): Promise<void> {
 
     if ("caches" in window) {
       const cacheNames = await caches.keys();
-      await Promise.all(cacheNames.map((name) => caches.delete(name)));
-      if (cacheNames.length > 0) {
-        console.info(`[versionManager] Cleared ${cacheNames.length} cache(s).`);
+      // Only delete caches that match the app's cache name prefix.
+      const appCaches = cacheNames.filter((name) => name.startsWith(APP_CACHE_PREFIX));
+      await Promise.all(appCaches.map((name) => caches.delete(name)));
+      if (appCaches.length > 0) {
+        console.info(`[versionManager] Cleared ${appCaches.length} app cache(s).`);
       }
     }
   } catch (err) {

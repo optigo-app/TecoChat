@@ -1,11 +1,11 @@
 "use client";
 
 import { alpha, useTheme } from "@mui/material";
-import { FileText, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import type { MediaFileItem, ImageEditState } from "./types";
 import { getFilterCssString } from "./constants";
 import { hasImageEdits } from "./canvasRender";
-import { getDocumentMeta } from "../../../../utils/globalFunc";
+import { DocumentTypeIcon } from "../bubble/DocumentTypeIcon";
 
 interface MediaPreviewThumbnailsProps {
   mediaFiles: MediaFileItem[];
@@ -114,18 +114,7 @@ export default function MediaPreviewThumbnails({
                 }}
               />
             ) : (
-              (() => {
-                const docIcon = getDocumentMeta(item.name).iconUrl;
-                return docIcon ? (
-                  <img
-                    src={docIcon}
-                    alt={item.name}
-                    style={{ width: 32, height: 32, objectFit: "contain" }}
-                  />
-                ) : (
-                  <FileText size={28} color={theme.palette.primary.main} />
-                );
-              })()
+              <DocumentTypeIcon filename={item.name} size={28} />
             )}
 
             {/* Edit badge on thumbnail */}

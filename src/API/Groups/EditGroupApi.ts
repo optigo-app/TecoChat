@@ -1,7 +1,7 @@
 import { CommonAPI, buildCommonBody } from "../InitialApi/CommonApi";
 import { emitGroupUpdated } from "../../socket";
 import { getGroupMemberIds } from "../../utils/groupSocketHelpers";
-import type { AuthData } from "../../context/LoginData";
+import type { AuthData } from "../../contexts/LoginData";
 
 export interface EditGroupParams {
   conversationId: number | string;

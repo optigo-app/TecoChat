@@ -168,17 +168,30 @@ export function passwordToSha1(password: string | null | undefined): string {
 }
 
 // for public ip address
+let cachedIpAddress: string | null = null;
+
 export const getClientIpAddress = async (): Promise<string> => {
   try {
     if (typeof window === "undefined") return "";
 
-    const cachedIp = sessionStorage.getItem("clientIpAddress");
-    if (cachedIp) return cachedIp;
+    if (cachedIpAddress) return cachedIpAddress;
 
-    const res = await fetch("https://api.ipify.org?format=json");
+    const sessionStorageIp = sessionStorage.getItem("clientIpAddress");
+    if (sessionStorageIp) {
+      cachedIpAddress = sessionStorageIp;
+      return sessionStorageIp;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch("https://api.ipify.org?format=json", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
     const data = await res.json();
     const ip = data?.ip || "";
 
+    cachedIpAddress = ip;
     sessionStorage.setItem("clientIpAddress", ip);
     return ip;
   } catch (error) {
@@ -258,9 +271,14 @@ export const stripMarkdownFormatting = (text: string | null | undefined): string
     .join("");
 };
 
-export const isMessageEditable = (message: { Date?: string; Time?: string } | null | undefined, timeLimit = 15): boolean => {
-  if (!message?.Date || !message?.Time) return false;
-  const sentTime = new Date(`${message.Date} ${message.Time}`).getTime();
+export const isMessageEditable = (message: { Date?: string; Time?: string; DateTime?: string } | null | undefined, timeLimit = 15): boolean => {
+  if (!message) return false;
+  const sentTime = message.DateTime
+    ? new Date(message.DateTime).getTime()
+    : message.Date && message.Time
+      ? new Date(`${message.Date} ${message.Time}`).getTime()
+      : NaN;
+  if (isNaN(sentTime)) return false;
   const currentTime = Date.now();
   const diffInMinutes = (currentTime - sentTime) / (1000 * 60);
   return diffInMinutes <= timeLimit;
@@ -523,17 +541,29 @@ export const getMediaDimensions = (
 ): Promise<{ width: number; height: number } | null> => {
   return new Promise((resolve) => {
     if (file.type.startsWith("image/")) {
+      const url = URL.createObjectURL(file);
       const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = () => resolve(null);
-      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
     } else if (file.type.startsWith("video/")) {
+      const url = URL.createObjectURL(file);
       const video = document.createElement("video");
       video.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
         resolve({ width: video.videoWidth, height: video.videoHeight });
       };
-      video.onerror = () => resolve(null);
-      video.src = URL.createObjectURL(file);
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      video.src = url;
     } else {
       resolve(null);
     }

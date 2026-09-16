@@ -25,7 +25,7 @@ import {
 } from "./messageHelpers";
 import { getMessagesBefore, getMessagesAfter } from "../../../db/messageCache";
 import { setSyncState } from "../../../db/outboxCache";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
 
@@ -62,6 +62,16 @@ export function useMessageLoader({
   const loadNewerMessagesRef = useRef<() => void>(() => {});
   const isStarFilterRef = useRef(isStarFilter);
 
+  // Abort all in-flight requests on unmount so older/newer/prefetch
+  // requests don't continue after the component is gone.
+  useEffect(() => {
+    return () => {
+      initAbortRef.current?.abort();
+      olderAbortRef.current?.abort();
+      newerAbortRef.current?.abort();
+    };
+  }, []);
+
   useEffect(() => {
     isStarFilterRef.current = isStarFilter;
   }, [isStarFilter]);
@@ -92,7 +102,13 @@ export function useMessageLoader({
       if (reset && !ignoreCache) {
         // Clear previous conversation's messages IMMEDIATELY so they don't
         // leak into the new conversation while the cache read is in flight.
+        // CLEAR resets the entire state (including loading) to initial, so
+        // it MUST be dispatched BEFORE SET_LOADING — otherwise CLEAR wipes
+        // the loading flag and the loader never shows.
         dispatchMsg({ type: MSG.CLEAR });
+        // Set loading=true AFTER clearing so the UI shows a loader while
+        // the cache read / API call is in flight.
+        dispatchMsg({ type: MSG.SET_LOADING, value: true });
 
         try {
           const cached = await getConversationFromCache(selectedId, auth);
@@ -109,7 +125,11 @@ export function useMessageLoader({
           /* ignore */
         }
       }
-      if (!didShowCache) dispatchMsg({ type: MSG.SET_LOADING, value: true });
+      // Note: loading was already set to true above for the cache-read path.
+      // Only set it here for the non-reset or ignore-cache paths.
+      if (!didShowCache && !(reset && !ignoreCache)) {
+        dispatchMsg({ type: MSG.SET_LOADING, value: true });
+      }
       loadingRef.current = true;
 
       try {
@@ -263,6 +283,10 @@ export function useMessageLoader({
             undefined,
             effectiveStar
           ).then((prefetch) => {
+            // Guard: bail if the user switched conversations while the
+            // prefetch was in flight, so we don't write stale messages for
+            // the wrong conversation into IndexedDB.
+            if (requestId !== latestRequestRef.current) return;
             if (prefetch.data.length > 0) {
               saveConversationToCache(selectedId, prefetch.data as ChatMessage[], auth).catch(() => {});
             }

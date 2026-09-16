@@ -18,16 +18,15 @@ import {
   Tooltip,
 } from "@mui/material";
 import { LogOut as LogOutIcon, User, Sun, Moon, Monitor } from "lucide-react";
-import { useLoginContext } from "@/src/context/LoginData";
+import { useLoginContext } from "@/src/contexts/LoginData";
 import { useColorMode } from "@/src/theme/ThemeRegistry";
 import type { ColorMode } from "@/src/theme/themes";
 import { getWhatsAppAvatarConfig, isImageDead, markImageAsDead } from "@/src/utils/globalFunc";
 import { eraseCookie } from "@/src/utils/cookieUtils";
 import { disconnectSocket } from "@/src/socket";
-import { LogoutApi } from "@/src/API/Logout/Logout";
 import ConfirmationDialog from "@/src/components/ReusableComponent/ConfirmationDialog";
 import { CONFIRM_CONFIG } from "@/src/hooks/confirmConfig";
-import { useIsMobile } from "@/src/hooks/useIsMobile";
+import { useIsMobile, useIsTablet } from "@/src/hooks/useIsMobile";
 import { deleteDb } from "@/src/db/tecoDb";
 import "./ProfileAvatar.scss";
 
@@ -39,15 +38,20 @@ const isValidUrl = (url: unknown): url is string => {
 
 interface ProfileAvatarProps {
   collapsed?: boolean;
+  /** When rendered in a top-bar header (instead of the sidebar), anchor the
+   *  dropdown menu below-right of the avatar (WhatsApp-like) rather than the
+   *  sidebar's bottom-left / desktop's center-right. */
+  headerVariant?: boolean;
 }
 
-export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
+export const ProfileAvatar = ({ collapsed = false, headerVariant = false }: ProfileAvatarProps) => {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const open = Boolean(anchorEl);
   const router = useRouter();
   const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const { auth, setAuth, setToken } = useLoginContext();
   const { mode, setMode } = useColorMode();
 
@@ -84,6 +88,13 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
     // Don't open the profile menu if the logout dialog is open
     if (logoutDialogOpen) return;
+    // On mobile + tablet (headerVariant), open the full-screen ProfilePanel
+    // (WhatsApp-like) instead of the dropdown. The panel is rendered by
+    // CustomerLists which listens for the OPEN_PROFILE_PANEL event.
+    if (headerVariant && isTablet) {
+      window.dispatchEvent(new CustomEvent("OPEN_PROFILE_PANEL"));
+      return;
+    }
     // If already open, close instead of re-opening
     if (anchorEl) {
       setAnchorEl(null);
@@ -105,10 +116,6 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
   const handleLogoutConfirm = async () => {
     setLogoutLoading(true);
     try {
-      await LogoutApi(auth?.id);
-    } catch (error) {
-      console.error("Error during logout:", error);
-    } finally {
       disconnectSocket(true);
       // Wipe the per-user IndexedDB before clearing sessionStorage so the
       // auth ID is still available for deleteDb().
@@ -120,6 +127,7 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
       setAuth({ userId: "", username: "", ukey: "", token: "", id: "", ufcc: "" });
       setToken({ sv: "", yc: "" });
       router.replace("/login");
+    } finally {
       setLogoutLoading(false);
       setLogoutDialogOpen(false);
     }
@@ -262,15 +270,21 @@ export const ProfileAvatar = ({ collapsed = false }: ProfileAvatarProps) => {
         }}
         // On mobile the sidebar is a drawer, so anchor the menu to the
         // bottom-left (above the button). On desktop keep center-right.
+        // headerVariant (avatar in a top-bar): always anchor bottom-right so
+        // the menu drops down below the avatar (WhatsApp-like).
         anchorOrigin={
-          isMobile
-            ? { vertical: "bottom", horizontal: "left" }
-            : { vertical: "center", horizontal: "right" }
+          headerVariant
+            ? { vertical: "bottom", horizontal: "right" }
+            : isMobile
+              ? { vertical: "bottom", horizontal: "left" }
+              : { vertical: "center", horizontal: "right" }
         }
         transformOrigin={
-          isMobile
-            ? { vertical: "bottom", horizontal: "left" }
-            : { vertical: "center", horizontal: "left" }
+          headerVariant
+            ? { vertical: "top", horizontal: "right" }
+            : isMobile
+              ? { vertical: "bottom", horizontal: "left" }
+              : { vertical: "center", horizontal: "left" }
         }
       >
         {/* ── User info header ──────────────────────────────────────────── */}

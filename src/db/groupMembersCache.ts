@@ -1,7 +1,7 @@
 "use client";
 
 import { getDb } from "./tecoDb";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 
 type GroupMember = {
   UserId?: number;

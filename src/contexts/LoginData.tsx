@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useCallback,
   useContext,
+  useMemo,
 } from "react";
 import { getCookie, eraseCookie } from "../utils/cookieUtils";
 
@@ -175,8 +176,9 @@ export const LoginData = ({ children }: { children: React.ReactNode }) => {
   }, [auth]);
 
   // Update sessionStorage whenever permissions change
-  const PERMISSION_SET = new Set(
-    permissions?.map((p) => p.Id) || []
+  const PERMISSION_SET = useMemo(
+    () => new Set(permissions?.map((p) => p.Id) || []),
+    [permissions]
   );
 
   useEffect(() => {
@@ -185,21 +187,24 @@ export const LoginData = ({ children }: { children: React.ReactNode }) => {
     }
   }, [permissions]);
 
-  return (
-    <LoginContext.Provider
-      value={{
-        auth,
-        setAuth,
-        token,
-        setToken,
-        permissions,
-        setPermissions,
-        PERMISSION_SET,
-        isSyncing,
-        startSync,
+  const contextValue = useMemo(
+    () => ({
+      auth,
+      setAuth,
+      token,
+      setToken,
+      permissions,
+      setPermissions,
+      PERMISSION_SET,
+      isSyncing,
+      startSync,
         setIsSyncing,
-      }}
-    >
+    }),
+    [auth, setAuth, token, setToken, permissions, setPermissions, PERMISSION_SET, isSyncing, startSync]
+  );
+
+  return (
+    <LoginContext.Provider value={contextValue}>
       {children}
     </LoginContext.Provider>
   );

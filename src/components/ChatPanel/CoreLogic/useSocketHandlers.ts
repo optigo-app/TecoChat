@@ -12,7 +12,7 @@ import { getMessageId, resolveStatus, normalizeSocketMessage } from "./messageHe
 import { normalizeServerMessages } from "../../../utils/messageUtils";
 import { upsertMessage, updateMessageStatus, deleteMessage, updateMessageReaction } from "../../../db/messageCache";
 import { playSound } from "../../../utils/sound";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
 
@@ -35,6 +35,8 @@ export function useSocketHandlers({
   const handleReadRef = useRef(handleReadMessage);
   // Track previous status per message to detect transitions (for sound playback)
   const prevStatusRef = useRef<Map<string, number>>(new Map());
+  // Track pending setTimeout IDs so they can be cleared on unmount
+  const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   useEffect(() => {
     dispatchRef.current = dispatchMsg;
@@ -69,9 +71,18 @@ export function useSocketHandlers({
   useEffect(() => {
     if (!auth) return;
 
+    // Helper: schedule a deferred callback and track the timer for cleanup.
+    const scheduleDeferred = (fn: () => void) => {
+      const id = setTimeout(() => {
+        pendingTimersRef.current.delete(id);
+        fn();
+      }, 0);
+      pendingTimersRef.current.add(id);
+    };
+
     const handleChangeStatus = (data: Record<string, unknown>) => {
       if (!data || typeof data !== "object") return;
-      setTimeout(() => {
+      scheduleDeferred(() => {
         const messageId = data.MessageId as string | number | undefined;
         const conversationId = data.ConversationId as string | number | undefined;
         if (messageId) {
@@ -148,7 +159,7 @@ export function useSocketHandlers({
 
     const handleReactionMessage = (data: Record<string, unknown>) => {
       if (!data) return;
-      setTimeout(() => {
+      scheduleDeferred(() => {
         const messageId = data.MessageId || data.Id || data.id;
         if (!messageId) return;
 
@@ -194,7 +205,7 @@ export function useSocketHandlers({
         incomingConvId &&
         Number(activeConvId) === Number(incomingConvId)
       ) {
-        setTimeout(() => {
+        scheduleDeferred(() => {
           dispatchRef.current({
             type: MSG.SET_MESS_ID,
             value: String(data.MessageId ?? ""),
@@ -221,7 +232,7 @@ export function useSocketHandlers({
       const myId = Number(auth?.id ?? auth?.userId);
       const senderId = Number(data.UserId ?? data.SenderId ?? data.senderId);
       if (myId && senderId && myId === senderId) return;
-      setTimeout(() => {
+      scheduleDeferred(() => {
         dispatchRef.current({
           type: MSG.DELETE_ALL,
           messageId: data.MessageId as string | number,
@@ -248,6 +259,9 @@ export function useSocketHandlers({
       r2();
       r3();
       r4();
+      // Clear any pending deferred timers so they don't fire after unmount
+      pendingTimersRef.current.forEach((id) => clearTimeout(id));
+      pendingTimersRef.current.clear();
     };
   }, [auth, addUniqueMessage, selectedCustomerRef, isAtBottomRef]);
 

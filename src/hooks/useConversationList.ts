@@ -36,7 +36,7 @@ import type {
   ConversationListEntry,
   TypingState,
 } from "../types/conversation";
-import type { AuthData } from "../context/LoginData";
+import type { AuthData } from "../contexts/LoginData";
 import { getConversations, putConversations, upsertConversation } from "../db/conversationCache";
 import { putMessages } from "../db/messageCache";
 import { normalizeServerMessages } from "../utils/messageUtils";
@@ -52,6 +52,7 @@ interface UseConversationListOptions {
 interface UseConversationListReturn {
   chatMembers: ConversationListData | null;
   loading: boolean;
+  preloading: boolean;
   searchLoading: boolean;
   hasMore: boolean;
   currentPage: number;
@@ -62,6 +63,7 @@ interface UseConversationListReturn {
   serviceMessage?: string;
   loadMembers: (page?: number, reset?: boolean, search?: string | null) => Promise<void>;
   handleSearchChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  clearSearch: () => void;
   setChatMembers: React.Dispatch<React.SetStateAction<ConversationListData | null>>;
   setShowEmptyState: React.Dispatch<React.SetStateAction<boolean>>;
   searchTerm: string;
@@ -75,6 +77,7 @@ export const useConversationList = ({
 }: UseConversationListOptions): UseConversationListReturn => {
   const [chatMembers, setChatMembers] = useState<ConversationListData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [preloading, setPreloading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -91,6 +94,8 @@ export const useConversationList = ({
   const selectedConversationIdRef = useRef<string | number | undefined>(undefined);
   const isConversationReadingRef = useRef(false);
   const typingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  // Track pending setTimeout IDs from socket handlers so they can be cleared on unmount
+  const socketTimerIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   // Keep refs in sync
   useEffect(() => {
@@ -276,6 +281,15 @@ export const useConversationList = ({
     },
     [debouncedSearch, loadMembers]
   );
+
+  // Clear the search term and reload the default list. Used when the user
+  // taps a search result on mobile so the search panel closes.
+  const clearSearch = useCallback(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    setSearchTerm("");
+    setSearchLoading(false);
+    loadMembers(1, true, "");
+  }, [loadMembers]);
 
   // ── handleSocketUpdate: the core real-time update function ────────────────
   const handleSocketUpdate = useCallback(
@@ -514,13 +528,24 @@ export const useConversationList = ({
   useEffect(() => {
     if (!auth?.token || !auth?.userId) return;
 
-    const r1 = addInternalMessageHandler((data) => setTimeout(() => handleSocketUpdate(data, false), 0));
-    const r2 = addInternalStatusHandler((data) => setTimeout(() => handleSocketUpdate(data, true), 0));
-    const r3 = addMessageReactionHandler((data) => setTimeout(() => handleSocketUpdate(data, true), 0));
-    const r4 = addInternalMessageDeletionHandler((data) => setTimeout(() => handleSocketUpdate(data, true), 0));
+    const scheduleSocketUpdate = (data: Record<string, unknown>, isStatusChange: boolean) => {
+      const id = setTimeout(() => {
+        socketTimerIdsRef.current.delete(id);
+        handleSocketUpdate(data, isStatusChange);
+      }, 0);
+      socketTimerIdsRef.current.add(id);
+    };
+
+    const r1 = addInternalMessageHandler((data) => scheduleSocketUpdate(data, false));
+    const r2 = addInternalStatusHandler((data) => scheduleSocketUpdate(data, true));
+    const r3 = addMessageReactionHandler((data) => scheduleSocketUpdate(data, true));
+    const r4 = addInternalMessageDeletionHandler((data) => scheduleSocketUpdate(data, true));
 
     return () => {
       r1(); r2(); r3(); r4();
+      // Clear any pending deferred timers so they don't fire after unmount
+      socketTimerIdsRef.current.forEach((id) => clearTimeout(id));
+      socketTimerIdsRef.current.clear();
     };
   }, [auth?.token, auth?.userId, handleSocketUpdate]);
 
@@ -528,10 +553,12 @@ export const useConversationList = ({
   useEffect(() => {
     if (!auth?.token || !auth?.userId) return;
     const currentUserId = Number(auth?.id || auth?.userId);
+    const deferredTimers = new Set<ReturnType<typeof setTimeout>>();
 
     const cleanup = addInternalTypingHandler((data: Record<string, unknown>) => {
       // Defer to setTimeout so the socket 'message' handler returns quickly
-      setTimeout(() => {
+      const deferId = setTimeout(() => {
+        deferredTimers.delete(deferId);
         const conversationId = Number(data.ConversationId);
         const senderId = Number(data.SenderId);
         if (senderId === currentUserId) return;
@@ -575,10 +602,13 @@ export const useConversationList = ({
         }, 5000);
         }
       }, 0);
+      deferredTimers.add(deferId);
     });
 
     return () => {
       cleanup();
+      deferredTimers.forEach((id) => clearTimeout(id));
+      deferredTimers.clear();
       Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
       typingTimeoutsRef.current = {};
     };
@@ -713,6 +743,9 @@ export const useConversationList = ({
         setChatMembers({ data: cached, total: cached.length });
         setLoading(false);
         setShowEmptyState(false);
+      } else {
+        // No cache → show syncing screen while preload fetches from API
+        setPreloading(true);
       }
 
       loadMembers(1, true, "");
@@ -730,6 +763,9 @@ export const useConversationList = ({
         })
         .catch(() => {
           /* ignore preload errors */
+        })
+        .finally(() => {
+          if (!cancelled) setPreloading(false);
         });
     })();
 
@@ -1104,6 +1140,7 @@ export const useConversationList = ({
   return {
     chatMembers,
     loading,
+    preloading,
     searchLoading,
     hasMore,
     currentPage,
@@ -1114,6 +1151,7 @@ export const useConversationList = ({
     serviceMessage,
     loadMembers,
     handleSearchChange,
+    clearSearch,
     setChatMembers,
     setShowEmptyState,
     searchTerm,

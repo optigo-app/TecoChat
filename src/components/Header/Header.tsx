@@ -5,7 +5,7 @@ import { IconButton } from "@mui/material";
 import Image from "next/image";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
 import { ProfileAvatar } from "@/src/components/ProfileAvatar/ProfileAvatar";
-import { useLoginContext } from "@/src/context/LoginData";
+import { useLoginContext } from "@/src/contexts/LoginData";
 import "./Header.scss";
 
 interface HeaderProps {

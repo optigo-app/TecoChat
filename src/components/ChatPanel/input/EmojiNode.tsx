@@ -12,6 +12,7 @@ import {
   DecoratorNode,
   type SerializedLexicalNode,
 } from "lexical";
+import { SafeEmoji } from "./SafeEmoji";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,9 +23,6 @@ export type SerializedEmojiNode = Spread<
   },
   SerializedLexicalNode
 >;
-
-// Apple emoji CDN base (same source as emoji-picker-react's EmojiStyle.APPLE)
-const CDN_URL_APPLE = "https://cdn.jsdelivr.net/npm/emoji-datasource-apple/img/apple/64/";
 
 // ── EmojiNode (HMR-safe singleton) ───────────────────────────────────────────
 
@@ -130,23 +128,16 @@ function createEmojiNodeClass() {
       return this.__unified;
     }
 
-    // Decorator — renders the Apple-style emoji image
+    // Decorator — renders the Apple-style emoji image. Falls back to the
+    // native emoji character if the CDN image fails to load (some emojis
+    // are not available on the Apple CDN, which would otherwise show a
+    // broken-image icon in the chat input).
     decorate(): React.ReactNode {
-      const src = `${CDN_URL_APPLE}${this.__unified}.png`;
       return (
-        <img
-          src={src}
-          alt={this.__emoji}
-          draggable={false}
-          style={{
-            display: "inline-block",
-            width: "1.3em",
-            height: "1.3em",
-            verticalAlign: "middle",
-            margin: "0 1px",
-            userSelect: "none",
-            pointerEvents: "none",
-          }}
+        <SafeEmoji
+          unified={this.__unified}
+          emoji={this.__emoji}
+          size={20}
         />
       );
     }

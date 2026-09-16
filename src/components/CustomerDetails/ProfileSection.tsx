@@ -2,7 +2,6 @@
 
 import {
   Typography,
-  Avatar,
   IconButton,
   Box,
   TextField,
@@ -15,7 +14,8 @@ import { Pencil, X, Check } from "lucide-react";
 import { useState } from "react";
 import ProfileAvatarUpload from "../ReusableComponent/ProfileAvatarUpload";
 import ViewPhotoDialog from "../ReusableComponent/ViewPhotoDialog";
-import { getWhatsAppAvatarConfig, isImageDead } from "../../utils/globalFunc";
+import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
+import { isImageDead } from "../../utils/globalFunc";
 import { renderEmojiText } from "../../utils/messageTextRenderer";
 import { useIsMobile } from "../../hooks/useIsMobile";
 
@@ -150,6 +150,13 @@ const ProfileSection = ({
       ) : (
         <div
           className={`avatar-container ${customer?.IsGroup === 1 ? "group-avatar-container" : ""}`}
+          onDoubleClick={handleAvatarDoubleClick}
+          style={{
+            cursor:
+              customer?.ProfileImageUrl && !isImageDead(customer?.ProfileImageUrl)
+                ? "zoom-in"
+                : "default",
+          }}
         >
           <StyledBadge
             overlap="circular"
@@ -157,22 +164,9 @@ const ProfileSection = ({
             variant="dot"
             invisible={customer?.IsGroup === 1}
           >
-            <Avatar
-              {...getWhatsAppAvatarConfig(avatarSeed, 130)}
-              className="profile-avatar"
-              src={
-                customer?.ProfileImageUrl && !isImageDead(customer?.ProfileImageUrl)
-                  ? customer?.ProfileImageUrl
-                  : undefined
-              }
-              slotProps={{ img: { draggable: false } }}
-              onDoubleClick={handleAvatarDoubleClick}
-              sx={{
-                cursor:
-                  customer?.ProfileImageUrl && !isImageDead(customer?.ProfileImageUrl)
-                    ? "zoom-in"
-                    : "default",
-              }}
+            <ConversationAvatar
+              member={customer}
+              size={avatarSize}
             />
           </StyledBadge>
         </div>

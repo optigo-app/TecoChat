@@ -163,7 +163,7 @@ const MessageContextMenuComponent = ({
       ),
       action: () => onStar?.(message),
     },
-    isOutgoing && isWithinTimeLimit && { divider: true },
+    isOutgoing && isWithinTimeLimit && canDelete && { divider: true },
     isOutgoing && isWithinTimeLimit && isText && {
       label: "Edit",
       icon: <Edit2 size={18} />,

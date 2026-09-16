@@ -13,7 +13,7 @@ import { sendImageMessage, sendDocumentMessage, sendVideoMessage } from "../../.
 import { showToast } from "../../../utils/toastHelper";
 import { addToOutbox } from "../../../db/outboxCache";
 import { isTextFile } from "../../../utils/txtUtils";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
 
@@ -139,7 +139,10 @@ export function useMediaHandlers({
         const combined = [...existingFiles, ...newMediaFiles];
         dispatchUI({ type: UI.SET_MEDIA_FILES, value: combined });
       } else {
-        // Replace (default)
+        // Replace (default) — revoke old preview blob URLs before discarding
+        existingFiles.forEach((f) => {
+          if (f.preview?.startsWith("blob:")) URL.revokeObjectURL(f.preview);
+        });
         dispatchUI({ type: UI.SET_MEDIA_FILES, value: newMediaFiles });
       }
       dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
@@ -212,24 +215,32 @@ export function useMediaHandlers({
   }, [dispatchUI]);
 
   const handleClearMediaFiles = useCallback(() => {
+    // Revoke preview blob URLs before clearing to avoid memory leaks
+    uiState.mediaFiles.forEach((f) => {
+      if (f.preview?.startsWith("blob:")) URL.revokeObjectURL(f.preview);
+    });
     dispatchUI({ type: UI.SET_MEDIA_FILES, value: [] });
     dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
-  }, [dispatchUI]);
+  }, [dispatchUI, uiState.mediaFiles]);
 
   const uploadAndSendMedia = useCallback(
     async ({
       files,
+      fileItems,
       caption,
       type,
       tempId,
+      tempIds,
       time,
       date,
       dateTime,
     }: {
       files: File[];
+      fileItems?: MediaFileItem[];
       caption: string;
       type: string;
       tempId: string;
+      tempIds?: string[];
       time: string;
       date: string;
       dateTime: string;
@@ -277,21 +288,29 @@ export function useMediaHandlers({
               conversationName: String(
                 customer?.ConversationName || customer?.name || customer?.MemberName || customer?.UserName || ""
               ).trim() || undefined,
-              files: safeFiles.map((file) => {
-                const withDimensions = file as File & { width?: number; height?: number };
+              files: safeFiles.map((file, i) => {
+                const item = fileItems?.[i];
                 return {
                   name: file.name,
                   type: file.type,
                   size: file.size,
                   lastModified: file.lastModified,
                   blob: file,
-                  ...(withDimensions.width ? { width: withDimensions.width } : {}),
-                  ...(withDimensions.height ? { height: withDimensions.height } : {}),
+                  ...(item?.width ? { width: item.width } : {}),
+                  ...(item?.height ? { height: item.height } : {}),
                 };
               }),
+              tempIds,
             }
           );
-          dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { isUploading: false, Status: "pending" } });
+          // Mark all individual temp messages as pending (not uploading)
+          if (tempIds?.length) {
+            for (const tid of tempIds) {
+              dispatchMsg({ type: MSG.UPSERT, id: tid, msg: { isUploading: false, Status: "pending" } });
+            }
+          } else {
+            dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { isUploading: false, Status: "pending" } });
+          }
           return;
         }
 
@@ -299,34 +318,38 @@ export function useMediaHandlers({
           files: safeFiles,
           conversationId: convId,
           type,
-          onProgress: (percent) =>
-            dispatchMsg({
-              type: MSG.UPSERT,
-              id: tempId,
-              msg: { isUploading: true, percent: Math.max(0, Math.min(99, percent)) },
-            }),
+          onProgress: (percent) => {
+            const clamped = Math.max(0, Math.min(99, percent));
+            if (tempIds?.length) {
+              for (const tid of tempIds) {
+                dispatchMsg({ type: MSG.UPSERT, id: tid, msg: { isUploading: true, percent: clamped } });
+              }
+            } else {
+              dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { isUploading: true, percent: clamped } });
+            }
+          },
         });
 
         const attachments = safeFiles.map((f, i) => {
-          const fWithDim = f as File & { width?: number; height?: number };
+          const item = fileItems?.[i];
           return {
             FileUrl: uploadedUrls[i],
             FileName: f.name,
             MimeType: f.type,
-            ...(fWithDim.width && fWithDim.height
-              ? { Width: fWithDim.width, Height: fWithDim.height }
+            ...(item?.width && item?.height
+              ? { Width: item.width, Height: item.height }
               : {}),
           };
         });
         const mediaItems = safeFiles.map((f, i) => {
-          const fWithDim = f as File & { width?: number; height?: number };
+          const item = fileItems?.[i];
           return {
             url: uploadedUrls[i],
             filename: f.name,
             mimeType: f.type,
             size: f.size,
-            ...(fWithDim.width && fWithDim.height
-              ? { width: fWithDim.width, height: fWithDim.height }
+            ...(item?.width && item?.height
+              ? { width: item.width, height: item.height }
               : {}),
           };
         });
@@ -352,7 +375,13 @@ export function useMediaHandlers({
         if (stat === 0) {
           const errorMsg = statMsg ? statMsg.replace(/^"|"$/g, "") : "Failed to send media";
           showToast(errorMsg, "error");
-          dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4, isUploading: false } });
+          if (tempIds?.length) {
+            for (const tid of tempIds) {
+              dispatchMsg({ type: MSG.UPSERT, id: tid, msg: { Status: 4, isUploading: false } });
+            }
+          } else {
+            dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4, isUploading: false } });
+          }
           return;
         }
 
@@ -373,7 +402,63 @@ export function useMediaHandlers({
           attachmentId: serverAttachments[i]?.Id || serverAttachments[i]?.id || null,
         }));
 
-        if (sentId) {
+        // ── Documents: backend returns comma-separated MessageIds (one per
+        // document). Split into individual messages — each document becomes
+        // its own message row, matching the old CRA app behavior.
+        const sentIds = sentId ? String(sentId).split(",").map((id) => id.trim()).filter(Boolean) : [];
+
+        if (type === "document" && sentIds.length > 1 && sentIds.length === safeFiles.length) {
+          // Update each individual optimistic message with its real server ID
+          for (let index = 0; index < sentIds.length; index++) {
+            const messageId = sentIds[index];
+            const singleMediaItem = [enrichedItems[index]];
+            const tid = tempIds?.[index] ?? `${tempId}-${index}`;
+
+            // Emit individual socket message for each document
+            emitMediaMessage(
+              buildMediaPayload({
+                auth,
+                selectedCustomer: customer as { ConversationId?: string | number; ReceiverId?: string | number | string[] | number[] } | null,
+                sentId: messageId,
+                tempId: tid,
+                type,
+                uploadedUrls: [uploadedUrls[index]],
+                mediaItems: singleMediaItem,
+                caption,
+                time,
+                date,
+                dateTime,
+                isGroup,
+                memberIds,
+              })
+            );
+
+            // Update the individual optimistic message with the real server ID
+            dispatchMsg({
+              type: MSG.UPSERT,
+              id: tid,
+              msg: {
+                Id: messageId,
+                MessageId: messageId,
+                ClientMessageId: tid,
+                Direction: 1,
+                Status: 1,
+                MessageType: type,
+                Message: caption,
+                previewUrl: uploadedUrls[index],
+                mediaItems: singleMediaItem,
+                isUploading: false,
+                percent: 100,
+                Time: time,
+                Date: date,
+                DateTime: dateTime,
+                ConversationId: convId,
+                SenderId: auth?.id,
+              } as Partial<ChatMessage>,
+            });
+          }
+        } else if (sentId) {
+          // Images, videos, or single document — one message with all attachments
           emitMediaMessage(
             buildMediaPayload({
               auth,
@@ -406,7 +491,13 @@ export function useMediaHandlers({
           });
         } else {
           showToast("Failed to send media", "error");
-          dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4, isUploading: false } });
+          if (tempIds?.length) {
+            for (const tid of tempIds) {
+              dispatchMsg({ type: MSG.UPSERT, id: tid, msg: { Status: 4, isUploading: false } });
+            }
+          } else {
+            dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4, isUploading: false } });
+          }
         }
 
         // Handle new conversation creation
@@ -421,7 +512,13 @@ export function useMediaHandlers({
       } catch (err) {
         console.error("uploadAndSendMedia error:", err);
         showToast("Failed to send media", "error");
-        dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4, isUploading: false } });
+        if (tempIds?.length) {
+          for (const tid of tempIds) {
+            dispatchMsg({ type: MSG.UPSERT, id: tid, msg: { Status: 4, isUploading: false } });
+          }
+        } else {
+          dispatchMsg({ type: MSG.UPSERT, id: tempId, msg: { Status: 4, isUploading: false } });
+        }
       }
     },
     [auth, selectedCustomerRef, selectedCustomer, tempConversationId, dispatchMsg, fetchAndCacheGroupMembers, onCustomerSelect, isOffline]

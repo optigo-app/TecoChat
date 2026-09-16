@@ -4,11 +4,11 @@
 // Ported from OldChatReactCode/.../CoreLogic/useReadReceipt.js
 // Marks messages as read via socket emission and API call.
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { isSocketConnected } from "../../../socket";
 import { emitReadReceipt } from "./socketHelpers";
 import { readMessageApi } from "../../../API/SendMessage/ReadMessageApi";
-import type { AuthData } from "../../../context/LoginData";
+import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
 
@@ -33,6 +33,16 @@ export function useReadReceipt({
   const lastReadConvRef = useRef<string | number | null>(null);
   const lastReadTimeRef = useRef(0);
   const lastReadMsgIdRef = useRef<number | null>(null);
+
+  // Clear pending read timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (readTimeoutRef.current) {
+        clearTimeout(readTimeoutRef.current);
+        readTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const handleReadMessage = useCallback(
     async (

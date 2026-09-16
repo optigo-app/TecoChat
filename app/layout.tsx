@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
-import { LoginData } from "@/src/context/LoginData";
-import { SocketProvider } from "@/src/context/SocketContext";
+import { LoginData } from "@/src/contexts/LoginData";
+import { SocketProvider } from "@/src/contexts/SocketContext";
 import { ThemeRegistry, themeNoFlashScript } from "@/src/theme/ThemeRegistry";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import { Toaster } from "react-hot-toast";

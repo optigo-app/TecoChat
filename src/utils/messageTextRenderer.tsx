@@ -1,15 +1,31 @@
 "use client";
 
 import React from "react";
-import { Emoji, EmojiStyle } from "emoji-picker-react";
+import { EmojiStyle } from "emoji-picker-react";
+import { SafeEmoji } from "../components/ChatPanel/input/SafeEmoji";
 import { charToUnified } from "./EmojiUtils";
+import { inspectUrl } from "./urlSecurity";
+
+// ── URL safety helper ────────────────────────────────────────────────────────
+// Sanitise a URL before rendering it as an <a> tag. Dangerous schemes
+// (javascript:, data:, vbscript:) are blocked entirely. Returns null if
+// the URL should not be rendered as a clickable link.
+function safeUrl(raw: string): string | null {
+  const result = inspectUrl(raw);
+  if (result.level === "danger" && !result.safe) {
+    // Still allow opening via the safe-link dialog — return the href so
+    // the click handler can intercept it. But block javascript:/data:.
+    if (result.href === "about:blank") return null;
+  }
+  return result.href;
+}
 
 /**
  * Wrap occurrences of `query` in `text` with a highlight span.
  * Returns the original text if no query or no matches.
  */
 const highlightQueryInText = (text: string, query?: string): React.ReactNode => {
-  if (!query || !text) return text;
+  if (!query || !text) return renderEmojiText(text);
   try {
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const parts = text.split(new RegExp(`(${escaped})`, "gi"));
@@ -26,14 +42,14 @@ const highlightQueryInText = (text: string, query?: string): React.ReactNode => 
             padding: "0 2px",
           }}
         >
-          {part}
+          {renderEmojiText(part)}
         </span>
       ) : (
-        <React.Fragment key={`hl-${i}`}>{part}</React.Fragment>
+        <React.Fragment key={`hl-${i}`}>{renderEmojiText(part)}</React.Fragment>
       )
     );
   } catch {
-    return text;
+    return renderEmojiText(text);
   }
 };
 
@@ -107,10 +123,15 @@ const formatChatText = (text: string, highlightQuery?: string): React.ReactNode 
     // Markdown link [text](url)
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
+      const safeHref = safeUrl(linkMatch[2]);
+      if (!safeHref) {
+        // Dangerous scheme — render as plain text, not a link
+        return <React.Fragment key={index}>{linkMatch[1]}</React.Fragment>;
+      }
       return (
         <a
           key={index}
-          href={linkMatch[2]}
+          href={safeHref}
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: "var(--color-bubble-link)", textDecoration: "underline", wordBreak: "break-word" }}
@@ -419,7 +440,7 @@ const highlightMentions = (text: string, mentions: MentionInfo[], highlightQuery
               {atSymbol}
             </span>
           )}
-          {nameText}
+          {renderEmojiText(nameText)}
         </span>
       );
     }
@@ -499,16 +520,26 @@ export const renderMessageText = (
       const trimmed = matchedUrl.match(/^(.*?)([\]\[\)\}>,.!?:;]+)?$/);
       const urlPart = trimmed?.[1] ?? matchedUrl;
       const trailing = trimmed?.[2] ?? "";
-      const href = urlPart.toLowerCase().startsWith("http") ? urlPart : `https://${urlPart}`;
+      const safeHref = safeUrl(urlPart);
 
-      nodes.push(
-        <React.Fragment key={`u-${lineIndex}-${matchIndex}`}>
-          <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--color-bubble-link)", textDecoration: "underline", wordBreak: "break-word" }}>
+      if (!safeHref) {
+        // Dangerous scheme — render as plain text
+        nodes.push(
+          <React.Fragment key={`u-${lineIndex}-${matchIndex}`}>
             {urlPart}
-          </a>
-          {trailing}
-        </React.Fragment>
-      );
+            {trailing}
+          </React.Fragment>
+        );
+      } else {
+        nodes.push(
+          <React.Fragment key={`u-${lineIndex}-${matchIndex}`}>
+            <a href={safeHref} target="_blank" rel="noopener noreferrer" style={{ color: "var(--color-bubble-link)", textDecoration: "underline", wordBreak: "break-word" }}>
+              {urlPart}
+            </a>
+            {trailing}
+          </React.Fragment>
+        );
+      }
 
       lastIndex = end;
       matchIndex += 1;
@@ -534,17 +565,20 @@ export const renderMessageText = (
 
 // ── Emoji text renderer (ported from old EmojiRenderer.js) ───────────────────
 
-const EMOJI_REGEX = /(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])/g;
+const EMOJI_REGEX = /(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)/u;
 
-export const renderEmojiText = (
+export function renderEmojiText(
   text: string | null | undefined,
   options: { size?: number; emojiStyle?: EmojiStyle } = {}
-): React.ReactNode => {
+): React.ReactNode {
   const { size = 20, emojiStyle = EmojiStyle.APPLE } = options;
 
   if (!text || typeof text !== "string") return text as React.ReactNode;
 
-  const parts = text.split(EMOJI_REGEX);
+  const parts = typeof Intl.Segmenter === "function"
+    ? Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text), ({ segment }) => segment)
+    : Array.from(text);
+
   return parts.map((part, index) => {
     if (EMOJI_REGEX.test(part)) {
       const unified = charToUnified(part);
@@ -559,21 +593,27 @@ export const renderEmojiText = (
               lineHeight: 0,
             }}
           >
-            <Emoji unified={unified} size={size} emojiStyle={emojiStyle} />
+            <SafeEmoji
+              unified={unified}
+              emoji={part}
+              size={size}
+              emojiStyle={emojiStyle}
+            />
           </span>
         );
       }
     }
     return part;
   });
-};
+}
 
 // ── Highlight search text (ported from old globalFunc.js) ────────────────────
 
 export const highlightText = (text: string, query: string): React.ReactNode => {
   if (!query) return text;
   try {
-    const parts = text.split(new RegExp(`(${query})`, "gi"));
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parts = text.split(new RegExp(`(${escaped})`, "gi"));
     return parts.map((part, i) =>
       part.toLowerCase() === query.toLowerCase() ? (
         <span

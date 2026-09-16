@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Box, IconButton } from "@mui/material";
-import { Menu } from "lucide-react";
+import { Box } from "@mui/material";
 import { AuthGuard } from "@/src/components/AuthGuard";
 import { AppLayout } from "@/src/components/AppLayout/AppLayout";
 import { CustomerLists } from "@/src/components/CustomerLists/CustomerLists";
@@ -10,7 +9,7 @@ import { ChatPanel } from "@/src/components/ChatPanel/ChatPanel";
 import { NotificationPermissionModal } from "@/src/components/ReusableComponent/NotificationPermissionModal";
 import UpdateNotification from "@/src/components/UpdateNotification/UpdateNotification";
 import { getConversations } from "@/src/db/conversationCache";
-import { useLoginContext } from "@/src/context/LoginData";
+import { useLoginContext } from "@/src/contexts/LoginData";
 import MaintenancePage from "@/src/components/MaintenancePage/MaintenancePage";
 import { useVersionCheck } from "@/src/hooks/useVersionCheck";
 import { useServiceRetry } from "@/src/hooks/useServiceRetry";
@@ -24,6 +23,9 @@ function HomeContent() {
   const [serviceMessage, setServiceMessage] = useState("");
   const [isConversationRead, setIsConversationRead] = useState(false);
   const [hasCachedData, setHasCachedData] = useState(false);
+  // Track whether the initial cache check has completed. Prevents the
+  // maintenance page from flashing before we know whether cache exists.
+  const [cacheCheckDone, setCacheCheckDone] = useState(false);
   const selectedCustomerRef = useRef<ConversationListEntry | null>(null);
   const isMobile = useIsMobile();
 
@@ -35,9 +37,12 @@ function HomeContent() {
     (async () => {
       try {
         const cached = await getConversations(auth);
-        if (!cancelled) setHasCachedData(cached.length > 0);
+        if (!cancelled) {
+          setHasCachedData(cached.length > 0);
+          setCacheCheckDone(true);
+        }
       } catch {
-        /* ignore */
+        if (!cancelled) setCacheCheckDone(true);
       }
     })();
     return () => { cancelled = true; };
@@ -86,10 +91,27 @@ function HomeContent() {
   }, [selectedCustomer]);
 
   // ── Service down/up events ──────────────────────────────────────────────────
+  // When SERVICE_DOWN fires, re-check the cache before triggering the maintenance
+  // page. If we have cached conversations, the app works offline — the maintenance
+  // page should only show when there's truly no data to display.
   useEffect(() => {
-    const handleServiceDownEvent = (e: Event) => {
+    const handleServiceDownEvent = async (e: Event) => {
       const detail = (e as CustomEvent).detail;
       setServiceMessage(detail?.message || "Cannot connect to the server. Please check your connection.");
+      // Re-check cache — the initial mount check may not have completed yet,
+      // or the cache may have been populated since mount.
+      if (auth) {
+        try {
+          const cached = await getConversations(auth);
+          if (cached.length > 0) {
+            setHasCachedData(true);
+            // Don't show maintenance page — app works offline with cache.
+            return;
+          }
+        } catch {
+          /* ignore — fall through to handleServiceDown */
+        }
+      }
       handleServiceDown();
     };
     const handleServiceUpEvent = () => {
@@ -101,7 +123,7 @@ function HomeContent() {
       window.removeEventListener("SERVICE_DOWN", handleServiceDownEvent);
       window.removeEventListener("SERVICE_UP", handleServiceUpEvent);
     };
-  }, [handleServiceDown, handleServiceUp]);
+  }, [auth, handleServiceDown, handleServiceUp]);
 
   // ── Real-time window events ───────────────────────────────────────────────
   useEffect(() => {
@@ -206,19 +228,6 @@ function HomeContent() {
   return (
     <AppLayout
       detailsPanelOpen={detailsPanelOpen}
-      mobileMenuTrigger={(open) => (
-        <IconButton
-          onClick={open}
-          className="tap-target"
-          sx={{
-            color: "var(--color-text-2nd)",
-            "-webkit-tap-highlight-color": "transparent",
-          }}
-          aria-label="Open menu"
-        >
-          <Menu size={22} />
-        </IconButton>
-      )}
     >
       <div style={{ display: "flex", height: "100dvh", overflow: "hidden" }}>
         {/* Conversation list panel — on mobile, hidden when a conversation is selected */}
@@ -260,8 +269,7 @@ function HomeContent() {
       {/* Notification permission guide modal */}
       <NotificationPermissionModal />
 
-      {/* Maintenance / service-down overlay */}
-      {serviceDown && !hasCachedData && (
+      {serviceDown && !hasCachedData && cacheCheckDone && (
         <Box
           sx={{
             position: "fixed",

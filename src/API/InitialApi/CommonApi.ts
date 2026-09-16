@@ -21,7 +21,7 @@ export const buildCommonBody = (
 ): CommonBody => {
   const appUserId = typeof auth === "string" ? auth : (auth?.userId ?? "");
   return {
-    con: `{"id":"","mode":"${mode}","appuserid":"${appUserId}"}`,
+    con: JSON.stringify({ id: "", mode, appuserid: appUserId }),
     p: JSON.stringify(payloadObject ?? {}),
     f: fLabel ?? "",
   };

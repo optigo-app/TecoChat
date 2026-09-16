@@ -243,7 +243,7 @@ export const resolveConversationName = (
     (incoming?.SenderName as string) || (incoming?.senderName as string) || (incoming?.SenderInfo as string) || "";
 
   const senderInfo = (incoming?.FirstName || incoming?.LastName)
-    ? ((incoming?.FirstName as string) || "" + " " + (incoming?.LastName as string) || "").trim()
+    ? `${String(incoming?.FirstName || "").trim()} ${String(incoming?.LastName || "").trim()}`.trim()
     : messageSenderName;
 
   const candidate = String(

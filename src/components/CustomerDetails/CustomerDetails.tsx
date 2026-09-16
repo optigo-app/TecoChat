@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useContext, useRef, useCallback } from "react";
+import dynamic from "next/dynamic";
 import "./CustomerDetails.scss";
 import {
   getCustomerAvatarSeed,
@@ -8,7 +9,7 @@ import {
   markImageAsDead,
   handleDownloadFile,
 } from "../../utils/globalFunc";
-import { useLoginContext, type AuthData } from "../../context/LoginData";
+import { useLoginContext, type AuthData } from "../../contexts/LoginData";
 import { fetchMediaLists } from "../../API/MediaLists/MediaLists";
 import { fetchGroupDetails } from "../../API/Groups/FetchGroupDetails";
 import { changeGroupPermissionApi } from "../../API/Groups/ChangeGroupPermissionApi";
@@ -33,7 +34,7 @@ import { useFavorite } from "../../contexts/FavoriteContext";
 import { useRemoveInGroup } from "../../contexts/RemoveInGroupContext";
 import { useGroupAdminMode } from "../../contexts/GroupAdminModeContext";
 import AddMemberDialog from "../ReusableComponent/AddMemberDialog";
-import { MediaViewer } from "../ChatPanel/messages/viewer";
+const MediaViewer = dynamic(() => import("../ChatPanel/messages/viewer/MediaViewer"), { ssr: false });
 import type { MediaViewerItem } from "../ChatPanel/CoreLogic/uiReducer";
 import type { ConversationListEntry } from "../../types/conversation";
 import type { ChatMessage } from "../../types/message";
@@ -215,16 +216,22 @@ const CustomerDetails = ({
   // Member menu state
   const [memberMenuAnchorEl, setMemberMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [muteLoading, setMuteLoading] = useState(false);
 
   // Contexts
   const { favoriteState, updateFavoriteStatus } = useFavorite();
   const { isRemovedFromGroup, updateRemoveInGroupStatus } = useRemoveInGroup();
   const { updateGroupAdminMode, groupSettingsState, updateGroupSettings } = useGroupAdminMode();
 
-  // Guard: CustomerDetails only renders for real conversations with a valid
-  // ConversationId. Search-result contacts (ConversationId === null) never
-  // reach this panel.
-  const conversationId = customer?.ConversationId;
+  // Guard: CustomerDetails renders for real conversations OR for new-chat
+  // contacts (no ConversationId yet) that have a UserId/id. The contact-info
+  // API only needs a UserId, so we can show profile + contact info before the
+  // conversation is started.
+  // Default to "" so the type stays `string | number` (no undefined) — this
+  // preserves all downstream `if (conversationId)` checks.
+  const conversationId = (customer?.ConversationId as string | number) ?? "";
+  const contactUserId =
+    (customer as any)?.UserId || (customer as any)?.id || (customer as any)?.ReceiverId || "";
 
   // Clear search query when chat is cleared (messages are gone, so search
   // results are stale)
@@ -252,6 +259,16 @@ const CustomerDetails = ({
   const enablePagination = true;
   const inFlightRequestsRef = useRef(new Set<string>());
   const fetchedPagesRef = useRef(new Set<string>());
+  const isMountedRef = useRef(true);
+
+  // Set isMountedRef to false on unmount so async loaders can bail
+  // before calling setState on an unmounted component.
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // ── Media helpers ──────────────────────────────────────────────────────────
 
@@ -320,6 +337,7 @@ const CustomerDetails = ({
           effectiveUserId
         );
         if (response?.data) {
+          if (!isMountedRef.current) return;
           const categorized = processMediaItems(response.data as MediaItem[]);
           setMediaItems((prev) => ({
             images:
@@ -341,6 +359,7 @@ const CustomerDetails = ({
         }
       } catch (error) {
         console.error(`Error fetching ${type}:`, error);
+        if (!isMountedRef.current) return;
         setPagination((prev) => ({
           ...prev,
           [type]: { ...prev[type], hasMore: false, isLoading: false },
@@ -434,15 +453,16 @@ const CustomerDetails = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversationId, (customer as any).id, (customer as any).UserId]);
 
-  // Fetch contact info for non-group contacts
+  // Fetch contact info for non-group contacts. Works with OR without a
+  // ConversationId — the contactInfoApi only needs a UserId.
   useEffect(() => {
-    if (open && conversationId && customer.IsGroup !== 1) {
+    if (open && customer.IsGroup !== 1 && (conversationId || contactUserId)) {
       setContactInfoData(null);
       setContactInfoLoading(true);
       loadContactInfo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, conversationId, (customer as any).ReceiverId, (customer as any).UserId, (customer as any).id]);
+  }, [open, conversationId, contactUserId, (customer as any).ReceiverId, (customer as any).UserId, (customer as any).id]);
 
   // Fetch full media when navigating to media view
   useEffect(() => {
@@ -487,10 +507,11 @@ const CustomerDetails = ({
     };
   }, [open, onClose, variant]);
 
-  // Guard: CustomerDetails only renders for real conversations with a valid
-  // ConversationId. Search-result contacts (ConversationId === null) never
-  // reach this panel. (Moved after all hooks to satisfy Rules of Hooks.)
-  if (!conversationId) return null;
+  // Guard: render for real conversations OR for new-chat contacts (no
+  // ConversationId yet) that have a UserId/id. contactUserId is declared above
+  // with the other derived state (before hooks).
+  if (!conversationId && !contactUserId) return null;
+  const hasConversation = Boolean(conversationId);
 
   // ── Data loaders ───────────────────────────────────────────────────────────
 
@@ -498,6 +519,7 @@ const CustomerDetails = ({
     setGroupInfoLoading(true);
     try {
       const data = await fetchGroupDetails(conversationId, auth as AuthData);
+      if (!isMountedRef.current) return;
       if (data) {
         if (data.groupDetails) {
           const gd = data.groupDetails as any;
@@ -519,11 +541,16 @@ const CustomerDetails = ({
             createdById: gd.CreatedBy ?? null,
             isPastParticipant: gd.IsPastParticipant || 0,
           }));
-          // Sync mute status from group details response
-          if (customer) {
-            (customer as any).IsMuted = gd.IsMuted ?? (customer as any).IsMuted ?? 0;
-            (customer as any).MuteExpiresAt = gd.MuteExpiresAt ?? (customer as any).MuteExpiresAt ?? null;
-          }
+          // Sync mute status from group details response via event
+          window.dispatchEvent(
+            new CustomEvent("UPDATE_CONVERSATION_MUTE", {
+              detail: {
+                conversationId,
+                isMuted: gd.IsMuted ?? 0,
+                muteExpiresAt: gd.MuteExpiresAt ?? null,
+              },
+            })
+          );
         }
         if (data.members) {
           const mappedMembers: GroupMember[] = data.members.map((m: any) => ({
@@ -540,14 +567,16 @@ const CustomerDetails = ({
     } catch (error) {
       console.error("Error fetching group details:", error);
     } finally {
-      setGroupInfoLoading(false);
+      if (isMountedRef.current) setGroupInfoLoading(false);
     }
   };
 
   const loadContactInfo = async () => {
     try {
-      const contactUserId = (customer as any).ReceiverId || (customer as any).id;
-      const response = await contactInfoApi(auth as AuthData, { contactUserId });
+      const apiContactUserId =
+        (customer as any).ReceiverId || (customer as any).id || (customer as any).UserId;
+      const response = await contactInfoApi(auth as AuthData, { contactUserId: apiContactUserId });
+      if (!isMountedRef.current) return;
       if (response?.Status === "200" || response?.success) {
         const contactData = response?.Data?.rd?.[0] || response?.Data || null;
         setContactInfoData(contactData);
@@ -556,9 +585,10 @@ const CustomerDetails = ({
       }
     } catch (error) {
       console.error("Error fetching contact info:", error);
+      if (!isMountedRef.current) return;
       setContactInfoData(null);
     } finally {
-      setContactInfoLoading(false);
+      if (isMountedRef.current) setContactInfoLoading(false);
     }
   };
 
@@ -1101,9 +1131,6 @@ const CustomerDetails = ({
       });
       if (response?.Status === "200" || response?.success === true) {
         showToast(newIsStar ? "Added to favorites" : "Removed from favorites", "success");
-        if (customer) {
-          (customer as any).IsStar = newIsStar;
-        }
         window.dispatchEvent(
           new CustomEvent("UPDATE_CONVERSATION_ITEM", {
             detail: {
@@ -1126,7 +1153,6 @@ const CustomerDetails = ({
   // ── Profile upload/remove ──────────────────────────────────────────────────
 
   // ── Mute notification toggle ───────────────────────────────────────────────
-  const [muteLoading, setMuteLoading] = useState(false);
   const isMuted = isConversationMuted(
     (customer as any)?.IsMuted,
     (customer as any)?.MuteExpiresAt
@@ -1137,18 +1163,13 @@ const CustomerDetails = ({
     setMuteLoading(true);
     try {
       const newIsMuted = isMuted ? 0 : 1;
-      // When muting from the details panel, default to "always"
-      const expiresAt = newIsMuted === 1 ? null : null;
+      const expiresAt = null;
       const result = await muteConversationApi(auth as AuthData, {
         conversationId: conversationId,
         isMuted: newIsMuted as 0 | 1,
         muteExpiresAt: expiresAt,
       });
       if (result?.stat == 1) {
-        if (customer) {
-          (customer as any).IsMuted = newIsMuted;
-          (customer as any).MuteExpiresAt = result.MuteExpiresAt ?? expiresAt;
-        }
         window.dispatchEvent(
           new CustomEvent("UPDATE_CONVERSATION_MUTE", {
             detail: {
@@ -1192,9 +1213,6 @@ const CustomerDetails = ({
           return;
         }
         showToast("Group profile photo updated successfully", "success");
-        if (customer) {
-          (customer as any).ProfileImageUrl = imageUrl;
-        }
         loadGroupInfo();
         window.dispatchEvent(
           new CustomEvent("UPDATE_CONVERSATION_ITEM", {
@@ -1233,9 +1251,6 @@ const CustomerDetails = ({
         showToast("Group profile photo removed successfully", "success");
         if ((customer as any)?.ProfileImageUrl) {
           markImageAsDead((customer as any).ProfileImageUrl);
-        }
-        if (customer) {
-          (customer as any).ProfileImageUrl = "";
         }
         loadGroupInfo();
         window.dispatchEvent(
@@ -1358,6 +1373,7 @@ const CustomerDetails = ({
               onSearchMessages={onSearchMessages}
               onSearchByDate={onSearchByDate}
               containerRef={containerRef}
+              hasConversation={hasConversation}
             />
           </div>
         </div>

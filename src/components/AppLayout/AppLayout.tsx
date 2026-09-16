@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { Sidebar } from "@/src/components/Sidebar/Sidebar";
-import { useIsMobile } from "@/src/hooks/useIsMobile";
+import { useIsMobile, useIsTablet } from "@/src/hooks/useIsMobile";
 import "./AppLayout.scss";
 
 // Context to share the mobile menu trigger node with children (e.g. CustomerLists)
@@ -19,6 +19,9 @@ interface AppLayoutProps {
 
 export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = false }: AppLayoutProps) => {
   const isMobile = useIsMobile();
+  const isTablet = useIsTablet(); // <= 1024px — mobile + tablet share the
+                                 // WhatsApp-like layout (no sidebar, bottom nav,
+                                 // profile avatar in the chat-list header).
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // default mini mode
   const [breakpointCollapsed, setBreakpointCollapsed] = useState(false);
@@ -35,11 +38,11 @@ export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = fals
   // and only if the user hasn't manually expanded). Restore when it closes.
   const prevDetailsOpenRef = useRef(false);
   useEffect(() => {
-    if (!isMobile && detailsPanelOpen && !prevDetailsOpenRef.current) {
+    if (!isTablet && detailsPanelOpen && !prevDetailsOpenRef.current) {
       setSidebarCollapsed(true);
     }
     prevDetailsOpenRef.current = detailsPanelOpen;
-  }, [detailsPanelOpen, isMobile]);
+  }, [detailsPanelOpen, isTablet]);
 
   // Close mobile sidebar when CLOSE_MOBILE_SIDEBAR event is dispatched
   // (e.g. when user clicks logout)
@@ -49,8 +52,8 @@ export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = fals
     return () => window.removeEventListener("CLOSE_MOBILE_SIDEBAR", handleClose);
   }, []);
 
-  const isCollapsedEffective = !isMobile && (sidebarCollapsed || breakpointCollapsed);
-  const sidebarWidth = isMobile ? 0 : isCollapsedEffective ? 76 : 260;
+  const isCollapsedEffective = !isTablet && (sidebarCollapsed || breakpointCollapsed);
+  const sidebarWidth = isTablet ? 0 : isCollapsedEffective ? 76 : 260;
 
   // On mobile, build the trigger node and share it via context so children
   // (e.g. CustomerLists) can render it inside their own header.
@@ -60,16 +63,20 @@ export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = fals
 
   return (
     <div className={`app-layout ${isCollapsedEffective ? "app-layout--sidebar-collapsed" : ""}`}>
-      <Sidebar
-        isCollapsed={sidebarCollapsed}
-        onCollapsedChange={setSidebarCollapsed}
-        mobileOpen={mobileSidebarOpen}
-        onMobileOpenChange={setMobileSidebarOpen}
-      />
+      {/* Sidebar only on desktop (>1024px). On mobile+tablet the layout is
+          WhatsApp-like: no sidebar, bottom nav, profile avatar in the header. */}
+      {!isTablet && (
+        <Sidebar
+          isCollapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+          mobileOpen={mobileSidebarOpen}
+          onMobileOpenChange={setMobileSidebarOpen}
+        />
+      )}
       <main
         className="app-layout__content"
         style={{
-          marginLeft: isMobile ? 0 : sidebarWidth,
+          marginLeft: isTablet ? 0 : sidebarWidth,
         }}
       >
         {isMobile && mobileTriggerNode ? (

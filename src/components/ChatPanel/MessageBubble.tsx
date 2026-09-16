@@ -3,7 +3,7 @@
 import { memo, useState, useMemo } from "react";
 import { Box, Typography, IconButton, Avatar, Tooltip, useTheme, alpha } from "@mui/material";
 import { CheckCheck, CircleMinus, ChevronDown, Forward, Clock, Star, RotateCcw } from "lucide-react";
-import { Emoji, EmojiStyle } from "emoji-picker-react";
+import { SafeEmoji } from "./input/SafeEmoji";
 import type { ChatMessage } from "../../types/message";
 import type { ConversationListEntry } from "../../types/conversation";
 import { formatDateTime } from "../../utils/dateUtils";
@@ -98,6 +98,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
   const isFailed = msg.Status === 4 || msg.Status === "failed";
 
   const messageText = normalizeMessageText(msg.Message || "").trim();
+
+  // Detect PDF messages so the bubble width matches the PDF thumbnail (250px)
+  // rather than expanding to fit long caption text.
+  const isPdfMessage =
+    msg.MessageType === "document" &&
+    (msg.mediaItems || []).some(
+      (item: { mimeType?: string; filename?: string }) =>
+        item.mimeType === "application/pdf" ||
+        (item.filename || "").toLowerCase().endsWith(".pdf")
+    );
 
   const original = isReply && msg.ContextId && messageById
     ? messageById.get(msg.ContextId)
@@ -252,7 +262,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
             highlightQuery={highlightQuery}
           />
         ) : (
-          <Box sx={{ maxWidth: msg.MessageType === "document" ? 350 : 250, width: "100%" }}>
+          <Box
+            sx={{
+              maxWidth: msg.MessageType === "document" ? 350 : 250,
+              width: isPdfMessage ? 250 : "fit-content",
+              minWidth: 0,
+            }}
+          >
             <MediaMessage
               msg={msg}
               handleMediaClick={onMediaClick}
@@ -420,7 +436,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             }}
                           >
                             {unified ? (
-                              <Emoji unified={unified} size={18} emojiStyle={EmojiStyle.APPLE} />
+                              <SafeEmoji unified={unified} emoji={emojiChar || ""} size={18} />
                             ) : (
                               <span style={{ fontSize: 16 }}>{emojiChar}</span>
                             )}

@@ -150,6 +150,9 @@ const ReplyPreviewComponent = ({
   return (
     <Box
       onClick={(e) => {
+        // Let link clicks bubble up to MessageList's safe-link handler.
+        const target = e.target as HTMLElement;
+        if (target.closest("a")) return;
         e.stopPropagation();
         if (msg.ContextId && scrollToMessage && containerRef) {
           scrollToMessage(msg.ContextId, containerRef, (msg as any).ReplyToAttachmentId as string | null);

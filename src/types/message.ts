@@ -18,6 +18,8 @@ export type ContextType = 0 | 2;
 export interface ChatMessage {
   Id?: string | number;
   MessageId?: string | number;
+  /** Client-side temp ID for optimistic messages (used for dedup on server echo) */
+  ClientMessageId?: string | number;
   ConversationId?: string | number;
   SenderId?: string | number;
   Sender?: string;

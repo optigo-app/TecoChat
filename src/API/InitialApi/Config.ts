@@ -1,32 +1,43 @@
-// ── Env helpers ──────────────────────────────────────────────────────────────
-// All URLs and config values come from .env (NEXT_PUBLIC_*).
-// IMPORTANT: Next.js only inlines NEXT_PUBLIC_* vars when accessed with a
-// LITERAL key (e.g. process.env.NEXT_PUBLIC_API_URL_LOCAL). Dynamic access
-// like process.env[key] is NOT inlined and returns undefined in the browser.
-// Falls back to sensible defaults if an env var is missing.
-
 const LOCAL_HOSTS = (process.env.NEXT_PUBLIC_LOCAL_HOSTS || "localhost,nzen,tecochat.web,web")
   .split(",")
   .map((h) => h.trim())
   .filter(Boolean);
 
-const getIsLocal = (): boolean => {
-  if (typeof window === "undefined") return false;
-  return LOCAL_HOSTS.includes(window.location.hostname);
+export const getEnvFlags = () => {
+  if (typeof window === "undefined")
+    return { isLocal: false, isNxt: false };
+  const hostname = window.location.hostname;
+  return {
+    isLocal: LOCAL_HOSTS.includes(hostname),
+    isNxt: hostname.startsWith("nxt") && hostname.endsWith(".optigoapps.com"),
+  };
 };
 
-const getApiBaseUrl = (): string => {
-  return getIsLocal()
-    ? process.env.NEXT_PUBLIC_API_URL_LOCAL || "http://newnextjs.web/api"
-    : process.env.NEXT_PUBLIC_API_URL_PROD || "https://apilx.optigoapps.com/api";
+const getIsLocal = (): boolean => getEnvFlags().isLocal;  
+
+export const getApiBaseUrl = (): string => {
+  const { isLocal, isNxt } = getEnvFlags();
+
+  return isLocal
+    ? process.env.NEXT_PUBLIC_API_DEVELOPMENT_URL || "http://newnextjs.web/api"
+    : isNxt
+      ? process.env.NEXT_PUBLIC_API_NXT_PRODUCTION_URL || "https://nxt22.optigoapps.com/apilx"
+      : process.env.NEXT_PUBLIC_API_PRODUCTION_URL || "https://apilx.optigoapps.com/api";
+};
+
+export const getSocketURL = (): string => {
+  const { isLocal, isNxt } = getEnvFlags();
+
+  return isLocal
+    ? process.env.NEXT_PUBLIC_SOCKET_DEVELOPMENT_URL || "http://newnextjs.web"
+    : isNxt
+      ? process.env.NEXT_PUBLIC_SOCKET_NXT_PRODUCTION_URL || "https://nxt22.optigoapps.com"
+      : process.env.NEXT_PUBLIC_SOCKET_PRODUCTION_URL || "https://apilx.optigoapps.com";
 };
 
 // Media
 export const UPLOAD_URL = () => `${getApiBaseUrl()}/upload`;
 export const REMOVE_FILE_URL = () => `${getApiBaseUrl()}/removefile`;
-
-// WhatsApp APIs
-export const LOGOUTAPI = () => `${getApiBaseUrl()}/whatsapp/chat/logout`;
 
 // Report / Common APIs
 export const APIURL = () => `${getApiBaseUrl()}/report`;

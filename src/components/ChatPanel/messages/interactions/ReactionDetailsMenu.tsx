@@ -11,7 +11,7 @@ import {
   useTheme,
   alpha,
 } from "@mui/material";
-import { Emoji, EmojiStyle } from "emoji-picker-react";
+import { SafeEmoji } from "../../input/SafeEmoji";
 import { charToUnified } from "../../../../utils/EmojiUtils";
 
 interface ReactionUser {
@@ -116,7 +116,7 @@ const ReactionDetailsMenuComponent = ({
                 key={emoji}
                 label={
                   <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                    {unified ? <Emoji unified={unified} size={16} emojiStyle={EmojiStyle.APPLE} /> : emoji}
+                    {unified ? <SafeEmoji unified={unified} emoji={emoji} size={16} /> : emoji}
                     <Typography variant="body2">{group.length}</Typography>
                   </Box>
                 }
@@ -174,7 +174,7 @@ const ReactionDetailsMenuComponent = ({
                 {(() => {
                   const unified = charToUnified(emojiValue);
                   return unified ? (
-                    <Emoji unified={unified} size={20} emojiStyle={EmojiStyle.APPLE} />
+                    <SafeEmoji unified={unified} emoji={emojiValue} size={20} />
                   ) : (
                     <Typography sx={{ fontSize: 18 }}>{emojiValue}</Typography>
                   );
