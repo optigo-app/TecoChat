@@ -19,6 +19,8 @@ import EmojiPickerPopper from "./input/EmojiPickerPopper";
 import AttachmentMenu from "./input/AttachmentMenu";
 import FormattingToolbar from "./input/FormattingToolbar";
 import ConfirmationDialog from "./input/ConfirmationDialog";
+import { LinkPreviewCard, LinkPreviewSkeleton } from "./messages/bubble";
+import { useLinkPreview } from "../../hooks/useLinkPreview";
 import type { ReplyToMessage, MediaFileItem } from "./CoreLogic/uiReducer";
 import type { MentionData } from "./input/MentionPlugin";
 import type { MentionMember } from "./input/MentionDropdown";
@@ -99,6 +101,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [pendingPasteText, setPendingPasteText] = useState("");
   const [pendingPasteFileName, setPendingPasteFileName] = useState("");
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
+  // Lightweight state for link preview — only updated when text changes, used
+  // by useLinkPreview to detect URLs. textRef doesn't trigger re-renders so
+  // we keep a separate state that updates on editor change.
+  const [previewText, setPreviewText] = useState("");
   const editorRef = useRef<LexicalEditor | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const emojiButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -111,6 +117,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const showOnlyAdminNotice = isOnlyAdminSend && !isCurrentUserAdmin;
   const inputHidden = isRemovedFromGroup || showOnlyAdminNotice;
 
+  // ── Link preview: detect URLs in input text and fetch metadata ──────────
+  const { data: linkPreview, loading: linkPreviewLoading } = useLinkPreview(previewText);
+  // Track whether the user dismissed the current preview — reset when the
+  // URL changes so a new URL shows its preview again.
+  const [linkPreviewDismissed, setLinkPreviewDismissed] = useState(false);
+  const linkPreviewUrl = linkPreview?.url ?? null;
+  useEffect(() => {
+    setLinkPreviewDismissed(false);
+  }, [linkPreviewUrl]);
+
   // Typing indicator emit — called on every text change (debounced by Lexical's rAF)
   const handleEditorChange = useCallback(
     (val: string) => {
@@ -118,6 +134,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       // Keep draft ref in sync so drafts are saved on conversation switch
       onInputChange?.(val);
       if (onTypingChange) onTypingChange(val.trim().length > 0);
+
+      // Update preview text for link detection (debounced in useLinkPreview)
+      setPreviewText(val);
 
       // Only update React state if the "canSend" boolean or char bucket changed.
       // This avoids re-rendering the entire ChatInput tree on every keystroke.
@@ -180,6 +199,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setMentions([]);
     setCanSend(false);
     setCharBucket(0);
+    setPreviewText("");
+    setLinkPreviewDismissed(false);
     // Clear draft ref so the empty input is saved as "no draft"
     onInputChange?.("");
     if (editorRef.current) {
@@ -593,6 +614,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             </Box>
           )}
         </Box>
+      )}
+
+      {/* Link preview — separate full-width row above the input container,
+          does NOT affect the input or buttons (they stay at the bottom) */}
+      {linkPreview && !linkPreviewDismissed && (
+        <LinkPreviewCard
+          data={linkPreview}
+          dismissible
+          onDismiss={() => setLinkPreviewDismissed(true)}
+        />
+      )}
+      {linkPreviewLoading && !linkPreview && !linkPreviewDismissed && (
+        <LinkPreviewSkeleton dismissible />
       )}
 
       <div className="chat-input-container">

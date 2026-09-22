@@ -4,7 +4,7 @@ import React from "react";
 import { TextField, InputAdornment, IconButton, Box, Typography, Tooltip } from "@mui/material";
 import { Search, X, MessageSquarePlus, Users, ArrowLeft, WifiOff } from "lucide-react";
 import { ProfileAvatar } from "../ProfileAvatar/ProfileAvatar";
-import { useIsTablet } from "../../hooks/useIsMobile";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 interface CustomerListsHeaderProps {
   isArchiveOpen: boolean;
@@ -31,16 +31,16 @@ export const CustomerListsHeader = ({
   mobileMenuTrigger,
   isOffline = false,
 }: CustomerListsHeaderProps) => {
-  const isTablet = useIsTablet();
+  const isMobile = useIsMobile();
   return (
     <>
       {/* Title row */}
       <div className="customer_lists_header">
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-          {/* Hamburger only on desktop (>1024) where the sidebar drawer still
-              exists. On mobile+tablet the sidebar is gone and profile is
+          {/* Hamburger only on desktop and tablet (>768) where the sidebar drawer still
+              exists. On mobile the sidebar is gone and profile is
               accessed via the avatar on the right (WhatsApp-like). */}
-          {!isTablet && mobileMenuTrigger}
+          {!isMobile && mobileMenuTrigger}
           {isArchiveOpen && (
             <Tooltip title="Back" arrow placement="top">
               <IconButton size="small" onClick={onBack} className="back-button" aria-label="Back">
@@ -73,9 +73,9 @@ export const CustomerListsHeader = ({
               </Box>
             </Tooltip>
           )}
-          {/* New Chat / Create Group icons — desktop only. On mobile+tablet
+          {/* New Chat / Create Group icons — desktop and tablet only. On mobile
               these live in the bottom navigation bar to keep the header clean. */}
-          {!isArchiveOpen && !isTablet && (
+          {!isArchiveOpen && !isMobile && (
             <>
               <Tooltip title={isOffline ? "You're offline — new chat unavailable" : "New Chat"} arrow placement="top">
                 <span>
@@ -105,9 +105,9 @@ export const CustomerListsHeader = ({
               </Tooltip>
             </>
           )}
-          {/* Profile avatar — mobile+tablet only (WhatsApp-like). Replaces the
+          {/* Profile avatar — mobile only (WhatsApp-like). Replaces the
               sidebar profile menu. Opens a dropdown (Profile, Theme, Log out). */}
-          {isTablet && (
+          {isMobile && (
             <Box sx={{ flexShrink: 0, ml: 0.5 }}>
               <ProfileAvatar collapsed headerVariant />
             </Box>

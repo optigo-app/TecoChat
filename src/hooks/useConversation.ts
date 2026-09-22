@@ -870,25 +870,19 @@ export const useConversation = ({
     [selectedCustomer?.ConversationId, selectedCustomerRef, auth, dispatchUI]
   );
 
-  // ── Search messages by date ──────────────────────────────────────────────
-  // Uses GetMessagesCursor with Direction 2 (BEFORE) and SearchDate param
-  // to jump to messages around the selected date. Sends the last loaded
-  // message id as the cursor so the backend can anchor the search relative
-  // to the current newest visible message.
   const searchByDate = useCallback(
-    async (date: string) => {
+    async (date: string): Promise<boolean> => {
       const convId = selectedCustomer?.ConversationId;
-      if (!convId || !auth || !date) return;
+      if (!convId || !auth || !date) return false;
       dispatchMsg({ type: MSG.SET_LOADING, value: true });
       try {
-        // Newest message is last in the array (sorted oldest-first).
-        const msgs = messagesRef.current;
-        const lastMsg = msgs.length ? msgs[msgs.length - 1] : null;
-        const lastMsgId = Number(lastMsg?.Id ?? lastMsg?.MessageId ?? 0) || 0;
+        // Direction 4 (date search) — the backend anchors purely on
+        // MsgDate; CursorMessageId is omitted from the payload entirely
+        // so the current scroll position can't skew the results.
         const response = await conversationViewCursor(
           convId,
-          2 as CursorDirection, // BEFORE — messages up to the selected date
-          lastMsgId,
+          4 as CursorDirection,
+          0,
           50,
           auth,
           null,
@@ -896,8 +890,7 @@ export const useConversation = ({
           0,
           date
         );
-        // Guard: bail if the user switched conversations while awaiting network.
-        if (selectedCustomerRef.current?.ConversationId !== convId) return;
+        if (selectedCustomerRef.current?.ConversationId !== convId) return false;
         const results = response.data as ChatMessage[];
         if (results.length > 0) {
           dispatchMsg({
@@ -910,10 +903,27 @@ export const useConversation = ({
             beforeCursor: response.beforeCursor,
             afterCursor: response.afterCursor,
           });
-          dispatchMsg({ type: MSG.SET_HAS_MORE, value: response.hasMoreBefore });
+          // Forward the real per-direction flags — the scroll loaders gate on
+          // hasMoreBefore/hasMoreAfter, so leaving them stale (e.g.
+          // hasMoreAfter=false from sitting at the bottom) breaks pagination
+          // after a date jump and traps the user in the search range.
+          dispatchMsg({ type: MSG.SET_HAS_MORE_BEFORE, value: response.hasMoreBefore });
+          dispatchMsg({ type: MSG.SET_HAS_MORE_AFTER, value: response.hasMoreAfter });
+          dispatchMsg({
+            type: MSG.SET_HAS_MORE,
+            value: response.hasMoreBefore || response.hasMoreAfter,
+          });
+          // Clear stale anchors/errors — the anchor message may not exist in
+          // the date-search window, and old error states would block retries.
+          dispatchMsg({ type: MSG.SET_UNREAD_ANCHOR, messageId: null, count: 0 });
+          dispatchMsg({ type: MSG.SET_OLDER_ERROR, value: false });
+          dispatchMsg({ type: MSG.SET_NEWER_ERROR, value: false });
+          return true;
         }
+        return false;
       } catch (err) {
         console.error("searchByDate error:", err);
+        return false;
       } finally {
         dispatchMsg({ type: MSG.SET_LOADING, value: false });
       }

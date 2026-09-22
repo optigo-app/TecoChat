@@ -77,7 +77,7 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
     setLogoutLoading(true);
     try {
       disconnectSocket(true);
-      deleteDb(auth?.id).catch(() => {});
+      deleteDb(auth?.id).catch(() => { });
       sessionStorage.clear();
       eraseCookie("userData");
       eraseCookie("token");
@@ -143,7 +143,6 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
       >
         {icon}
       </Box>
-      {/* Center text — flex 1, takes remaining space */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontWeight: 500, fontSize: "0.9rem", color: theme.palette.text.primary, lineHeight: 1.3 }}>
           {label}
@@ -152,7 +151,6 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
           {description}
         </Typography>
       </Box>
-      {/* Right switch — fixed width, consistent alignment, Apple-style */}
       <Box sx={{ flexShrink: 0, ml: 2, display: "flex", alignItems: "center" }}>
         <IOSSwitch
           checked={checked}
@@ -270,19 +268,9 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
         </Box>
 
         <Box className="info-section">
-          <Typography className="info-label">Name</Typography>
           <Typography className="info-value">{(auth?.username as string) || "User"}</Typography>
           <Typography className="info-desc">{(auth?.designation as string) || ""}</Typography>
         </Box>
-
-        {/* ── Contact details (mirrors ContactInfo in CustomerDetails) ───────
-            Data is taken from the session (auth) — no extra API call needed.
-            Field names match the login API response:
-              userid    → User ID (e.g. admin@orail.co.in)
-              email1    → Email (e.g. mayur.optigoapps@gmail.com)
-              mobileno  → Mobile Number
-            (designation is already shown under the Name above, so it's not
-             repeated here as "About".) */}
         <Box className="info-block contact-info-block" sx={{ width: "100%", px: 2, py: 1.5, textAlign: "left" }}>
           <Typography className="block-label" sx={{ fontSize: "12px", color: "text.secondary", fontWeight: 600, mb: 1.5, textAlign: "left" }}>
             Contact Information
@@ -335,7 +323,7 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
           sx={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-start",  
+            justifyContent: "flex-start",
             width: "98%",
             px: 2,
             py: 1.5,

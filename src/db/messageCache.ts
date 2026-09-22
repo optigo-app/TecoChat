@@ -351,6 +351,19 @@ export async function deleteMessage(
   });
 }
 
+export async function deleteMessageRow(
+  auth: AuthData | null,
+  conversationId: string | number | null | undefined,
+  messageId: string | number | null | undefined
+): Promise<void> {
+  if (!conversationId || !messageId) return;
+  const db = getDbForAuth(auth);
+  if (!db) return;
+
+  const key = `${String(conversationId)}:${String(messageId)}`;
+  await db.messages.delete(key);
+}
+
 export async function clearConversation(
   auth: AuthData | null,
   conversationId: string | number | null | undefined

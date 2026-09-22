@@ -138,6 +138,7 @@ function createEmojiNodeClass() {
           unified={this.__unified}
           emoji={this.__emoji}
           size={20}
+          userSelectable
         />
       );
     }

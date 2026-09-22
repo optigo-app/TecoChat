@@ -161,3 +161,12 @@ export interface SendMessageResponse {
   ConversationId?: string | number;
   IsNewConversation?: boolean;
 }
+
+/** OpenGraph metadata for a URL — used for link previews in chat */
+export interface LinkPreviewData {
+  url: string;
+  title: string;
+  description: string;
+  image: string;
+  siteName: string;
+}

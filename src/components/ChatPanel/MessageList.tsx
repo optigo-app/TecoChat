@@ -101,6 +101,9 @@ interface MessageListProps {
   ) => Promise<void> | void;
   isMediaPreviewOpen?: boolean;
   scrollToBottomRightOffset?: number;
+  /** Date string (YYYY-MM-DD) when a date search returned no results.
+   *  Rendered as a centered pill in the message area. */
+  noResultsDate?: string | null;
 }
 
 const MessageList = forwardRef<MessageListRef, MessageListProps>(
@@ -150,6 +153,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       scrollToMessageProp,
       isMediaPreviewOpen = false,
       scrollToBottomRightOffset = 30,
+      noResultsDate = null,
     },
     ref
   ) => {
@@ -916,6 +920,45 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             {stickyDate}
           </Typography>
         </Box>
+
+        {/* ── No messages found on this date (floating overlay — visible
+            regardless of scroll position, so it works even when the list
+            already has messages and the user is at the bottom) ── */}
+        {noResultsDate && (
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              display: "flex",
+              justifyContent: "center",
+              px: 2,
+              width: "100%",
+              pointerEvents: "none",
+              zIndex: 6,
+            }}
+          >
+            <Box
+              sx={{
+                bgcolor: "var(--color-surface-elevated)",
+                color: "var(--color-text-secondary)",
+                px: 3,
+                py: 1.25,
+                borderRadius: "12px",
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                textAlign: "center",
+                maxWidth: "80%",
+                border: "1px solid var(--color-border-light)",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+                animation: "fadeIn 0.3s ease",
+              }}
+            >
+              No messages found on this date
+            </Box>
+          </Box>
+        )}
 
         {/* Scrollable list */}
         <Box

@@ -55,6 +55,7 @@
   --color-text-secondary: #6b6d75;
   --color-text-2nd: #5f5d69;
   --color-placeholder: #6e6e6e;
+  --color-text-disabled: #9e9e9e;
   --color-text-white: #ffffff;
   --color-text-light: #f1f1f1;
 
@@ -183,6 +184,7 @@
   --color-text-secondary: #a0a0b5;
   --color-text-2nd: #a0a0b5;
   --color-placeholder: #8a8a9e;
+  --color-text-disabled: #8a8a9e;
   --color-text-white: #ffffff;
   --color-text-light: #34343f;
 
@@ -502,40 +504,40 @@ a {
 }
 
 /* Day cells */
-.MuiPickersDay-root {
+.MuiPickerDay-root {
   color: var(--color-title);
   border-radius: 10px;
   font-weight: 500;
   transition: background-color 0.15s ease, color 0.15s ease,
     box-shadow 0.15s ease, transform 0.1s ease;
 }
-.MuiPickersDay-root:hover:not(.Mui-selected):not(.Mui-disabled) {
+.MuiPickerDay-root:hover:not(.Mui-selected):not(.Mui-disabled) {
   background-color: var(--color-primary-light);
   color: var(--color-primary);
 }
-.MuiPickersDay-root:focus {
+.MuiPickerDay-root:focus {
   box-shadow: 0 0 0 2px rgba(115, 103, 240, 0.3);
 }
-.MuiPickersDay-root.Mui-selected {
+.MuiPickerDay-root.Mui-selected {
   background-color: var(--color-primary) !important;
   color: #fff !important;
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(115, 103, 240, 0.2);
 }
-.MuiPickersDay-root.Mui-selected:hover {
+.MuiPickerDay-root.Mui-selected:hover {
   background-color: var(--color-primary) !important;
   filter: brightness(1.08);
 }
-.MuiPickersDay-root.MuiPickersDay-today {
+.MuiPickerDay-root.MuiPickerDay-today {
   border: 1.5px solid var(--color-primary);
   color: var(--color-primary);
   font-weight: 700;
 }
-.MuiPickersDay-root.MuiPickersDay-today.Mui-selected {
+.MuiPickerDay-root.MuiPickerDay-today.Mui-selected {
   border: 1.5px solid var(--color-primary);
   color: #fff !important;
 }
-.MuiPickersDay-root.Mui-disabled {
+.MuiPickerDay-root.Mui-disabled {
   /* Clearly muted so disabled dates are distinguishable from enabled ones
      in both light and dark mode. Use a low-contrast grey + reduced opacity
      and prevent interaction. */
@@ -545,42 +547,48 @@ a {
   cursor: default;
   font-weight: 400;
 }
-/* Light mode: disabled dates are a light grey (clearly different from the
-   dark enabled text #444050). */
-[data-theme="light"] .MuiPickersDay-root.Mui-disabled {
-  color: #c4c4c4;
+/* Light mode: disabled dates are a muted mid-grey — lighter than the
+   enabled text #444050 but still readable on the light surface. */
+[data-theme="light"] .MuiPickerDay-root.Mui-disabled {
+  color: #9e9e9e;
   opacity: 1;
 }
-/* Dark mode: disabled dates are a dim grey. */
-[data-theme="dark"] .MuiPickersDay-root.Mui-disabled {
-  color: #5a5a6e;
-  opacity: 1;
+/* Dark mode: disabled dates are a muted grey — dimmer than the enabled
+   text #e4e4ef but still readable on the dark surface. */
+[data-theme="dark"] .MuiPickerDay-root.Mui-disabled {
+  color: #8a8a9e;
+  opacity: 0.7;
 }
 /* Disabled today indicator — keep the border but mute it so it's clearly
    not selectable. */
-.MuiPickersDay-root.MuiPickersDay-today.Mui-disabled {
+.MuiPickerDay-root.MuiPickerDay-today.Mui-disabled {
   border-color: var(--color-text-disabled, #b0b0b0);
   opacity: 0.6;
 }
 
-/* Year / month views */
-.MuiPickersYear-root,
-.MuiPickersMonth-root {
+/* Year / month views (MUI X v9 class names: MuiYearCalendar-*, MuiMonthCalendar-*) */
+.MuiYearCalendar-button,
+.MuiMonthCalendar-button {
   color: var(--color-title);
   border-radius: 10px;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
-.MuiPickersYear-root:hover:not(.Mui-selected),
-.MuiPickersMonth-root:hover:not(.Mui-selected) {
+.MuiYearCalendar-button:hover:not(.Mui-selected):not(.Mui-disabled),
+.MuiMonthCalendar-button:hover:not(.Mui-selected):not(.Mui-disabled) {
   background-color: var(--color-primary-light);
   color: var(--color-primary);
 }
-.MuiPickersYear-root.Mui-selected,
-.MuiPickersMonth-root.Mui-selected {
+.MuiYearCalendar-button.Mui-selected,
+.MuiMonthCalendar-button.Mui-selected {
   background-color: var(--color-primary) !important;
   color: #fff !important;
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(115, 103, 240, 0.2);
+}
+.MuiYearCalendar-button.Mui-disabled,
+.MuiMonthCalendar-button.Mui-disabled {
+  color: var(--color-text-disabled, #b0b0b0);
+  opacity: 0.6;
 }
 
 /* Action buttons (Cancel / OK) */

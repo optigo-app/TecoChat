@@ -185,6 +185,7 @@ function HomeContent() {
         if (detail.RemoveInGroup !== undefined) updated.RemoveInGroup = detail.RemoveInGroup;
         if (detail.IsStar !== undefined) updated.IsStar = detail.IsStar;
         if (detail.IsPin !== undefined) updated.IsPin = detail.IsPin;
+        if (detail.IsArchived !== undefined) updated.IsArchived = detail.IsArchived;
         if (detail.IsAdmin !== undefined) updated.IsAdmin = detail.IsAdmin;
         // Group permission fields (toggled from CustomerDetails)
         if (detail.EditGroup !== undefined) updated.EditGroup = detail.EditGroup;

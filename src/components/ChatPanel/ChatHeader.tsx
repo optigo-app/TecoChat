@@ -24,6 +24,9 @@ interface ChatHeaderProps {
    *  also be opened from the mobile More menu). */
   onOpenDatePicker?: () => void;
   isOffline?: boolean;
+  /** Ref attached to the calendar (jump-to-date) button so the DatePicker
+   *  popup can anchor to it instead of floating at the bottom of the panel. */
+  datePickerButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
@@ -40,6 +43,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
   onSearchByDate,
   onOpenDatePicker,
   isOffline = false,
+  datePickerButtonRef,
 }) => {
   const isMobile = useIsMobile();
 
@@ -136,6 +140,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
         {!isMobile && onSearchByDate && (
           <Tooltip title="Jump to date" arrow>
             <IconButton
+              ref={datePickerButtonRef}
               size="small"
               onClick={() => onOpenDatePicker?.()}
               className="chat-header__btn"

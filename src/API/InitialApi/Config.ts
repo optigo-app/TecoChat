@@ -54,6 +54,7 @@ interface ApiCredentials {
 
 export const getApiHeaders = (): Record<string, string> => {
   let credentials: ApiCredentials | null = null;
+  let userVersion: string | null = null;
 
   if (typeof window !== "undefined") {
     try {
@@ -68,15 +69,18 @@ export const getApiHeaders = (): Record<string, string> => {
           sv: (parsedToken && parsedToken.sv) ?? (parsedUser && parsedUser.svid),
         };
       }
+
+      const v = parsedUser?.cuver;
+      if (typeof v === "string" && v.trim()) {
+        userVersion = v.trim();
+      }
     } catch {
       // ignore parse errors
     }
   }
 
   const headers: Record<string, string> = {
-    Version: getIsLocal()
-      ? process.env.NEXT_PUBLIC_VERSION_LOCAL || "R50B3"
-      : process.env.NEXT_PUBLIC_VERSION_PROD || "R75PRO",
+    Version: userVersion ?? "",
     sp: process.env.NEXT_PUBLIC_SP || "80",
   };
 

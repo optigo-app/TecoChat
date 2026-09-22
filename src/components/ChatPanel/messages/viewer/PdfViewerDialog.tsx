@@ -220,22 +220,81 @@ const PdfViewerDialogComponent = ({
       if (e.key === "Escape") {
         onClose();
       } else if (e.key === "+" || e.key === "=") {
+        // Plain "+" / "=" — zoom in (legacy shortcut)
         handleZoomIn();
       } else if (e.key === "-") {
+        // Plain "-" — zoom out (legacy shortcut)
         handleZoomOut();
+      } else if (e.key === "0") {
+        // Plain "0" — reset zoom (legacy shortcut)
+        handleZoomReset();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=")) {
+        // Ctrl/Cmd + "+" — standard browser zoom-in
+        e.preventDefault();
+        handleZoomIn();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "-") {
+        // Ctrl/Cmd + "-" — standard browser zoom-out
+        e.preventDefault();
+        handleZoomOut();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "0") {
+        // Ctrl/Cmd + "0" — standard browser reset zoom
+        e.preventDefault();
+        handleZoomReset();
       } else if (e.key === "ArrowUp" || e.key === "PageUp") {
         e.preventDefault();
         goToPrevPage();
       } else if (e.key === "ArrowDown" || e.key === "PageDown") {
         e.preventDefault();
         goToNextPage();
-      } else if (e.key === "0") {
-        handleZoomReset();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, onClose, handleZoomIn, handleZoomOut, goToPrevPage, goToNextPage, handleZoomReset]);
+
+  // ── Mouse wheel zoom (Ctrl/Cmd + scroll) ──────────────────────────────
+  // Standard PDF-reader behavior: hold Ctrl (or Cmd on Mac) and scroll the
+  // mouse wheel to zoom in/out. Without the modifier, the wheel scrolls the
+  // page normally.
+  //
+  // The listener MUST be on `window` with `capture: true` — attaching to the
+  // inner div only is too late: the browser's native Ctrl+wheel page-zoom is
+  // dispatched at the window/document level and fires before the div's
+  // handler, so preventDefault() on the div has no effect. Using capture at
+  // the window level intercepts the event in the capture phase BEFORE the
+  // browser's default zoom action runs.
+  const pdfContentRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      // Only intercept when the cursor is over the PDF content area
+      const el = pdfContentRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const overPdf =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+      if (!overPdf) return;
+
+      // Ctrl/Cmd + wheel → zoom, not browser page zoom
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.deltaY < 0) {
+        handleZoomIn();
+      } else if (e.deltaY > 0) {
+        handleZoomOut();
+      }
+    };
+
+    // capture:true so we run in the capture phase, before the browser's
+    // default Ctrl+wheel zoom. passive:false so preventDefault() works.
+    window.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    return () => window.removeEventListener("wheel", handleWheel, { capture: true } as AddEventListenerOptions);
+  }, [open, handleZoomIn, handleZoomOut]);
 
   if (!item) return null;
 
@@ -417,6 +476,7 @@ const PdfViewerDialogComponent = ({
 
           {/* ── PDF content area ──────────────────────────────────────────── */}
           <div
+            ref={pdfContentRef}
             style={{
               flex: 1,
               minHeight: 0,

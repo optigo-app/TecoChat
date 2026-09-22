@@ -19,9 +19,8 @@ interface AppLayoutProps {
 
 export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = false }: AppLayoutProps) => {
   const isMobile = useIsMobile();
-  const isTablet = useIsTablet(); // <= 1024px — mobile + tablet share the
-                                 // WhatsApp-like layout (no sidebar, bottom nav,
-                                 // profile avatar in the chat-list header).
+  const isTablet = useIsTablet(); // <= 1024px
+  // Tablet and Desktop will show Sidebar. Mobile (<= 768px) shows bottom nav.
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // default mini mode
   const [breakpointCollapsed, setBreakpointCollapsed] = useState(false);
@@ -38,11 +37,11 @@ export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = fals
   // and only if the user hasn't manually expanded). Restore when it closes.
   const prevDetailsOpenRef = useRef(false);
   useEffect(() => {
-    if (!isTablet && detailsPanelOpen && !prevDetailsOpenRef.current) {
+    if (!isMobile && detailsPanelOpen && !prevDetailsOpenRef.current) {
       setSidebarCollapsed(true);
     }
     prevDetailsOpenRef.current = detailsPanelOpen;
-  }, [detailsPanelOpen, isTablet]);
+  }, [detailsPanelOpen, isMobile]);
 
   // Close mobile sidebar when CLOSE_MOBILE_SIDEBAR event is dispatched
   // (e.g. when user clicks logout)
@@ -52,8 +51,8 @@ export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = fals
     return () => window.removeEventListener("CLOSE_MOBILE_SIDEBAR", handleClose);
   }, []);
 
-  const isCollapsedEffective = !isTablet && (sidebarCollapsed || breakpointCollapsed);
-  const sidebarWidth = isTablet ? 0 : isCollapsedEffective ? 76 : 260;
+  const isCollapsedEffective = !isMobile && (sidebarCollapsed || breakpointCollapsed);
+  const sidebarWidth = isMobile ? 0 : isCollapsedEffective ? 76 : 260;
 
   // On mobile, build the trigger node and share it via context so children
   // (e.g. CustomerLists) can render it inside their own header.
@@ -63,9 +62,9 @@ export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = fals
 
   return (
     <div className={`app-layout ${isCollapsedEffective ? "app-layout--sidebar-collapsed" : ""}`}>
-      {/* Sidebar only on desktop (>1024px). On mobile+tablet the layout is
+      {/* Sidebar on desktop and tablet (>768px). On mobile the layout is
           WhatsApp-like: no sidebar, bottom nav, profile avatar in the header. */}
-      {!isTablet && (
+      {!isMobile && (
         <Sidebar
           isCollapsed={sidebarCollapsed}
           onCollapsedChange={setSidebarCollapsed}
@@ -76,7 +75,7 @@ export const AppLayout = ({ children, mobileMenuTrigger, detailsPanelOpen = fals
       <main
         className="app-layout__content"
         style={{
-          marginLeft: isTablet ? 0 : sidebarWidth,
+          marginLeft: isMobile ? 0 : sidebarWidth,
         }}
       >
         {isMobile && mobileTriggerNode ? (

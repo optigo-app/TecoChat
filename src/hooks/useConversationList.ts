@@ -397,18 +397,32 @@ export const useConversationList = ({
           const currentChat = updatedData[index] as Record<string, unknown>;
           const currentUnread = Number(currentChat.unreadCount ?? currentChat.UnreadCount ?? 0);
 
-          const incomingId = (incoming.MessageId as string | number) ?? (incoming.Id as string | number);
+          // For status-change events (read/delivered receipts), Id carries
+          // the emitter's SocketId — not a message id — so only MessageId
+          // counts as a real message reference. For real messages, Id is
+          // the fallback id used by the emit payload.
+          const incomingId = isStatusChange
+            ? ((incoming.MessageId as string | number) ?? (incoming.messageId as string | number))
+            : ((incoming.MessageId as string | number) ?? (incoming.Id as string | number));
           const isSameMessage = incomingId
             ? String(incomingId) === String(currentChat.LastMessageId)
             : (currentChat.lastMessageText === messagePreviewText &&
                currentChat.lastMessageTime === formattedTime);
 
-          if (isStatusChange && !incomingId && !incoming.Message) {
+          if (isStatusChange && !incoming.Message) {
+            // Status-only receipt — update ONLY LastMessageStatus and unread
+            // count. Never touch LastMessageDirection/preview fields, which
+            // would hide the tick icon (direction reset to incoming).
             const unreadFinal = nextUnreadOnStatus(currentUnread);
             (currentChat as Record<string, unknown>).unreadCount = unreadFinal;
             (currentChat as Record<string, unknown>).UnreadCount = unreadFinal;
-            (currentChat as Record<string, unknown>).LastMessageStatus =
-              incoming.MessageStatus ?? incoming.Status ?? incoming.status ?? currentChat.LastMessageStatus;
+            const newStatus = incoming.MessageStatus ?? incoming.Status ?? incoming.status;
+            // Apply to the last message only when the receipt targets it
+            // (MessageId matches) or is conversation-wide (no MessageId).
+            if (newStatus != null &&
+                (incomingId == null || String(incomingId) === String(currentChat.LastMessageId))) {
+              (currentChat as Record<string, unknown>).LastMessageStatus = newStatus;
+            }
             updatedData.sort(conversationComparator);
             return { ...prev, data: updatedData };
           }
@@ -823,6 +837,21 @@ export const useConversationList = ({
             merged.unreadCount = detail.UnreadCount;
           }
 
+          // Status-only receipt (delivered/read tick) — no message content.
+          // Phase 2 below is skipped when there's no Message, so handle it
+          // here: update LastMessageStatus only, preserving all other fields.
+          if (isStatusChange && detail.Message === undefined && detail.LastMessage === undefined) {
+            const newStatus = detail.MessageStatus ?? detail.Status ?? detail.status;
+            const targetId = detail.MessageId ?? detail.messageId;
+            if (newStatus != null &&
+                (targetId == null || String(targetId) === String(merged.LastMessageId))) {
+              merged.LastMessageStatus = newStatus;
+            }
+            updatedData[idx] = merged as ConversationListEntry;
+            updatedData.sort(conversationComparator);
+            return { ...prev, data: updatedData };
+          }
+
           // ── Phase 2: message update (only if Message/LastMessage present) ──
           const hasMessage = detail.Message !== undefined || detail.LastMessage !== undefined;
 
@@ -861,8 +890,12 @@ export const useConversationList = ({
             const unreadAfterMsg = nextUnreadCount(currentUnread);
             const unreadFinal = nextUnreadOnStatus(unreadAfterMsg);
 
-            // Check for duplicate message (skip update if same message)
-            const incomingId = detail.MessageId ?? detail.Id;
+            // Check for duplicate message (skip update if same message).
+            // For status changes, only MessageId counts — Id may carry a
+            // non-message identifier (e.g., SocketId) on receipt payloads.
+            const incomingId = isStatusChange
+              ? (detail.MessageId ?? detail.messageId)
+              : (detail.MessageId ?? detail.Id);
             const isSameMessage = incomingId
               ? String(incomingId) === String(currentChat.LastMessageId)
               : (currentChat.lastMessageText === messagePreviewText &&
@@ -874,11 +907,16 @@ export const useConversationList = ({
               return { ...prev, data: updatedData };
             }
 
-            // Status-only update (no new message content)
-            if (isStatusChange && !incomingId && !detail.Message) {
+            // Status-only update (no new message content) — never touch
+            // direction/preview fields so the tick icon state is preserved.
+            if (isStatusChange && !detail.Message) {
               merged.unreadCount = unreadFinal;
               merged.UnreadCount = unreadFinal;
-              merged.LastMessageStatus = detail.MessageStatus ?? detail.Status ?? detail.status ?? currentChat.LastMessageStatus;
+              const newStatus = detail.MessageStatus ?? detail.Status ?? detail.status;
+              if (newStatus != null &&
+                  (incomingId == null || String(incomingId) === String(currentChat.LastMessageId))) {
+                merged.LastMessageStatus = newStatus;
+              }
               updatedData[idx] = merged as ConversationListEntry;
               updatedData.sort(conversationComparator);
               return { ...prev, data: updatedData };

@@ -133,7 +133,7 @@ const lightOptions: any = {
     text: {
       primary: "#444050",
       secondary: "#7D7f85",
-      disabled: "#666666",
+      disabled: "#9e9e9e",
       dark: "#0A0A0A",
       light: "#bebebeff",
       extraLight: "#f1f1f1",
@@ -219,7 +219,7 @@ const darkOptions: any = {
     text: {
       primary: "#E4E4EF",
       secondary: "#A0A0B5",
-      disabled: "#6c6c80",
+      disabled: "#8a8a9e",
       dark: "#FFFFFF",
       light: "#5a5a6e",
       extraLight: "#34343f",

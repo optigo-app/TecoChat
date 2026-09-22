@@ -20,8 +20,11 @@ interface MediaMessageProps {
 }
 
 const MAX_GRID_ITEMS = 4;
-const SINGLE_MEDIA_WIDTH = 250;
-const GRID_SIZE = 250;
+// Media width: WhatsApp-like — fills ~78% of screen width on mobile,
+// capped at 280px on desktop. `min()` keeps it responsive without JS.
+const SINGLE_MEDIA_CSS = "min(280px, 78vw)";
+// Document card: ~80% of screen width on mobile, capped at 350px desktop.
+const DOC_CARD_CSS = "min(350px, 80vw)";
 
 // ── Media load error overlay (shown when offline / network fails) ──────────
 const MediaLoadError = ({ height = 200 }: { height?: number }) => (
@@ -83,16 +86,14 @@ const MediaMessageComponent = ({
     const mediaItems = msg.mediaItems || [];
     const hasGrid = mediaItems.length > 1;
     const dimsForCalc = initialDims || imageDims;
-    const computedHeight = dimsForCalc?.w && dimsForCalc?.h
-      ? Math.max(100, Math.min(250, Math.round(SINGLE_MEDIA_WIDTH * (dimsForCalc.h / dimsForCalc.w))))
-      : 200;
 
     if (hasGrid) {
       const visibleItems = mediaItems.slice(0, MAX_GRID_ITEMS);
       const overflowCount = mediaItems.length - MAX_GRID_ITEMS;
-      // 2 images → 1 row × 2 cols (side by side); 3-4 → 2 rows × 2 cols
+      // 2 images → 1 row × 2 cols (side by side); 3-4 → 2 rows × 2 cols.
+      // aspect-ratio keeps the grid responsive: wide strip for 2, square for 3-4.
       const gridRows = mediaItems.length <= 2 ? "1fr" : "1fr 1fr";
-      const gridHeight = mediaItems.length <= 2 ? 160 : GRID_SIZE;
+      const gridRatio = mediaItems.length <= 2 ? "2 / 1" : "1 / 1";
 
       return (
         <Box sx={{ position: "relative" }}>
@@ -102,8 +103,8 @@ const MediaMessageComponent = ({
               gridTemplateColumns: "1fr 1fr",
               gridTemplateRows: gridRows,
               gap: 0.5,
-              width: GRID_SIZE,
-              height: gridHeight,
+              width: SINGLE_MEDIA_CSS,
+              aspectRatio: gridRatio,
               borderRadius: "12px",
               overflow: "hidden",
               backgroundColor: alpha(theme.palette.text.primary, 0.05),
@@ -185,8 +186,8 @@ const MediaMessageComponent = ({
 
     if (mediaError) {
       return (
-        <Box sx={{ position: "relative", width: SINGLE_MEDIA_WIDTH }}>
-          <MediaLoadError height={computedHeight} />
+        <Box sx={{ position: "relative", width: SINGLE_MEDIA_CSS }}>
+          <MediaLoadError height={200} />
         </Box>
       );
     }
@@ -196,8 +197,16 @@ const MediaMessageComponent = ({
         <Box
           sx={{
             position: "relative",
-            width: SINGLE_MEDIA_WIDTH,
-            height: computedHeight,
+            width: SINGLE_MEDIA_CSS,
+            // aspect-ratio keeps the media responsive on mobile; the box
+            // caps at 300px tall so portrait shots don't dominate the chat.
+            ...(dimsForCalc
+              ? {
+                  aspectRatio: `${dimsForCalc.w} / ${dimsForCalc.h}`,
+                  maxHeight: 300,
+                  minHeight: 100,
+                }
+              : { height: 200 }),
             borderRadius: "12px",
             overflow: "hidden",
             backgroundColor: alpha(theme.palette.text.primary, 0.05),
@@ -256,7 +265,7 @@ const MediaMessageComponent = ({
       const overflowCount = mediaItems.length - MAX_GRID_ITEMS;
       // 2 videos → 1 row × 2 cols (side by side); 3-4 → 2 rows × 2 cols
       const gridRows = mediaItems.length <= 2 ? "1fr" : "1fr 1fr";
-      const gridHeight = mediaItems.length <= 2 ? 160 : GRID_SIZE;
+      const gridRatio = mediaItems.length <= 2 ? "2 / 1" : "1 / 1";
 
       return (
         <Box sx={{ position: "relative" }}>
@@ -266,8 +275,8 @@ const MediaMessageComponent = ({
               gridTemplateColumns: "1fr 1fr",
               gridTemplateRows: gridRows,
               gap: 0.5,
-              width: GRID_SIZE,
-              height: gridHeight,
+              width: SINGLE_MEDIA_CSS,
+              aspectRatio: gridRatio,
               borderRadius: "12px",
               overflow: "hidden",
               backgroundColor: alpha(theme.palette.text.primary, 0.05),
@@ -371,14 +380,11 @@ const MediaMessageComponent = ({
     const mediaKey = getMediaKey(msg, 0);
     const rawSrc = msg.previewUrl || msg.mediaItems?.[0]?.url || "";
     const dimsForCalc = initialDims || imageDims;
-    const computedHeight = dimsForCalc?.w && dimsForCalc?.h
-      ? Math.max(100, Math.min(250, Math.round(SINGLE_MEDIA_WIDTH * (dimsForCalc.h / dimsForCalc.w))))
-      : 180;
 
     if (mediaError) {
       return (
-        <Box sx={{ position: "relative", width: SINGLE_MEDIA_WIDTH }}>
-          <MediaLoadError height={computedHeight} />
+        <Box sx={{ position: "relative", width: SINGLE_MEDIA_CSS }}>
+          <MediaLoadError height={180} />
         </Box>
       );
     }
@@ -388,8 +394,14 @@ const MediaMessageComponent = ({
         <Box
           sx={{
             position: "relative",
-            width: SINGLE_MEDIA_WIDTH,
-            height: computedHeight,
+            width: SINGLE_MEDIA_CSS,
+            ...(dimsForCalc
+              ? {
+                  aspectRatio: `${dimsForCalc.w} / ${dimsForCalc.h}`,
+                  maxHeight: 300,
+                  minHeight: 100,
+                }
+              : { height: 180 }),
             borderRadius: "12px",
             overflow: "hidden",
             backgroundColor: alpha(theme.palette.text.primary, 0.05),
@@ -490,7 +502,7 @@ const MediaMessageComponent = ({
         <Box
           sx={{
             position: "relative",
-            maxWidth: 350,
+            maxWidth: DOC_CARD_CSS,
             width: "100%",
             display: "flex",
             flexDirection: "column",
@@ -537,7 +549,7 @@ const MediaMessageComponent = ({
             display: "flex",
             alignItems: "center",
             gap: 1.5,
-            width: 350,
+            width: DOC_CARD_CSS,
             padding: "12px 16px",
             borderRadius: "12px",
             backgroundColor:
@@ -633,7 +645,7 @@ const MediaMessageComponent = ({
           className="message-document-group"
           style={{
             position: "relative",
-            maxWidth: 350,
+            maxWidth: DOC_CARD_CSS,
             width: "100%",
             display: "flex",
             flexDirection: "column",
@@ -658,7 +670,7 @@ const MediaMessageComponent = ({
     return (
       <div
         className="message-document"
-        style={{ position: "relative", maxWidth: 350, width: "100%" }}
+        style={{ position: "relative", maxWidth: DOC_CARD_CSS, width: "100%" }}
       >
         {renderDocumentItem(
           { url: rawSrc, fileName, size: msg.mediaItems?.[0]?.size, mimeType: msg.mediaItems?.[0]?.mimeType },

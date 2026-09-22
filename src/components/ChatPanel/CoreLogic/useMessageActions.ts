@@ -15,7 +15,7 @@ import { UI, type UIAction, type ReplyToMessage, type MediaFileItem } from "./ui
 import { getLocalTime } from "./messageHelpers";
 import { emitTextMessage, emitDeleteMessage } from "./socketHelpers";
 import { showToast } from "../../../utils/toastHelper";
-import { updateMessageEdit, updateMessageStar } from "../../../db/messageCache";
+import { updateMessageEdit, updateMessageStar, deleteMessage, deleteMessageRow } from "../../../db/messageCache";
 import { addToOutbox, removeFromOutbox, updateOutboxStatus } from "../../../db/outboxCache";
 import { playSound } from "../../../utils/sound";
 import type { AuthData } from "../../../contexts/LoginData";
@@ -516,8 +516,18 @@ export function useMessageActions({
               DateTime: deletedInfo.DeletedAt || new Date().toISOString(),
               DeletedAt: deletedInfo.DeletedAt || new Date().toISOString(),
             });
+            // Write-through to IDB — mark as deleted-for-everyone so the
+            // "This message was deleted" placeholder survives cache reloads.
+            if (customer?.ConversationId) {
+              deleteMessage(auth, customer.ConversationId, messageId, deletedInfo).catch(() => {});
+            }
           } else {
             dispatchMsg({ type: MSG.DELETE_ME, messageId });
+            // Write-through to IDB — remove the row entirely so the deleted
+            // message doesn't reappear when the conversation loads from cache.
+            if (customer?.ConversationId) {
+              deleteMessageRow(auth, customer.ConversationId, messageId).catch(() => {});
+            }
           }
           showToast("Message deleted successfully", "success");
         } else {

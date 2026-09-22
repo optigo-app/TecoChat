@@ -12,6 +12,12 @@ export interface SafeEmojiProps {
   emoji: string;
   size?: number;
   emojiStyle?: EmojiStyle;
+  /**
+   * When true, the emoji participates in text selection so the selection
+   * highlight paints over it instead of breaking around it. Use inside
+   * selectable/editable text (Lexical decorator, message bubbles).
+   */
+  userSelectable?: boolean;
 }
 
 export const SafeEmoji = React.memo(function SafeEmoji({
@@ -19,6 +25,7 @@ export const SafeEmoji = React.memo(function SafeEmoji({
   emoji,
   size = 20,
   emojiStyle = EmojiStyle.APPLE,
+  userSelectable = false,
 }: SafeEmojiProps) {
   const [error, setError] = React.useState(() => emojiImageErrorCache.has(unified));
 
@@ -41,7 +48,7 @@ export const SafeEmoji = React.memo(function SafeEmoji({
           lineHeight: 1,
           verticalAlign: "middle",
           margin: "0 1px",
-          userSelect: "none",
+          userSelect: userSelectable ? "text" : "none",
           pointerEvents: "none",
           fontFamily:
             '"Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Twemoji Mozilla", "Noto Color Emoji", "EmojiOne Color", "Android Emoji"',
@@ -66,7 +73,7 @@ export const SafeEmoji = React.memo(function SafeEmoji({
         height: `${size}px`,
         verticalAlign: "middle",
         margin: "0 1px",
-        userSelect: "none",
+        userSelect: userSelectable ? "text" : "none",
         pointerEvents: "none",
       }}
     />

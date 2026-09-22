@@ -7,11 +7,9 @@ import {
   TextField,
   InputAdornment,
   Box,
-  Button,
   IconButton,
   Skeleton,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import { Search, X, User, MessageSquare, ArrowLeft } from "lucide-react";
 import { usePathname } from "next/navigation";
 import "./AddConversation.scss";
@@ -59,7 +57,6 @@ const AddConversation = ({
   onBack,
 }: AddConversationProps) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [tabValue, setTabValue] = useState(0);
   const [chatMembers, setChatMembers] = useState<{
     data: AddConversationMember[] | null;
     total: number;
@@ -196,10 +193,6 @@ const AddConversation = ({
     return () => container.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
-  const handleTabChange = (newValue: number) => {
-    setTabValue(newValue);
-  };
-
   const filteredMembers = (chatMembers?.data || [])
     .filter((member) => {
       if (pathname === "/archieve") {
@@ -212,15 +205,6 @@ const AddConversation = ({
       const myId = Number(auth?.id ?? auth?.userId);
       const memberId = Number(member?.UserId ?? (member as any)?.id);
       return myId !== memberId;
-    })
-    .filter((member) => {
-      const isFavorite = member.IsStar === 1;
-      switch (tabValue) {
-        case 2:
-          return isFavorite && tabValue === 2;
-        default:
-          return true;
-      }
     })
     .filter((member) => {
       if (!selectedStatus || selectedStatus === "All") return true;
@@ -240,7 +224,7 @@ const AddConversation = ({
 
   useEffect(() => {
     setSelectedIndex(-1);
-  }, [searchTerm, tabValue, chatMembers]);
+  }, [searchTerm, chatMembers]);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
@@ -348,74 +332,6 @@ const AddConversation = ({
           }}
         />
       </div>
-
-      <Box
-        className="customer_lists_filters"
-        sx={{
-          borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
-          px: "10px",
-          py: "8px",
-        }}
-      >
-        <Box
-          sx={{
-            width: "100%",
-            display: "flex",
-            gap: "6px",
-            padding: "6px",
-          }}
-        >
-          {[
-            { label: "All", value: 0 },
-          ].map((item) => {
-            const isActive = tabValue === item.value;
-
-            return (
-              <Button
-                key={item.value}
-                type="button"
-                disableElevation
-                variant="text"
-                aria-pressed={isActive}
-                onClick={() => handleTabChange(item.value)}
-                sx={(theme) => ({
-                  flex: 1,
-                  borderRadius: 2,
-                  textTransform: "none",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  lineHeight: 1,
-                  border: "1px solid",
-                  borderColor: isActive
-                    ? alpha(
-                        (theme.palette as any).borderColor?.extraLight ?? "#e0e0e0",
-                        0.2
-                      )
-                    : (theme.palette as any).borderColor?.extraLight ?? "#e0e0e0",
-                  color: isActive
-                    ? alpha(theme.palette.primary.main, 1)
-                    : theme.palette.text.secondary,
-                  backgroundColor: isActive
-                    ? alpha(theme.palette.primary.main, 0.14)
-                    : "transparent",
-                  transition:
-                    "background-color 200ms ease, color 200ms ease, transform 200ms ease",
-                  "&:hover": {
-                    backgroundColor: isActive
-                      ? alpha(theme.palette.primary.main, 0.18)
-                      : alpha(theme.palette.primary.main, 0.08),
-                  },
-                  "&:active": {
-                    transform: "scale(0.98)",
-                  },
-                })}
-              >
-                {item.label}
-              </Button>
-            );
-          })}
-        </Box>
-      </Box>
 
       <div className="customer_lists_main">
         <ul ref={containerRef}>

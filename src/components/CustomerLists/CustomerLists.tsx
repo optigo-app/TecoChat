@@ -347,6 +347,21 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
       });
       if (response?.Status === "200" || response?.success === true) {
         showToast(actionMessages[action] || "Conversation updated", "success");
+
+        // Real-time sync: notify page.tsx so selectedCustomer stays in sync —
+        // ChatPanel's header menu and CustomerDetails read IsStar from it
+        // (via FavoriteContext fallback) and won't update without this.
+        window.dispatchEvent(
+          new CustomEvent("UPDATE_CONVERSATION_ITEM", {
+            detail: {
+              ConversationId: convId,
+              IsPin: isPin,
+              IsStar: isStar,
+              IsArchived: isArchived,
+              isStatusChange: true,
+            },
+          })
+        );
       } else {
         showToast("Failed to update conversation", "error");
         // Revert optimistic update on failure

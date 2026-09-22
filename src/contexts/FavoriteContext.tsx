@@ -2,7 +2,7 @@
 
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 
 interface FavoriteEntry {
   isStar: number;
@@ -41,6 +41,26 @@ export const FavoriteProvider = ({ children }: { children: React.ReactNode }) =>
     },
     []
   );
+
+  // Keep favoriteState in sync when IsStar changes from OUTSIDE this
+  // context — e.g. the conversation-list context menu dispatches
+  // UPDATE_CONVERSATION_ITEM after a successful API call. Without this,
+  // a stale context entry wins over selectedCustomer.IsStar in ChatPanel's
+  // isFavorite fallback and the header menu stops reflecting list-side
+  // toggles after the first header-side toggle.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail) return;
+      const convId = detail.ConversationId ?? detail.conversationId;
+      if (convId == null || detail.IsStar === undefined) return;
+      updateFavoriteStatus(convId, detail.IsStar);
+    };
+    window.addEventListener("UPDATE_CONVERSATION_ITEM", handler as EventListener);
+    return () => {
+      window.removeEventListener("UPDATE_CONVERSATION_ITEM", handler as EventListener);
+    };
+  }, [updateFavoriteStatus]);
 
   const value: FavoriteContextValue = {
     favoriteState,

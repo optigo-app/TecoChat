@@ -34,6 +34,7 @@ export const CrossFadeImage = ({
   const [newLoaded, setNewLoaded] = useState(false);
   const srcRef = useRef(src);
   const prevSrcRef = useRef<string | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Revoke the previous blob URL (if any) and clear the ref.
   const revokePrevSrc = () => {
@@ -66,10 +67,6 @@ export const CrossFadeImage = ({
       return;
     }
 
-    // If transitioning from blob: to server URL, keep blob visible while new loads.
-    // Only swap visibility when the actual React <img> fires onLoad — NOT when
-    // the background `new Image()` preloads. This prevents the flash where
-    // prevSrc disappears before the React <img> has rendered the server URL.
     if (oldSrc?.startsWith("blob:") && !src.startsWith("blob:")) {
       revokePrevSrc();
       prevSrcRef.current = oldSrc;
@@ -89,6 +86,20 @@ export const CrossFadeImage = ({
     }
   }, [src, keyId, markLoaded, loaded]);
 
+  
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!currentSrc || !img || !img.complete) return;
+    const fakeEvent = {
+      currentTarget: img,
+    } as React.SyntheticEvent<HTMLImageElement>;
+    if (img.naturalWidth > 0) {
+      handleLoad(fakeEvent);
+    } else {
+      handleError(fakeEvent);
+    }
+  }, [currentSrc, keyId]);
+
   const handleLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     setNewLoaded(true);
     setIsTransitioning(false);
@@ -107,9 +118,7 @@ export const CrossFadeImage = ({
     if (onError) onError(e);
   };
 
-  // During transition: only show new image when the React <img> actually loaded.
-  // After transition: fall back to the `loaded` prop from parent.
-  const isLoaded = isTransitioning ? newLoaded : loaded;
+  const isLoaded = isTransitioning ? newLoaded : loaded || newLoaded;
 
   return (
     <Box sx={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
@@ -132,6 +141,7 @@ export const CrossFadeImage = ({
       )}
       {currentSrc && (
         <img
+          ref={imgRef}
           src={currentSrc}
           alt={alt}
           onLoad={handleLoad}
@@ -152,8 +162,6 @@ export const CrossFadeImage = ({
   );
 };
 
-// CrossFadeVideo: same cross-fade technique for video thumbnails.
-// Keeps old video frame visible while new URL loads.
 interface CrossFadeVideoProps {
   src: string;
   loaded?: boolean;
@@ -177,8 +185,8 @@ export const CrossFadeVideo = ({
   const [newLoaded, setNewLoaded] = useState(false);
   const srcRef = useRef(src);
   const prevSrcRef = useRef<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Revoke the previous blob URL (if any) and clear the ref.
   const revokePrevSrc = () => {
     if (prevSrcRef.current?.startsWith("blob:")) {
       URL.revokeObjectURL(prevSrcRef.current);
@@ -186,7 +194,6 @@ export const CrossFadeVideo = ({
     prevSrcRef.current = null;
   };
 
-  // Revoke any held blob URL on unmount.
   useEffect(() => {
     return () => {
       if (prevSrcRef.current?.startsWith("blob:")) {
@@ -230,6 +237,16 @@ export const CrossFadeVideo = ({
     }
   }, [src, keyId, markLoaded, loaded]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!currentSrc || !video) return;
+    if (video.error) {
+      handleError();
+    } else if (video.readyState >= 2) {
+      handleLoadedData();
+    }
+  }, [currentSrc, keyId]);
+
   const handleLoadedData = () => {
     setNewLoaded(true);
     setIsTransitioning(false);
@@ -247,7 +264,7 @@ export const CrossFadeVideo = ({
     if (onError) onError();
   };
 
-  const isLoaded = isTransitioning ? newLoaded : loaded;
+  const isLoaded = isTransitioning ? newLoaded : loaded || newLoaded;
 
   return (
     <Box sx={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
@@ -271,6 +288,7 @@ export const CrossFadeVideo = ({
       )}
       {currentSrc && (
         <video
+          ref={videoRef}
           src={currentSrc}
           onLoadedData={handleLoadedData}
           onError={handleError}

@@ -58,8 +58,9 @@ export const conversationView = async (
 
 // ─── Cursor-based message loading ───────────────────────────────────────────
 // Direction: 0 = INITIAL (open conversation — latest page), 1 = AFTER (newer),
-// 2 = BEFORE (older), 3 = BETWEEN (search jump — bi-directional around a cursor)
-export type CursorDirection = 0 | 1 | 2 | 3;
+// 2 = BEFORE (older), 3 = BETWEEN (search jump — bi-directional around a cursor),
+// 4 = DATE SEARCH (calendar jump — anchored on MsgDate, no cursor needed)
+export type CursorDirection = 0 | 1 | 2 | 3 | 4;
 
 export interface CursorResponse {
   data: ChatMessage[];
@@ -85,17 +86,22 @@ export const conversationViewCursor = async (
   try {
     const payload: Record<string, unknown> = {
       Direction: direction,
-      CursorMessageId: cursorMessageId,
       PageSize: pageSize,
       ConversationId: conversationId,
       UserId: (auth as AuthLike)?.id ?? "",
       IsStar: isStarFilter,
     };
 
+    // Direction 4 (date search) anchors on MsgDate — CursorMessageId is
+    // not sent at all so the backend doesn't try to resolve a cursor.
+    if (direction !== 4) {
+      payload.CursorMessageId = cursorMessageId;
+    }
+
     // Optional date search — when provided, the backend returns messages
-    // around the given date (Direction 2 = BEFORE that date).
+    // around the given date.
     if (searchDate) {
-      payload.SearchDate = searchDate;
+      payload.MsgDate = searchDate;
     }
 
     const body = buildCommonBody("GetMessagesCursor", auth as AuthLike, payload, fLabel);

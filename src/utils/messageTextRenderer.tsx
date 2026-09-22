@@ -6,24 +6,14 @@ import { SafeEmoji } from "../components/ChatPanel/input/SafeEmoji";
 import { charToUnified } from "./EmojiUtils";
 import { inspectUrl } from "./urlSecurity";
 
-// ── URL safety helper ────────────────────────────────────────────────────────
-// Sanitise a URL before rendering it as an <a> tag. Dangerous schemes
-// (javascript:, data:, vbscript:) are blocked entirely. Returns null if
-// the URL should not be rendered as a clickable link.
 function safeUrl(raw: string): string | null {
   const result = inspectUrl(raw);
   if (result.level === "danger" && !result.safe) {
-    // Still allow opening via the safe-link dialog — return the href so
-    // the click handler can intercept it. But block javascript:/data:.
     if (result.href === "about:blank") return null;
   }
   return result.href;
 }
 
-/**
- * Wrap occurrences of `query` in `text` with a highlight span.
- * Returns the original text if no query or no matches.
- */
 const highlightQueryInText = (text: string, query?: string): React.ReactNode => {
   if (!query || !text) return renderEmojiText(text);
   try {
@@ -53,38 +43,15 @@ const highlightQueryInText = (text: string, query?: string): React.ReactNode => 
   }
 };
 
-/**
- * Format WhatsApp-style markdown text into React elements.
- * Supports: ```code```, **bold**, *italic*, __bold__, _italic_, ~~strike~~, ~strike~, `code`,
- * ***bold+italic***, ___bold+italic___, *_bold+italic_*, _*bold+italic*_, [link](url)
- *
- * Handles BOTH Markdown syntax (from Lexical editor: **bold**, *italic*, ***bold+italic***)
- * and WhatsApp native syntax (from incoming messages: *_text_*, _*text*_, ~strike~).
- *
- * Inner content is processed RECURSIVELY so nested formatting works automatically:
- *   **_text_**  → bold(italic(text))
- *   **~~text~~** → bold(strike(text))
- *   *_text_*    → bold+italic(text)  (WhatsApp nested)
- *
- * Code blocks and inline code are NOT recursed (literal content, per WhatsApp spec).
- * If `highlightQuery` is provided, matching text in plain (non-formatted) parts
- * is wrapped in a highlight span.
- */
 const formatChatText = (text: string, highlightQuery?: string): React.ReactNode => {
   if (!text || typeof text !== "string") return text;
 
-  // Regex order matters: longest/most-specific markers first.
-  //   ``` before `        (code block before inline code)
-  //   *** before ** before *_ before *     (3-star bold+italic, then 2-star bold, then cross bold+italic, then 1-star italic)
-  //   ___ before __ before _* before _     (3-underscore bold+italic, then 2-underscore bold, then cross bold+italic, then 1-underscore italic)
-  //   ~~ before ~          (double-tilde before single-tilde strikethrough)
   const regex = /(```[\s\S]*?```|`[^`]+`|\*\*\*\S(?:.*?\S)?\*\*\*|\*\*\S(?:.*?\S)?\*\*|\*_\S(?:.*?\S)?_\*|___\S(?:.*?\S)?___|__\S(?:.*?\S)?__|_\*\S(?:.*?\S)?\*_|\*\S(?:.*?\S)?\*|_\S(?:.*?\S)?_|~~\S(?:.*?\S)?~~|~\S(?:.*?\S)?~|\[[^\]]+\]\([^)]+\))/g;
   const parts = text.split(regex);
 
   return parts.map((part, index) => {
     if (!part) return null;
 
-    // Code block ```code``` — literal content, no nested formatting (WhatsApp spec)
     if (part.startsWith("```") && part.endsWith("```")) {
       return (
         <code
@@ -102,7 +69,6 @@ const formatChatText = (text: string, highlightQuery?: string): React.ReactNode 
       );
     }
 
-    // Inline code `code` — literal content, no nested formatting (WhatsApp spec)
     if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
       return (
         <code
@@ -120,12 +86,10 @@ const formatChatText = (text: string, highlightQuery?: string): React.ReactNode 
       );
     }
 
-    // Markdown link [text](url)
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
       const safeHref = safeUrl(linkMatch[2]);
       if (!safeHref) {
-        // Dangerous scheme — render as plain text, not a link
         return <React.Fragment key={index}>{linkMatch[1]}</React.Fragment>;
       }
       return (
@@ -141,8 +105,6 @@ const formatChatText = (text: string, highlightQuery?: string): React.ReactNode 
       );
     }
 
-    // Bold + Italic: ***text*** (Markdown) or ___text___ (Markdown) or
-    // *_text_* / _*text*_ (WhatsApp nested) — recurse inner for deeper nesting
     if (
       (part.startsWith("***") && part.endsWith("***")) ||
       (part.startsWith("___") && part.endsWith("___"))
@@ -164,17 +126,17 @@ const formatChatText = (text: string, highlightQuery?: string): React.ReactNode 
       );
     }
 
-    // Bold **text** or __text__ — recurse inner for nested formatting
     if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) {
       return <strong key={index}>{formatChatText(part.slice(2, -2), highlightQuery)}</strong>;
     }
 
-    // Italic *text* or _text_ — recurse inner for nested formatting
+    if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) {
+      return <em key={index}>{formatChatText(part.slice(1, -1), highlightQuery)}</em>;
+    }
     if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) {
       return <em key={index}>{formatChatText(part.slice(1, -1), highlightQuery)}</em>;
     }
 
-    // Strikethrough ~~text~~ or ~text~ — recurse inner for nested formatting
     if ((part.startsWith("~~") && part.endsWith("~~")) || (part.startsWith("~") && part.endsWith("~"))) {
       const sliceStart = part.startsWith("~~") ? 2 : 1;
       const sliceEnd = part.startsWith("~~") ? -2 : -1;
@@ -598,6 +560,7 @@ export function renderEmojiText(
               emoji={part}
               size={size}
               emojiStyle={emojiStyle}
+              userSelectable
             />
           </span>
         );

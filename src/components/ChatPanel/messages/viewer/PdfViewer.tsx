@@ -394,7 +394,7 @@ const PdfViewerComponent = ({
               maxWidth: BASE_RENDER_WIDTH * zoom,
             }}
           >
-            {/* Page number label */}
+            {/* Page number label — fixed colors for contrast on white PDF pages */}
             <Typography
               variant="caption"
               sx={{
@@ -402,11 +402,16 @@ const PdfViewerComponent = ({
                 top: 4,
                 right: 8,
                 fontSize: 11,
-                color: alpha(theme.palette.text.primary, 0.4),
+                fontWeight: 600,
+                color: "#fff",
                 zIndex: 1,
-                backgroundColor: alpha(theme.palette.background.paper, 0.6),
-                px: 0.5,
+                backgroundColor: "rgba(0, 0, 0, 0.55)",
+                px: 0.75,
+                py: 0.15,
                 borderRadius: "4px",
+                lineHeight: 1.4,
+                userSelect: "none",
+                pointerEvents: "none",
               }}
             >
               {pageNum} / {pageCount}

@@ -10,8 +10,9 @@ import { formatDateTime } from "../../utils/dateUtils";
 import { normalizeMessageText, getSoftAvatarColors } from "../../utils/globalFunc";
 import { renderMessageText } from "../../utils/messageTextRenderer";
 import { charToUnified, parseReactions } from "../../utils/EmojiUtils";
-import { ReplyPreview, MediaMessage, ReadMoreText } from "./messages/bubble";
+import { ReplyPreview, MediaMessage, ReadMoreText, LinkPreviewCard, LinkPreviewSkeleton } from "./messages/bubble";
 import { MessageActions, ReactionDetailsMenu } from "./messages/interactions";
+import { useLinkPreview } from "../../hooks/useLinkPreview";
 
 interface MessageBubbleProps {
   msg: ChatMessage;
@@ -98,6 +99,12 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
   const isFailed = msg.Status === 4 || msg.Status === "failed";
 
   const messageText = normalizeMessageText(msg.Message || "").trim();
+
+  // ── Link preview: detect URL in message text and fetch metadata ──────────
+  // Only for text messages (not media/deleted). Cached results appear
+  // instantly; uncached fetches show nothing until loaded, then appear.
+  const showLinkPreview = !isDeleted && msg.MessageType === "text" && !!messageText;
+  const { data: linkPreview, loading: linkPreviewLoading } = useLinkPreview(showLinkPreview ? messageText : null);
 
   // Detect PDF messages so the bubble width matches the PDF thumbnail (250px)
   // rather than expanding to fit long caption text.
@@ -251,21 +258,30 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
             </Typography>
           </Box>
         ) : msg.MessageType === "text" ? (
-          <ReadMoreText
-            content={messageText}
-            maxLines={20}
-            minChars={1200}
-            isExpanded={isExpanded}
-            onToggle={onToggleExpand}
-            sx={{ color: theme.palette.text.primary }}
-            mentionUsers={msg.Mentions || msg.MentionUsers}
-            highlightQuery={highlightQuery}
-          />
+          <>
+            {linkPreview && <LinkPreviewCard data={linkPreview} compact />}
+            {linkPreviewLoading && !linkPreview && <LinkPreviewSkeleton compact />}
+            <ReadMoreText
+              content={messageText}
+              maxLines={20}
+              minChars={1200}
+              isExpanded={isExpanded}
+              onToggle={onToggleExpand}
+              sx={{ color: theme.palette.text.primary }}
+              mentionUsers={msg.Mentions || msg.MentionUsers}
+              highlightQuery={highlightQuery}
+            />
+          </>
         ) : (
           <Box
             sx={{
-              maxWidth: msg.MessageType === "document" ? 350 : 250,
-              width: isPdfMessage ? 250 : "fit-content",
+              // Responsive caps — WhatsApp-like: media fills ~78vw on mobile,
+              // documents ~80vw, both capped at their desktop pixel widths.
+              maxWidth:
+                msg.MessageType === "document"
+                  ? "min(350px, 80vw)"
+                  : "min(280px, 78vw)",
+              width: isPdfMessage ? "min(250px, 78vw)" : "fit-content",
               minWidth: 0,
             }}
           >

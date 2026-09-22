@@ -14,7 +14,8 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
+import { Popover } from "@mui/material";
 import { Search, Calendar } from "lucide-react";
 import { formatDateTime } from "../../utils/dateUtils";
 import { renderMessageText } from "../../utils/messageTextRenderer";
@@ -119,7 +120,6 @@ const SearchMessages = ({
   const formatDate = (dateStr?: string) => formatDateTime(dateStr, "dateLocal");
   const formatTime = (dateStr?: string) => formatDateTime(dateStr, "time");
 
-  // Convert a Date object to "YYYY-MM-DD" for the API
   const toApiDate = (date: Date | null): string => {
     if (!date) return "";
     const y = date.getFullYear();
@@ -127,17 +127,6 @@ const SearchMessages = ({
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   };
-
-  const handleDateAccept = useCallback(
-    (value: Date | null) => {
-      const apiDate = toApiDate(value);
-      if (apiDate && onSearchByDate) {
-        onSearchByDate(apiDate);
-      }
-      setDatePickerOpen(false);
-    },
-    [onSearchByDate]
-  );
 
   return (
     <div className="search-messages-container" onKeyDown={handleKeyDown}>
@@ -192,52 +181,71 @@ const SearchMessages = ({
             }}
           />
         </Box>
-        {/* MUI DatePicker — opens as a dialog directly from the calendar icon */}
+        {/* Date picker — Popover anchored to the calendar button, opens
+            right below the icon. No hidden text field, no body scroll.
+            Tap a day → immediately confirms and closes (WhatsApp-like). */}
         {onSearchByDate && (
-          <DatePicker
+          <Popover
             open={datePickerOpen}
+            anchorEl={calendarBtnRef.current}
             onClose={() => setDatePickerOpen(false)}
-            onAccept={handleDateAccept}
-            value={null}
-            onChange={() => {}}
-            maxDate={new Date()}
+            transitionDuration={0}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            transformOrigin={{ vertical: "top", horizontal: "left" }}
             slotProps={{
-              textField: {
-                sx: {
-                  // Keep in DOM but invisible so the Popper can anchor to it.
-                  position: "absolute",
-                  width: 0,
-                  height: 0,
-                  opacity: 0,
-                  overflow: "hidden",
-                  pointerEvents: "none",
-                  right: 8,
-                  top: 8,
-                },
-              },
-              desktopPaper: {
+              paper: {
                 sx: {
                   borderRadius: "16px",
                   backgroundColor: "var(--color-surface-elevated)",
-                  border: "1px solid var(--color-border-light)",
+                  border: `1px solid ${alpha(theme.palette.text.primary, 0.08)}`,
                   boxShadow: "var(--shadow-picker)",
                   overflow: "hidden",
-                  "& .MuiPickersLayout-root": {
-                    backgroundColor: "var(--color-surface-elevated)",
+                  p: 0,
+                  "& .MuiDateCalendar-root": {
+                    width: 320,
+                    height: 320,
+                    backgroundColor: "transparent",
+                    color: "var(--color-title)",
+                  },
+                  "& .MuiDayCalendar-weekDayLabel": {
+                    color: "var(--color-text-secondary)",
+                  },
+                  "& .MuiPickerDay-today": {
+                    borderColor: theme.palette.primary.main,
+                  },
+                  "& .MuiPickerDay-root:not(.Mui-selected):not(.Mui-disabled):hover": {
+                    backgroundColor: alpha(theme.palette.primary.main, 0.15),
+                  },
+                  "& .Mui-selected": {
+                    backgroundColor: `${theme.palette.primary.main} !important`,
+                    color: "#fff !important",
+                  },
+                  "& .MuiPickersCalendarHeader-label": {
+                    color: "var(--color-title)",
+                  },
+                  "& .MuiPickersArrowSwitcher-button": {
+                    color: "var(--color-text-secondary)",
                   },
                 },
               },
-              mobilePaper: {
-                sx: {
-                  borderRadius: "16px",
-                  backgroundColor: "var(--color-surface-elevated)",
-                  border: "1px solid var(--color-border-light)",
-                  boxShadow: "var(--shadow-picker)",
-                  overflow: "hidden",
-                },
-              },
             }}
-          />
+          >
+            <DateCalendar
+              value={null}
+              onChange={(newValue) => {
+                if (newValue) {
+                  const apiDate = toApiDate(newValue);
+                  if (apiDate && onSearchByDate) {
+                    onSearchByDate(apiDate);
+                  }
+                  setDatePickerOpen(false);
+                }
+              }}
+              maxDate={new Date()}
+              openTo="day"
+              sx={{ backgroundColor: "transparent" }}
+            />
+          </Popover>
         )}
       </div>
 

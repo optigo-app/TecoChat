@@ -110,6 +110,22 @@ export function useSocketHandlers({
           extra,
         });
 
+        // Notify the conversation list via window event so the last-message
+        // tick (sent → delivered → read) updates in realtime, even if the
+        // socket-path update in useConversationList misses this receipt.
+        if (conversationId) {
+          window.dispatchEvent(
+            new CustomEvent("UPDATE_CONVERSATION_ITEM", {
+              detail: {
+                ConversationId: conversationId,
+                MessageId: messageId,
+                MessageStatus: newStatus,
+                isStatusChange: true,
+              },
+            })
+          );
+        }
+
         // (status transitions). Status: 1=sent, 2=delivered, 3=read, 4=failed
         if (messageId) {
           const msgKey = String(messageId);

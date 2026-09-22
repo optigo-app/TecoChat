@@ -14,9 +14,7 @@ interface PdfThumbnailProps {
 }
 
 const THUMB_WIDTH = 250;
-// Fixed preview height — canvas fills the area with object-fit: cover
-// (crops overflow). Keeps every PDF card the same height regardless of
-// page aspect ratio, like WhatsApp's document preview thumbnails.
+const THUMB_WIDTH_CSS = "min(250px, 78vw)";
 const THUMB_PREVIEW_HEIGHT = 180;
 
 const formatSize = (bytes?: number) => {
@@ -32,23 +30,17 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [pageCount, setPageCount] = useState<number | null>(null);
-  // Use a render lock to prevent concurrent renders on the same canvas
-  // (React Strict Mode double-invokes effects in dev)
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
   const pdfRef = useRef<{ destroy: () => void } | null>(null);
   const cancelledRef = useRef(false);
   const renderIdRef = useRef(0); // increments on each render attempt
 
-  // Fast offline detection — if the browser is offline and the src is a
-  // remote URL (not blob:/data:), skip the fetch entirely and show the
-  // fallback icon instantly instead of hanging on a loading skeleton.
   const isRemoteUrl = src && !src.startsWith("blob:") && !src.startsWith("data:");
   const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
   const skipRender = isOffline && isRemoteUrl;
 
   const renderThumbnail = useCallback(async () => {
     if (!src || !canvasRef.current) return;
-    // Skip render entirely when offline with a remote URL — fallback icon shows
     if (typeof navigator !== "undefined" && navigator.onLine === false &&
         !src.startsWith("blob:") && !src.startsWith("data:")) {
       setError(true);
@@ -57,7 +49,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
     }
     const myRenderId = ++renderIdRef.current;
 
-    // Cancel any previous render
     if (renderTaskRef.current) {
       renderTaskRef.current.cancel();
       renderTaskRef.current = null;
@@ -86,24 +77,18 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
         return;
       }
 
-      // Render to an OFFSCREEN canvas first, then copy to the visible canvas.
-      // This completely avoids "Cannot use the same canvas during multiple
-      // render() operations" because PDF.js never touches the visible canvas
-      // directly — each render gets its own fresh offscreen canvas.
       const offscreen = document.createElement("canvas");
       const task = renderPageToCanvas(page, offscreen, THUMB_WIDTH);
       renderTaskRef.current = task;
       await task.promise;
       renderTaskRef.current = null;
 
-      // A newer render superseded us — don't copy to visible canvas
       if (cancelledRef.current || myRenderId !== renderIdRef.current) {
         page.cleanup();
         pdf.destroy();
         return;
       }
 
-      // Copy the offscreen render to the visible canvas
       const visible = canvasRef.current;
       if (visible) {
         const ctx = visible.getContext("2d");
@@ -114,14 +99,13 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
         }
       }
 
-      // Clean up the PDF document after rendering
       if (pdfRef.current) {
         pdfRef.current.destroy();
         pdfRef.current = null;
       }
     } catch (err: any) {
       if (err?.name === "RenderingCancelledException" || cancelledRef.current || myRenderId !== renderIdRef.current) {
-        return; // Silent — just a cancelled/superseded render
+        return;
       }
       console.error("PdfThumbnail render error:", err);
       setError(true);
@@ -135,7 +119,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
   useEffect(() => {
     renderThumbnail();
     return () => {
-      // Cleanup on unmount or re-render: cancel ongoing render + destroy PDF
       cancelledRef.current = true;
       if (renderTaskRef.current) {
         renderTaskRef.current.cancel();
@@ -148,8 +131,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
     };
   }, [renderThumbnail]);
 
-  // Listen for online/offline transitions — re-render when connectivity
-  // changes so a previously-skipped thumbnail can retry when back online.
   useEffect(() => {
     const handleOnline = () => {
       if (isRemoteUrl) {
@@ -175,7 +156,7 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
   return (
     <Box
       sx={{
-        width: THUMB_WIDTH,
+        width: THUMB_WIDTH_CSS,
         borderRadius: "12px",
         overflow: "hidden",
         backgroundColor: alpha(theme.palette.text.primary, 0.05),
@@ -186,7 +167,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
         onClick?.();
       }}
     >
-      {/* ── Thumbnail / first-page preview (fixed height) ──────────────── */}
       <Box
         sx={{
           position: "relative",
@@ -238,7 +218,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
           />
         )}
 
-        {/* Hover overlay with eye icon (WhatsApp-style "tap to open") */}
         {!loading && !error && !skipRender && (
           <Box
             className="pdf-thumb-overlay"
@@ -275,7 +254,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
           </Box>
         )}
 
-        {/* Page count badge (top-right) */}
         {!loading && !error && !skipRender && pageCount != null && (
           <Box
             sx={{
@@ -296,7 +274,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
         )}
       </Box>
 
-      {/* ── File info bar (WhatsApp-style) ─────────────────────────────── */}
       <Box
         sx={{
           display: "flex",
@@ -309,7 +286,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
               : alpha(theme.palette.background.default, 0.5),
         }}
       >
-        {/* PDF icon */}
         <Box
           sx={{
             width: 28,
@@ -326,7 +302,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
           <FileText size={18} />
         </Box>
 
-        {/* Filename + size */}
         <Box sx={{ minWidth: 0, flex: "1 1 auto" }}>
           <Typography
             variant="body2"
@@ -356,7 +331,6 @@ const PdfThumbnailComponent = ({ src, fileName, fileSize, onClick }: PdfThumbnai
           </Typography>
         </Box>
 
-        {/* Download button */}
         <IconButton
           size="small"
           onClick={(e) => {

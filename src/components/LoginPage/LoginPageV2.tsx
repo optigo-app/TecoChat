@@ -343,7 +343,7 @@ const LoginPageV2 = () => {
                         onChange={handleChange}
                         onBlur={handleCompanyCodeBlur}
                         onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== "Tab") return;
+                          if (e.key !== "Enter") return;
                           e.preventDefault();
                           handleCompanySubmit(e);
                         }}
@@ -407,7 +407,7 @@ const LoginPageV2 = () => {
                         value={credentials.userId}
                         onChange={handleChange}
                         onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== "Tab") return;
+                          if (e.key !== "Enter") return;
                           e.preventDefault();
                           const userId = credentials.userId.trim();
                           if (!userId) {
@@ -449,7 +449,7 @@ const LoginPageV2 = () => {
                         value={credentials.password}
                         onChange={handleChange}
                         onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== "Tab") return;
+                          if (e.key !== "Enter") return;
                           e.preventDefault();
                           handleSignInSubmit(e);
                         }}

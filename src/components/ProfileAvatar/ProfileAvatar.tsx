@@ -26,7 +26,7 @@ import { eraseCookie } from "@/src/utils/cookieUtils";
 import { disconnectSocket } from "@/src/socket";
 import ConfirmationDialog from "@/src/components/ReusableComponent/ConfirmationDialog";
 import { CONFIRM_CONFIG } from "@/src/hooks/confirmConfig";
-import { useIsMobile, useIsTablet } from "@/src/hooks/useIsMobile";
+import { useIsMobile } from "@/src/hooks/useIsMobile";
 import { deleteDb } from "@/src/db/tecoDb";
 import "./ProfileAvatar.scss";
 
@@ -51,7 +51,6 @@ export const ProfileAvatar = ({ collapsed = false, headerVariant = false }: Prof
   const open = Boolean(anchorEl);
   const router = useRouter();
   const isMobile = useIsMobile();
-  const isTablet = useIsTablet();
   const { auth, setAuth, setToken } = useLoginContext();
   const { mode, setMode } = useColorMode();
 
@@ -91,7 +90,7 @@ export const ProfileAvatar = ({ collapsed = false, headerVariant = false }: Prof
     // On mobile + tablet (headerVariant), open the full-screen ProfilePanel
     // (WhatsApp-like) instead of the dropdown. The panel is rendered by
     // CustomerLists which listens for the OPEN_PROFILE_PANEL event.
-    if (headerVariant && isTablet) {
+    if (headerVariant && isMobile) {
       window.dispatchEvent(new CustomEvent("OPEN_PROFILE_PANEL"));
       return;
     }

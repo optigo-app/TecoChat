@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect, memo } from "react";
-import { Box, Typography, Menu, MenuItem, ListItemIcon, ListItemText, Divider, IconButton, useTheme, Popover, Avatar, alpha, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
-import { MessageSquare, MoreVertical, BellOff, Bell, X, Info, CheckSquare, Star, CircleMinus, LogOut, Trash2, Calendar } from "lucide-react";
-import { DatePicker, MobileDatePicker } from "@mui/x-date-pickers";
+import { Box, Typography, IconButton } from "@mui/material";
+import { MessageSquare } from "lucide-react";
 import dynamic from "next/dynamic";
 import { MessageContextMenu } from "./messages/interactions";
 import { useLoginContext, type AuthData } from "../../contexts/LoginData";
@@ -12,17 +11,22 @@ import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { useConversation } from "../../hooks/useConversation";
 import { useColorMode } from "../../theme/ThemeRegistry";
 import { useFavorite } from "../../contexts/FavoriteContext";
-import { MentionListContent, type MentionMember } from "./input/MentionDropdown";
 import { useRemoveInGroup } from "../../contexts/RemoveInGroupContext";
 import { useGroupAdminMode } from "../../contexts/GroupAdminModeContext";
 import { useConfirmModal } from "../../hooks/useConfirmModal";
 import { useDrawerState } from "../../hooks/Conversaction/useDrawerState";
 import { useGroupSocketListeners } from "../../hooks/Conversaction/useGroupSocketListeners";
+import { useMuteConversation } from "../../hooks/Conversaction/useMuteConversation";
+import { useToggleFavorite } from "../../hooks/Conversaction/useToggleFavorite";
 import { useGroupSocket } from "../../contexts/GroupSocketContext";
 import { useBreakpointDown, useIsMobile } from "../../hooks/useIsMobile";
-import { updateConversationApi } from "../../API/SendMessage/updateConversationApi";
 import { showToast } from "../../utils/toastHelper";
 import { ChatHeader } from "./ChatHeader";
+import { HeaderMenu } from "./HeaderMenu";
+import { ChatAreaMenu } from "./ChatAreaMenu";
+import { JumpToDatePicker } from "./JumpToDatePicker";
+import { ReplaceAddMediaDialog } from "./ReplaceAddMediaDialog";
+import { AllMentionsPopover } from "./AllMentionsPopover";
 import MessageList, { type MessageListRef } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 const MediaViewer = dynamic(() => import("./messages/viewer/MediaViewer"), { ssr: false });
@@ -31,7 +35,6 @@ const TxtViewerDialog = dynamic(() => import("./messages/viewer/TxtViewerDialog"
 import MediaPreview from "./messages/MediaPreview";
 import EditMessageDialog from "./EditMessageDialog";
 import MuteNotificationDialog from "./MuteNotificationDialog";
-import { muteConversationApi, computeMuteExpiry, type MuteDuration } from "../../API/ConversationMute/MuteConversationApi";
 import { isConversationMuted } from "../../utils/mentionUtils";
 import ForwardMessage from "../ForwardMessage/ForwardMessage";
 import ConfirmationDialog from "../ReusableComponent/ConfirmationDialog";
@@ -57,19 +60,15 @@ export const ChatPanel = memo(({
   onDetailsPanelOpenChange = null,
   onBack,
 }: ChatPanelProps) => {
-  const theme = useTheme();
   const { resolvedMode } = useColorMode();
-  const isDark = theme.palette.mode === "dark";
   const { auth } = useLoginContext();
   const messageListRef = useRef<MessageListRef>(null);
   const containerRef = useRef<HTMLElement | null>(null);
-  // Ref to avoid stale closure in async guards after conversation switch
   const selectedCustomerRef = useRef(selectedCustomer);
   useEffect(() => {
     selectedCustomerRef.current = selectedCustomer;
   }, [selectedCustomer]);
 
-  // ── Details panel state (drawer/panel for contact/group info + search) ────
   const {
     drawerOpen,
     setDrawerOpen,
@@ -83,7 +82,6 @@ export const ChatPanel = memo(({
     closeDrawer,
   } = useDrawerState(selectedCustomer?.ConversationId ?? undefined);
 
-  // Notify parent when drawer opens/closes (so AppLayout can auto-collapse sidebar)
   useEffect(() => {
     onDetailsPanelOpenChange?.(drawerOpen);
   }, [drawerOpen, onDetailsPanelOpenChange]);
@@ -111,9 +109,6 @@ export const ChatPanel = memo(({
   const isOnline = useOnlineStatus();
   const isOffline = !isOnline || socketStatus === "disconnected" || socketStatus === "error";
 
-  // The scroll-to-bottom button is position:absolute inside .messages-area,
-  // which already shrinks when the detail panel docks. So the right offset
-  // is just the padding from the right edge — no need to add panel width.
   const scrollToBottomRightOffset = 30;
 
   // Edit dialog state
@@ -234,12 +229,21 @@ export const ChatPanel = memo(({
       : selectedCustomer?.RemoveInGroup === 1;
 
   // ── Mute notification state ──────────────────────────────────────────────
-  const [muteDialogOpen, setMuteDialogOpen] = useState(false);
-  const [muteLoading, setMuteLoading] = useState(false);
   const isCurrentlyMuted = isConversationMuted(
     (selectedCustomer as any)?.IsMuted,
     (selectedCustomer as any)?.MuteExpiresAt
   );
+  const {
+    muteDialogOpen,
+    setMuteDialogOpen,
+    muteLoading,
+    handleMuteConversation,
+    handleUnmuteConversation,
+  } = useMuteConversation({
+    selectedCustomer,
+    auth: auth as any,
+    onCustomerSelect: onCustomerSelect as any,
+  });
 
   const contextAdminMode = isGroupOnlyAdminSend(selectedCustomer?.ConversationId ?? "");
   const isOnlyAdminSend =
@@ -353,47 +357,13 @@ export const ChatPanel = memo(({
     }
   }, [selectedCustomer?.ConversationId, selectedCustomer?.IsGroup, auth]);
 
-  const handleToggleFavorite = useCallback(async () => {
-    if (!selectedCustomer?.ConversationId) return;
-    const newIsStar = isFavorite ? 0 : 1;
-    updateFavoriteStatus(selectedCustomer.ConversationId, newIsStar);
-
-    try {
-      const response = await updateConversationApi(auth, {
-        conversationId: selectedCustomer.ConversationId,
-        isPin: (selectedCustomer as any).IsPin || 0,
-        isStar: newIsStar,
-        isArchived: (selectedCustomer as any).IsArchived || 0,
-      });
-
-      const rd = response?.Data?.rd?.[0] ?? response?.rd?.[0];
-      const stat = rd?.stat;
-      if (stat === 1 || response?.Status === "200" || response?.success === true) {
-        showToast(newIsStar ? "Added to favorites" : "Removed from favorites", "success");
-        if (refresh) refresh();
-
-        // Real-time sync: notify the conversation list so its star icon
-        // updates immediately. CustomerLists/useConversationList listens for
-        // UPDATE_CONVERSATION_ITEM and merges IsStar into its local state.
-        // Without this, the list only updates on next full reload.
-        window.dispatchEvent(
-          new CustomEvent("UPDATE_CONVERSATION_ITEM", {
-            detail: {
-              ConversationId: selectedCustomer.ConversationId,
-              IsStar: newIsStar,
-              isStatusChange: true,
-            },
-          })
-        );
-      } else {
-        updateFavoriteStatus(selectedCustomer.ConversationId, isFavorite ? 1 : 0);
-        showToast("Failed to update favorite status", "error");
-      }
-    } catch {
-      updateFavoriteStatus(selectedCustomer.ConversationId, isFavorite ? 1 : 0);
-      showToast("Error updating favorite status", "error");
-    }
-  }, [selectedCustomer, auth, isFavorite, updateFavoriteStatus, refresh]);
+  const handleToggleFavorite = useToggleFavorite({
+    selectedCustomer,
+    auth: auth as any,
+    isFavorite: !!isFavorite,
+    updateFavoriteStatus,
+    refresh,
+  });
 
   // ── Confirm modal (clear chat, exit group, delete chat) ───────────────────
   const {
@@ -462,93 +432,6 @@ export const ChatPanel = memo(({
     [onCustomerSelect, handleToggleFavorite, checkAdminStatusAndShowConfirmation, openConfirmModal, isCurrentlyMuted]
   );
 
-  // ── Mute / unmute conversation ──────────────────────────────────────────
-  const handleMuteConversation = useCallback(
-    async (duration: MuteDuration) => {
-      if (!selectedCustomer?.ConversationId || !auth) return;
-      setMuteLoading(true);
-      try {
-        const expiresAt = computeMuteExpiry(duration);
-        const result = await muteConversationApi(auth, {
-          conversationId: selectedCustomer.ConversationId,
-          isMuted: 1,
-          muteExpiresAt: expiresAt,
-        });
-        if (result?.stat == 1) {
-          // Update local conversation state so UI reflects mute immediately
-          window.dispatchEvent(
-            new CustomEvent("UPDATE_CONVERSATION_MUTE", {
-              detail: {
-                conversationId: selectedCustomer.ConversationId,
-                isMuted: 1,
-                muteExpiresAt: result.MuteExpiresAt ?? expiresAt,
-              },
-            })
-          );
-          // Also update selectedCustomer via onCustomerSelect so header updates
-          if (onCustomerSelect) {
-            onCustomerSelect({
-              ...selectedCustomer,
-              IsMuted: 1,
-              MuteExpiresAt: result.MuteExpiresAt ?? expiresAt,
-            } as any);
-          }
-          showToast("Notifications muted", "success");
-        } else {
-          showToast(result?.stat_msg || "Failed to mute notifications", "error");
-        }
-      } catch (err) {
-        console.error("handleMuteConversation error:", err);
-        showToast("Error muting notifications", "error");
-      } finally {
-        setMuteLoading(false);
-        setMuteDialogOpen(false);
-      }
-    },
-    [selectedCustomer, auth, onCustomerSelect]
-  );
-
-  const handleUnmuteConversation = useCallback(
-    async () => {
-      if (!selectedCustomer?.ConversationId || !auth) return;
-      setMuteLoading(true);
-      try {
-        const result = await muteConversationApi(auth, {
-          conversationId: selectedCustomer.ConversationId,
-          isMuted: 0,
-          muteExpiresAt: null,
-        });
-        if (result?.stat == 1) {
-          window.dispatchEvent(
-            new CustomEvent("UPDATE_CONVERSATION_MUTE", {
-              detail: {
-                conversationId: selectedCustomer.ConversationId,
-                isMuted: 0,
-                muteExpiresAt: null,
-              },
-            })
-          );
-          if (onCustomerSelect) {
-            onCustomerSelect({
-              ...selectedCustomer,
-              IsMuted: 0,
-              MuteExpiresAt: null,
-            } as any);
-          }
-          showToast("Notifications unmuted", "success");
-        } else {
-          showToast(result?.stat_msg || "Failed to unmute notifications", "error");
-        }
-      } catch (err) {
-        console.error("handleUnmuteConversation error:", err);
-        showToast("Error unmuting notifications", "error");
-      } finally {
-        setMuteLoading(false);
-      }
-    },
-    [selectedCustomer, auth, onCustomerSelect]
-  );
-
   // ── Header menu ──────────────────────────────────────────────────────────
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; msg: ChatMessage } | null>(null);
@@ -570,19 +453,25 @@ export const ChatPanel = memo(({
     }
   }, [drawerOpen, drawerViewState, openSearch, closeDrawer]);
 
+  // ── No-results date search — inline pill in the message area ────────────
+  const [noResultsDate, setNoResultsDate] = useState<string | null>(null);
+
   const handleSearchByDateFromPanel = useCallback(
     async (date: string) => {
-      // Prevent MessageList from auto-scrolling to bottom when MSG.LOAD replaces rows.
       messageListRef.current?.setSkipNextAutoScroll();
-      await searchByDate?.(date);
+      const found = await searchByDate?.(date);
       closeDrawer();
-      // Jump-to-date: show the latest message from that date at the top
-      // (like WhatsApp). Wait for the new messages to render before scrolling.
-      requestAnimationFrame(() => {
+      if (found) {
         requestAnimationFrame(() => {
-          messageListRef.current?.scrollToTop();
+          requestAnimationFrame(() => {
+            messageListRef.current?.scrollToTop();
+          });
         });
-      });
+      } else {
+        setNoResultsDate(date);
+        // Auto-hide after 4 seconds
+        setTimeout(() => setNoResultsDate(null), 4000);
+      }
     },
     [searchByDate, closeDrawer]
   );
@@ -591,20 +480,25 @@ export const ChatPanel = memo(({
   const handleSearchByDate = useCallback(
     async (date: string) => {
       messageListRef.current?.setSkipNextAutoScroll();
-      await searchByDate?.(date);
-      requestAnimationFrame(() => {
+      const found = await searchByDate?.(date);
+      if (found) {
         requestAnimationFrame(() => {
-          messageListRef.current?.scrollToTop();
+          requestAnimationFrame(() => {
+            messageListRef.current?.scrollToTop();
+          });
         });
-      });
+      } else {
+        setNoResultsDate(date);
+        setTimeout(() => setNoResultsDate(null), 4000);
+      }
     },
     [searchByDate]
   );
 
-  // ── Jump-to-date picker (lifted from ChatHeader so it can also be opened
-  //    from the mobile More menu). Anchored to a hidden element in the header.
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const datePickerAnchorRef = useRef<HTMLElement | null>(null);
+  // Anchor ref for the header calendar button — the DatePicker popup opens
+  // relative to this element so it appears near the header, not at the bottom.
+  const datePickerButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const toApiDate = (date: Date | null): string => {
     if (!date) return "";
@@ -768,6 +662,7 @@ export const ChatPanel = memo(({
         onSearchByDate={handleSearchByDate}
         onOpenDatePicker={openDatePicker}
         isOffline={isOffline}
+        datePickerButtonRef={datePickerButtonRef}
       />
 
       <MessageList
@@ -816,6 +711,7 @@ export const ChatPanel = memo(({
         scrollToMessageProp={scrollToMessage}
         isMediaPreviewOpen={mediaFiles.length > 0}
         scrollToBottomRightOffset={scrollToBottomRightOffset}
+        noResultsDate={noResultsDate}
       />
 
       <ChatInput
@@ -879,206 +775,28 @@ export const ChatPanel = memo(({
       />
 
       {/* Header more-options menu */}
-      <Menu
+      <HeaderMenu
         anchorEl={menuAnchor}
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
-        transitionDuration={0}
-        slotProps={{
-          paper: {
-            sx: {
-              borderRadius: "16px",
-              minWidth: "200px",
-              // Glassmorphic surface
-              bgcolor: (t: { palette: { mode: string } }) =>
-                t.palette.mode === "dark"
-                  ? "rgba(35, 35, 51, 0.82)"
-                  : "rgba(255, 255, 255, 0.82)",
-              backdropFilter: "blur(20px) saturate(180%)",
-              WebkitBackdropFilter: "blur(20px) saturate(180%)",
-              boxShadow: (t: { palette: { mode: string } }) =>
-                t.palette.mode === "dark"
-                  ? "0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)"
-                  : "0 12px 40px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4)",
-              border: (t: { palette: { mode: string } }) =>
-                t.palette.mode === "dark"
-                  ? "1px solid rgba(255,255,255,0.08)"
-                  : "1px solid rgba(255,255,255,0.5)",
-              mt: 1.5,
-              overflow: "hidden",
-              "& .MuiMenuItem-root": {
-                px: 1.5,
-                py: 1.25,
-                mx: 1,
-                borderRadius: "10px",
-                transition: "all 0.2s ease",
-                gap: "12px",
-                minHeight: "44px",
-                "&:hover": {
-                  bgcolor: "primary.main",
-                  color: "#fff",
-                  "& .MuiListItemIcon-root": { color: "#fff" },
-                },
-              },
-              "& .MuiListItemIcon-root": {
-                color: "text.secondary",
-                transition: "all 0.2s ease",
-                minWidth: "auto !important",
-              },
-              "& .MuiTypography-root": {
-                fontWeight: 500,
-                fontSize: "0.875rem",
-              },
-            },
-          },
-        }}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-      >
-        {/* Mobile-only actions relocated from the header to keep it compact */}
-        {isMobile && (
-          <MenuItem onClick={openDatePicker}>
-            <ListItemIcon><Calendar size={18} /></ListItemIcon>
-            <ListItemText primary="Jump to date" />
-          </MenuItem>
-        )}
-        {isMobile && handleToggleStarFilter && (
-          <MenuItem onClick={() => { setMenuAnchor(null); handleToggleStarFilter(); }}>
-            <ListItemIcon>
-              <Star
-                size={18}
-                fill={starFilter ? "#FFD700" : "none"}
-                color={starFilter ? "#FFD700" : "currentColor"}
-              />
-            </ListItemIcon>
-            <ListItemText primary={starFilter ? "Show all messages" : "Show starred only"} />
-          </MenuItem>
-        )}
-        {isMobile && <Divider sx={{ my: 0.5 }} />}
-        <MenuItem onClick={() => handleMenuAction("groupInfo")}>
-          <ListItemIcon><Info size={18} /></ListItemIcon>
-          <ListItemText primary={isGroup ? "Group Info" : "Contact Info"} />
-        </MenuItem>
-        <MenuItem onClick={() => handleMenuAction("selectMessages")}>
-          <ListItemIcon><CheckSquare size={18} /></ListItemIcon>
-          <ListItemText primary="Select messages" />
-        </MenuItem>
-        <MenuItem onClick={() => handleMenuAction("mute")}>
-          <ListItemIcon>{isCurrentlyMuted ? <Bell size={18} /> : <BellOff size={18} />}</ListItemIcon>
-          <ListItemText primary={isCurrentlyMuted ? "Unmute notification" : "Mute notification"} />
-        </MenuItem>
-        <MenuItem onClick={() => handleMenuAction("favourite")}>
-          <ListItemIcon>
-            <Star
-              size={18}
-              fill={isFavorite ? "#FFD700" : "none"}
-              color={isFavorite ? "#FFD700" : "currentColor"}
-            />
-          </ListItemIcon>
-          <ListItemText primary={isFavorite ? "Remove from favourite" : "Add to favourite"} />
-        </MenuItem>
-        <MenuItem onClick={() => handleMenuAction("close")}>
-          <ListItemIcon><X size={18} /></ListItemIcon>
-          <ListItemText primary="Close chat" />
-        </MenuItem>
-        <Divider sx={{ my: 0.5 }} />
-        <MenuItem onClick={() => handleMenuAction("clearChat")}>
-          <ListItemIcon><CircleMinus size={18} /></ListItemIcon>
-          <ListItemText primary="Clear chat" />
-        </MenuItem>
-        {isGroup ? (
-          isRemovedFromCurrentGroup ? (
-            <MenuItem onClick={() => handleMenuAction("deleteGroup")} sx={{ color: "error.main" }}>
-              <ListItemIcon sx={{ color: "error.main" }}><Trash2 size={18} /></ListItemIcon>
-              <ListItemText primary="Delete group" />
-            </MenuItem>
-          ) : (
-            <MenuItem onClick={() => handleMenuAction("exitGroup")} sx={{ color: "error.main" }}>
-              <ListItemIcon sx={{ color: "error.main" }}><LogOut size={18} /></ListItemIcon>
-              <ListItemText primary="Exit group" />
-            </MenuItem>
-          )
-        ) : (
-          <MenuItem onClick={() => handleMenuAction("deleteChat")} sx={{ color: "error.main" }}>
-            <ListItemIcon sx={{ color: "error.main" }}><Trash2 size={18} /></ListItemIcon>
-            <ListItemText primary="Delete chat" />
-          </MenuItem>
-        )}
-      </Menu>
-
-      {/* Jump-to-date picker (opened from the header calendar button on desktop
-          or from the More menu on mobile). On mobile we use MobileDatePicker so
-          the calendar renders as a bottom-sheet dialog (native-app feel) instead
-          of a desktop Popper. */}
-      <Box
-        ref={datePickerAnchorRef}
-        aria-hidden
-        sx={{ position: "absolute", top: 64, right: 24, width: 0, height: 0, pointerEvents: "none" }}
+        isMobile={isMobile}
+        isGroup={isGroup}
+        isFavorite={!!isFavorite}
+        isCurrentlyMuted={isCurrentlyMuted}
+        isRemovedFromCurrentGroup={isRemovedFromCurrentGroup}
+        starFilter={starFilter}
+        onMenuAction={handleMenuAction}
+        onOpenDatePicker={openDatePicker}
+        onToggleStarFilter={handleToggleStarFilter}
       />
-      {isMobile ? (
-        <MobileDatePicker
-          open={datePickerOpen}
-          onClose={() => setDatePickerOpen(false)}
-          onAccept={handleDateAccept}
-          value={null}
-          onChange={() => {}}
-          maxDate={new Date()}
-          closeOnSelect={false}
-          slotProps={{
-            textField: { sx: { display: "none" } },
-            mobilePaper: {
-              sx: {
-                // Bottom-sheet: top corners rounded, bottom square. The
-                // matching .MuiDialog-paper radius is enforced in globals.css
-                // via :has(.MuiPickersLayout-root) so both layers agree and
-                // no square-edge glitch shows at the bottom.
-                borderRadius: "16px 16px 0 0",
-                backgroundColor: "var(--color-surface-elevated)",
-                pb: "var(--safe-bottom)",
-                overflow: "hidden",
-              },
-            },
-            dialog: {
-              sx: {
-                "& .MuiDialog-paper": {
-                  borderRadius: "16px 16px 0 0 !important",
-                  overflow: "hidden",
-                },
-              },
-            },
-          }}
-        />
-      ) : (
-        <DatePicker
-          open={datePickerOpen}
-          onClose={() => setDatePickerOpen(false)}
-          onAccept={handleDateAccept}
-          value={null}
-          onChange={() => {}}
-          maxDate={new Date()}
-          slotProps={{
-            textField: {
-              sx: {
-                position: "absolute",
-                width: 0,
-                height: 0,
-                opacity: 0,
-                overflow: "hidden",
-                pointerEvents: "none",
-              },
-            },
-            desktopPaper: {
-              sx: {
-                borderRadius: "16px",
-                backgroundColor: "var(--color-surface-elevated)",
-                border: "1px solid var(--color-border-light)",
-                boxShadow: "var(--shadow-picker)",
-                overflow: "hidden",
-              },
-            },
-          }}
-        />
-      )}
+
+      <JumpToDatePicker
+        open={datePickerOpen}
+        onClose={() => setDatePickerOpen(false)}
+        onAccept={handleDateAccept}
+        isMobile={isMobile}
+        anchorEl={datePickerButtonRef.current}
+      />
 
       {/* Message context menu */}
       <MessageContextMenu
@@ -1132,69 +850,12 @@ export const ChatPanel = memo(({
       />
 
       {/* Chat area right-click menu */}
-      <Menu
+      <ChatAreaMenu
         open={Boolean(chatAreaMenu)}
+        position={chatAreaMenu}
         onClose={handleChatAreaMenuClose}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          chatAreaMenu
-            ? { top: chatAreaMenu.mouseY, left: chatAreaMenu.mouseX }
-            : undefined
-        }
-        transitionDuration={0}
-        slotProps={{
-          paper: {
-            sx: {
-              borderRadius: "16px",
-              minWidth: "180px",
-              bgcolor: (t: { palette: { mode: string } }) =>
-                t.palette.mode === "dark"
-                  ? "rgba(35, 35, 51, 0.82)"
-                  : "rgba(255, 255, 255, 0.82)",
-              backdropFilter: "blur(20px) saturate(180%)",
-              WebkitBackdropFilter: "blur(20px) saturate(180%)",
-              boxShadow: (t: { palette: { mode: string } }) =>
-                t.palette.mode === "dark"
-                  ? "0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)"
-                  : "0 12px 40px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4)",
-              border: (t: { palette: { mode: string } }) =>
-                t.palette.mode === "dark"
-                  ? "1px solid rgba(255,255,255,0.08)"
-                  : "1px solid rgba(255,255,255,0.5)",
-              mt: 1.5,
-              overflow: "hidden",
-              "& .MuiMenuItem-root": {
-                px: 1.5,
-                py: 1.25,
-                mx: 1,
-                borderRadius: "10px",
-                transition: "all 0.2s ease",
-                gap: "12px",
-                minHeight: "44px",
-                "&:hover": {
-                  bgcolor: "primary.main",
-                  color: "#fff",
-                  "& .MuiListItemIcon-root": { color: "#fff" },
-                },
-              },
-              "& .MuiListItemIcon-root": {
-                color: "text.secondary",
-                transition: "all 0.2s ease",
-                minWidth: "auto !important",
-              },
-              "& .MuiTypography-root": {
-                fontWeight: 500,
-                fontSize: "0.875rem",
-              },
-            },
-          },
-        }}
-      >
-        <MenuItem onClick={handleChatAreaClose}>
-          <ListItemIcon><X size={18} /></ListItemIcon>
-          <ListItemText primary="Close chat" />
-        </MenuItem>
-      </Menu>
+        onCloseChat={handleChatAreaClose}
+      />
 
       {/* Media Viewer (fullscreen lightbox) */}
       <MediaViewer
@@ -1256,112 +917,14 @@ export const ChatPanel = memo(({
       />
 
       {/* Replace or Add Media Dialog */}
-      <Dialog
+      <ReplaceAddMediaDialog
         open={replaceAddDialog.open}
+        newFiles={replaceAddDialog.newFiles}
+        existingCount={replaceAddDialog.existingCount}
         onClose={() => setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 })}
-        maxWidth="xs"
-        fullWidth
-        slotProps={{
-          paper: {
-            sx: {
-              borderRadius: 3,
-              p: 1,
-              bgcolor: theme.palette.background.paper,
-              backgroundImage: "none",
-              boxShadow: isDark ? "0 20px 60px rgba(0,0,0,0.6)" : "0 20px 60px rgba(0,0,0,0.2)",
-              border: isDark ? `1px solid ${alpha(theme.palette.primary.main, 0.15)}` : "none",
-            },
-          },
-          backdrop: {
-            sx: {
-              bgcolor: isDark ? "rgba(10,10,20,0.7)" : "rgba(0,0,0,0.5)",
-            },
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.1rem", color: theme.palette.text.primary, pb: 1 }}>
-          Replace or Add Files?
-        </DialogTitle>
-        <DialogContent sx={{ pb: 1 }}>
-          <Typography variant="body2" sx={{ lineHeight: 1.6, color: theme.palette.text.secondary }}>
-            You already have <strong style={{ color: theme.palette.primary.main }}>{replaceAddDialog.existingCount}</strong> file{replaceAddDialog.existingCount !== 1 ? "s" : ""} in the preview.
-            Do you want to replace them with the new file{replaceAddDialog.newFiles?.length !== 1 ? "s" : ""}, or add to the existing ones?
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 2.5, pb: 2.5, pt: 1, gap: 1, justifyContent: "flex-end" }}>
-          <Button
-            onClick={() => setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 })}
-            variant="text"
-            sx={{
-              borderRadius: 2,
-              textTransform: "none",
-              fontWeight: 600,
-              px: 2,
-              py: 0.75,
-              color: theme.palette.text.secondary,
-              "&:hover": { bgcolor: alpha(theme.palette.text.primary, isDark ? 0.12 : 0.06) },
-              "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.primary.main, 0.5)}`, outlineOffset: 2 },
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              if (replaceAddDialog.newFiles) {
-                const fileObjects = replaceAddDialog.newFiles.map((m: any) => m.file).filter(Boolean);
-                if (fileObjects.length) processFiles(fileObjects, "replace");
-              }
-              setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 });
-            }}
-            variant="outlined"
-            sx={{
-              borderRadius: 2,
-              textTransform: "none",
-              fontWeight: 600,
-              px: 2,
-              py: 0.75,
-              borderColor: alpha(theme.palette.primary.main, isDark ? 0.6 : 0.5),
-              color: theme.palette.primary.main,
-              "&:hover": {
-                borderColor: theme.palette.primary.main,
-                bgcolor: alpha(theme.palette.primary.main, isDark ? 0.12 : 0.06),
-              },
-              "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.primary.main, 0.5)}`, outlineOffset: 2 },
-            }}
-          >
-            Replace
-          </Button>
-          <Button
-            onClick={() => {
-              if (replaceAddDialog.newFiles) {
-                const fileObjects = replaceAddDialog.newFiles.map((m: any) => m.file).filter(Boolean);
-                if (fileObjects.length) processFiles(fileObjects, "add");
-              }
-              setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 });
-            }}
-            variant="contained"
-            disableElevation
-            sx={{
-              borderRadius: 2,
-              textTransform: "none",
-              fontWeight: 700,
-              px: 2,
-              py: 0.75,
-              bgcolor: theme.palette.primary.main,
-              color: "#ffffff !important",
-              "&:hover": {
-                bgcolor: theme.palette.primary.dark,
-              },
-              "&:focus-visible": { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
-              "& .MuiButton-label": {
-                color: "#ffffff !important",
-              },
-            }}
-          >
-            Add
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onReplace={(files) => processFiles(files, "replace")}
+        onAdd={(files) => processFiles(files, "add")}
+      />
 
       {/* Forward Message Panel */}
       <ForwardMessage
@@ -1399,71 +962,11 @@ export const ChatPanel = memo(({
       />
 
       {/* @all mentions popover — shows all group members when @all is clicked */}
-      <Popover
-        open={Boolean(allMentionsAnchor)}
+      <AllMentionsPopover
         anchorEl={allMentionsAnchor}
+        groupMembers={groupMembers}
         onClose={() => setAllMentionsAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-        slotProps={{
-          paper: {
-            sx: {
-              width: 320,
-              maxHeight: 320,
-              borderRadius: "16px !important",
-              border: "none !important",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1), 0 4px 16px rgba(0,0,0,0.08) !important",
-              py: 1,
-              overflowY: "auto",
-              "&::-webkit-scrollbar": { width: 5 },
-              "&::-webkit-scrollbar-thumb": {
-                backgroundColor: alpha(theme.palette.text.primary, 0.2),
-                borderRadius: 3,
-              },
-              "&::-webkit-scrollbar-track": { background: "transparent" },
-            },
-          },
-        }}
-      >
-        <MentionListContent
-          members={groupMembers as MentionMember[]}
-          onSelect={(member) => {
-            if (member.ConversationId) {
-              // Open the member's existing chat
-              window.dispatchEvent(
-                new CustomEvent("SELECT_CONVERSATION", {
-                  detail: { conversationId: member.ConversationId },
-                })
-              );
-            } else {
-              // No existing conversation — start a new chat
-              window.dispatchEvent(
-                new CustomEvent("SELECT_NEW_CONVERSATION", {
-                  detail: {
-                    customer: {
-                      UserId: member.UserId,
-                      id: member.UserId,
-                      name: member.MemberName || member.UserName || member.DisplayName,
-                      UserName: member.MemberName || member.UserName || member.DisplayName,
-                      MemberName: member.MemberName,
-                      ProfileImageUrl: member.ProfileImage,
-                      IsGroup: 0,
-                    },
-                  },
-                })
-              );
-            }
-            setAllMentionsAnchor(null);
-          }}
-        />
-      </Popover>
-
-      {/* ── Customer Details panel (contact/group info + search) ───────────────
-       * On narrow screens (<= 1024px) it renders as a drawer overlay (fixed
-       * position, slides in from the right).
-       * On wider screens it renders as a docked side panel (variant="panel")
-       * sitting next to the chat area in the horizontal flex row.
-       */}
+      />
       </Box>
       {drawerOpen && selectedCustomer && (
         <CustomerDetails
