@@ -82,6 +82,7 @@ const ReplyPreviewComponent = ({
       ? `${(original as any).FirstName || ""} ${(original as any).LastName || ""}`.trim()
       : (original as any)?.SenderInfo ||
         (original as any)?.Sender ||
+        msg.ReplyToSenderName ||
         ((msg as any).SenderInfo !== "" ? (msg as any).SenderInfo : (msg as any).Sender) ||
         "Customer";
 

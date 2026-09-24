@@ -317,11 +317,18 @@ export const normalizeServerMessages = (
 export const sortMessagesByDate = <T extends { DateTime?: string; SentAt?: string }>(
   messages: T[]
 ): T[] => {
-  return [...messages].sort((a, b) => {
-    const aTime = new Date(a.DateTime || a.SentAt || 0).getTime();
-    const bTime = new Date(b.DateTime || b.SentAt || 0).getTime();
-    return aTime - bTime;
-  });
+  // Cache Date parses per object — the comparator would otherwise call
+  // `new Date()` O(n log n) times.
+  const tsCache = new WeakMap<T, number>();
+  const tsOf = (m: T): number => {
+    let t = tsCache.get(m);
+    if (t === undefined) {
+      t = new Date(m.DateTime || m.SentAt || 0).getTime();
+      tsCache.set(m, t);
+    }
+    return t;
+  };
+  return [...messages].sort((a, b) => tsOf(a) - tsOf(b));
 };
 
 /**

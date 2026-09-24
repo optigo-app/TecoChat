@@ -170,6 +170,25 @@ export function initializeSocket(token: string): Socket | null {
 
 export const getSocket = (): Socket | null => socketInstance;
 
+export const reconnectSocket = (): void => {
+  if (typeof window === "undefined" || navigator.onLine === false) return;
+
+  if (socketInstance) {
+    if (!socketInstance.connected) socketInstance.connect();
+    return;
+  }
+
+  const savedState = sessionStorage.getItem("socketState");
+  if (!savedState) return;
+
+  try {
+    const { token } = JSON.parse(savedState) as { token?: string };
+    if (token) initializeSocket(token);
+  } catch {
+    sessionStorage.removeItem("socketState");
+  }
+};
+
 export const isSocketConnected = (): boolean => {
   const state = !!socketInstance?.connected && isAuthenticated;
   if (!state && !socketInstance) {

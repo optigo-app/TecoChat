@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useRef, useState, useLayoutEffect, useEffect, useCallback } from "react";
+import { memo, useRef, useState, useLayoutEffect, useEffect, useCallback, useMemo } from "react";
 import { Box, Typography } from "@mui/material";
 import { renderMessageText } from "../../../../utils/messageTextRenderer";
 
@@ -30,6 +30,14 @@ const ReadMoreTextComponent = ({
   const textRef = useRef<HTMLDivElement | null>(null);
   const [needsToggle, setNeedsToggle] = useState(false);
   const shouldAllowTruncate = content.length >= minChars;
+
+  // Memoize the parse — renderMessageText walks markdown/links/mentions and
+  // previously re-ran on every render (e.g. the needsToggle state update from
+  // measure(), expand toggles, hover churn).
+  const renderedText = useMemo(
+    () => renderMessageText(content, mentionUsers, highlightQuery ?? undefined),
+    [content, mentionUsers, highlightQuery]
+  );
 
   const measure = useCallback(() => {
     const el = textRef.current;
@@ -93,7 +101,7 @@ const ReadMoreTextComponent = ({
           ...sx,
         }}
       >
-        {renderMessageText(content, mentionUsers, highlightQuery ?? undefined)}
+        {renderedText}
       </Box>
       {needsToggle && (
         <Typography

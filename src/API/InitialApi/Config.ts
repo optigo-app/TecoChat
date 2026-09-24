@@ -80,7 +80,11 @@ export const getApiHeaders = (): Record<string, string> => {
   }
 
   const headers: Record<string, string> = {
-    Version: userVersion ?? "",
+    Version:
+      userVersion ??
+      (getIsLocal()
+        ? process.env.NEXT_PUBLIC_VERSION_LOCAL || "R50B3"
+        : process.env.NEXT_PUBLIC_VERSION_PROD || "R75PRO"),
     sp: process.env.NEXT_PUBLIC_SP || "80",
   };
 

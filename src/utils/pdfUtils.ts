@@ -55,10 +55,33 @@ export function resolveMediaUrl(url: string): string {
   return url;
 }
 
+// In-memory cache of fetched PDF bytes keyed by resolved URL. Without this,
+// every PdfThumbnail mount (e.g. scrolling a PDF bubble back into view) hits
+// /api/pdf-proxy again and re-downloads the whole file — causing scroll lag.
+const pdfDataCache = new Map<string, Promise<ArrayBuffer>>();
+const PDF_CACHE_LIMIT = 30;
+
 async function fetchPdfData(url: string): Promise<ArrayBuffer> {
   const resolvedUrl = resolveMediaUrl(url);
-  console.log("[pdfUtils] Loading PDF:", { original: url, resolved: resolvedUrl });
 
+  let cached = pdfDataCache.get(resolvedUrl);
+  if (!cached) {
+    cached = fetchPdfDataNetwork(resolvedUrl);
+    // Simple LRU: evict the oldest entry when the cache grows too large.
+    if (pdfDataCache.size >= PDF_CACHE_LIMIT) {
+      const oldest = pdfDataCache.keys().next().value;
+      if (oldest !== undefined) pdfDataCache.delete(oldest);
+    }
+    pdfDataCache.set(resolvedUrl, cached);
+    // Drop failures so a later attempt (e.g. back online) can retry.
+    cached.catch(() => pdfDataCache.delete(resolvedUrl));
+  }
+  // pdf.js transfers the buffer into its worker (detaching it), so hand out
+  // a copy — the cached original stays valid for the next viewer/thumbnail.
+  return (await cached).slice(0);
+}
+
+async function fetchPdfDataNetwork(resolvedUrl: string): Promise<ArrayBuffer> {
   if (resolvedUrl.startsWith("blob:") || resolvedUrl.startsWith("data:")) {
     const res = await fetch(resolvedUrl);
     if (!res.ok) throw new Error(`Failed to fetch PDF: ${res.status}`);
@@ -76,7 +99,6 @@ async function fetchPdfData(url: string): Promise<ArrayBuffer> {
     const proxyUrl = `/api/pdf-proxy?url=${encodeURIComponent(resolvedUrl)}`;
     const res = await fetch(proxyUrl);
     if (res.ok) {
-      console.log("[pdfUtils] Proxy fetch OK, size:", (await res.clone().arrayBuffer()).byteLength);
       return await res.arrayBuffer();
     }
     const errText = await res.text().catch(() => "");

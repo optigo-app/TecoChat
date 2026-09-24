@@ -1,6 +1,7 @@
 "use client";
 
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, IconButton } from "@mui/material";
+import { MessageCircle } from "lucide-react";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import ProfileSection from "./ProfileSection";
 import ActionButtons from "./ActionButtons";
@@ -129,6 +130,8 @@ interface DetailsViewsProps {
   /** Whether an existing conversation exists. When false (new-chat contact),
    *  conversation-dependent sections are hidden. */
   hasConversation?: boolean;
+  /** Start a new 1:1 chat — shown when there's no existing conversation. */
+  onStartChat?: () => void;
 }
 
 const DetailsViews = ({
@@ -198,6 +201,7 @@ const DetailsViews = ({
   containerRef,
   open,
   hasConversation = true,
+  onStartChat,
 }: DetailsViewsProps) => {
   const isMobile = useIsMobile();
   return (
@@ -238,6 +242,35 @@ const DetailsViews = ({
                   }}
                   groupPermissions={groupPermissions}
                 />
+              )}
+
+              {/* No existing conversation (e.g. opened via @mention click) —
+                  show a "Message" button to start a chat with this contact.
+                  Reuses group-block-actions card styling so it renders as a
+                  full-width action card like Add/Search. */}
+              {!hasConversation && onStartChat && (
+                <div
+                  className="action-buttons group-block-actions"
+                  style={{ marginBottom: 12 }}
+                >
+                  <div
+                    className="action-block-item"
+                    onClick={onStartChat}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onStartChat();
+                      }
+                    }}
+                  >
+                    <IconButton className="action-circle" tabIndex={-1}>
+                      <MessageCircle size={20} />
+                    </IconButton>
+                    <span className="action-label">Message</span>
+                  </div>
+                </div>
               )}
 
               {customer?.IsGroup === 1 && (

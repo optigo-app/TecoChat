@@ -144,7 +144,7 @@ const MuteNotificationDialog = ({
                   background: isSelected
                     ? "var(--color-primary-light)"
                     : "var(--color-wa-surface-3)",
-                  color: "var(--color-wa-text-primary)",
+                  color: "var(--color-wa-modal-text)",
                   fontFamily: "var(--font-family)",
                   cursor: loading ? "not-allowed" : "pointer",
                   transition: "background 0.2s ease, border-color 0.2s ease",

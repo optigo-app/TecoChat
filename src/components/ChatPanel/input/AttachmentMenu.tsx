@@ -75,7 +75,14 @@ const AttachmentMenuComponent = ({
       </MenuItem>
 
       <MenuItem
-        onClick={(e) => onFilePick(e, { accept: "*/*", type: "document" })}
+        onClick={(e) =>
+          onFilePick(e, {
+            // Documents only — no image/video/audio (those have own pickers)
+            accept:
+              ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.odt,.ods,.odp,.epub,.zip,.rar,.7z,.json,.xml,.html,.htm,.md,.log,.sql,.apk",
+            type: "document",
+          })
+        }
         sx={{ py: 1.2, px: 2.5, mx: 0.8, borderRadius: 1.5 }}
       >
         <ListItemIcon sx={{ minWidth: "38px", color: "#9929EA" }}>

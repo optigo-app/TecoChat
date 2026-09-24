@@ -22,7 +22,12 @@ import { updateConversationApi } from "../../API/SendMessage/updateConversationA
 import { clearChatApi } from "../../API/ClearChat/ClearChatApi";
 import { deleteConversationApi } from "../../API/ConversationView/DeleteConversationApi";
 import { contactInfoApi } from "../../API/SendMessage/ContactInfoApi";
-import { muteConversationApi } from "../../API/ConversationMute/MuteConversationApi";
+import {
+  muteConversationApi,
+  computeMuteExpiry,
+  type MuteDuration,
+} from "../../API/ConversationMute/MuteConversationApi";
+import MuteNotificationDialog from "../ChatPanel/MuteNotificationDialog";
 import { isConversationMuted } from "../../utils/mentionUtils";
 import { showToast } from "../../utils/toastHelper";
 import DetailsHeader from "./DetailsHeader";
@@ -217,6 +222,7 @@ const CustomerDetails = ({
   const [memberMenuAnchorEl, setMemberMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [muteLoading, setMuteLoading] = useState(false);
+  const [muteDialogOpen, setMuteDialogOpen] = useState(false);
 
   // Contexts
   const { favoriteState, updateFavoriteStatus } = useFavorite();
@@ -246,6 +252,38 @@ const CustomerDetails = ({
     window.addEventListener("CLEAR_CONVERSATION_MESSAGES", handleClear as EventListener);
     return () => {
       window.removeEventListener("CLEAR_CONVERSATION_MESSAGES", handleClear as EventListener);
+    };
+  }, [conversationId]);
+
+  // ── Local mute override ──────────────────────────────────────────────────
+  // `customer.IsMuted` is stale when the panel shows an infoMember (member
+  // info opened while a different conversation is selected) because
+  // UPDATE_CONVERSATION_MUTE only updates selectedCustomer. This override
+  // keeps the mute icon/text in sync for whatever customer is displayed.
+  const [muteOverride, setMuteOverride] = useState<{
+    isMuted: number;
+    muteExpiresAt: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    setMuteOverride(null);
+  }, [conversationId]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail) return;
+      const cid = detail.conversationId ?? detail.ConversationId;
+      if (cid == null || Number(cid) !== Number(conversationId)) return;
+      setMuteOverride({
+        isMuted: detail.isMuted ?? detail.IsMuted,
+        muteExpiresAt:
+          "muteExpiresAt" in detail ? detail.muteExpiresAt : detail.MuteExpiresAt,
+      });
+    };
+    window.addEventListener("UPDATE_CONVERSATION_MUTE", handler as EventListener);
+    return () => {
+      window.removeEventListener("UPDATE_CONVERSATION_MUTE", handler as EventListener);
     };
   }, [conversationId]);
 
@@ -937,10 +975,14 @@ const CustomerDetails = ({
             new CustomEvent("UPDATE_CONVERSATION_ITEM", {
               detail: {
                 ConversationId: conversationId,
+                isChatClear: true,
                 Message: "",
+                MessageType: "text",
+                MessageId: "",
                 lastMessageText: "",
                 lastMessageTime: "",
                 unreadCount: 0,
+                UnreadCount: 0,
                 isStatusChange: true,
               },
             })
@@ -1154,19 +1196,19 @@ const CustomerDetails = ({
 
   // ── Mute notification toggle ───────────────────────────────────────────────
   const isMuted = isConversationMuted(
-    (customer as any)?.IsMuted,
-    (customer as any)?.MuteExpiresAt
+    muteOverride?.isMuted ?? (customer as any)?.IsMuted,
+    muteOverride ? muteOverride.muteExpiresAt : (customer as any)?.MuteExpiresAt
   );
 
-  const handleToggleMute = async () => {
+  // Shared mute/unmute API call — used by the direct unmute path and by the
+  // duration-picker dialog confirm.
+  const applyMute = async (newIsMuted: 0 | 1, expiresAt: string | null) => {
     if (!conversationId || !auth) return;
     setMuteLoading(true);
     try {
-      const newIsMuted = isMuted ? 0 : 1;
-      const expiresAt = null;
       const result = await muteConversationApi(auth as AuthData, {
         conversationId: conversationId,
-        isMuted: newIsMuted as 0 | 1,
+        isMuted: newIsMuted,
         muteExpiresAt: expiresAt,
       });
       if (result?.stat == 1) {
@@ -1187,11 +1229,65 @@ const CustomerDetails = ({
         showToast(result?.stat_msg || "Failed to update mute status", "error");
       }
     } catch (error) {
-      console.error("handleToggleMute error:", error);
+      console.error("applyMute error:", error);
       showToast("Error updating mute status", "error");
     } finally {
       setMuteLoading(false);
+      setMuteDialogOpen(false);
     }
+  };
+
+  // Muting → open the duration picker dialog (same as the header menu);
+  // unmuting applies immediately, no dialog.
+  const handleToggleMute = () => {
+    if (!conversationId || !auth) return;
+    if (!isMuted) {
+      setMuteDialogOpen(true);
+      return;
+    }
+    void applyMute(0, null);
+  };
+
+  const handleMuteConfirm = (duration: MuteDuration) => {
+    void applyMute(1, computeMuteExpiry(duration));
+  };
+
+  // ── Start a 1:1 chat ───────────────────────────────────────────────────────
+  // Same flow as the member context-menu "Message {name}" action
+  // (handleMenuAction → "messageMember"): open the existing conversation when
+  // one exists, otherwise create a new-chat draft. Shown in Contact Info when
+  // it was opened for a user without a conversation (e.g. @mention click).
+  const handleStartChat = () => {
+    if (!customer) return;
+    const convId = (customer as any)?.ConversationId;
+    if (convId) {
+      window.dispatchEvent(
+        new CustomEvent("SELECT_CONVERSATION", {
+          detail: { conversationId: convId },
+        })
+      );
+    } else {
+      window.dispatchEvent(
+        new CustomEvent("SELECT_NEW_CONVERSATION", {
+          detail: {
+            customer: {
+              ...(customer as any),
+              UserId: (customer as any)?.UserId ?? (customer as any)?.id,
+              name:
+                displayName ||
+                (customer as any)?.name ||
+                (customer as any)?.UserName ||
+                (customer as any)?.MemberName ||
+                "",
+              ProfileImageUrl:
+                (customer as any)?.ProfileImageUrl || (customer as any)?.ProfileImage,
+              IsGroup: 0,
+            },
+          },
+        })
+      );
+    }
+    onClose?.();
   };
 
   // ── Profile upload/remove (continued) ──────────────────────────────────────
@@ -1374,6 +1470,7 @@ const CustomerDetails = ({
               onSearchByDate={onSearchByDate}
               containerRef={containerRef}
               hasConversation={hasConversation}
+              onStartChat={handleStartChat}
             />
           </div>
         </div>
@@ -1467,6 +1564,17 @@ const CustomerDetails = ({
               : "primary"
           }
           showCancel={confirmationModal.actionType !== "adminCannotLeave"}
+        />
+
+        {/* Mute duration picker — opened from the Contact Info "Mute
+            notifications" row, same dialog as the header menu */}
+        <MuteNotificationDialog
+          open={muteDialogOpen}
+          onClose={() => !muteLoading && setMuteDialogOpen(false)}
+          onConfirm={handleMuteConfirm}
+          conversationName={displayName}
+          isGroup={customer?.IsGroup === 1}
+          loading={muteLoading}
         />
 
         <MediaViewer

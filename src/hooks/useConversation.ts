@@ -275,7 +275,7 @@ export const useConversation = ({
   useReconnectSync(auth, selectedCustomer?.ConversationId, dispatchMsg);
   const { status: socketStatus } = useSocketContext();
   const isOnline = useOnlineStatus();
-  const isOffline = !isOnline || socketStatus === "disconnected" || socketStatus === "error";
+  const isOffline = !isOnline || socketStatus !== "connected";
 
   // When an outbox message is successfully sent on reconnect, update the
   // React state so the "Failed" icon changes to the normal sent status.
@@ -397,6 +397,7 @@ export const useConversation = ({
     uploadAndSendMedia,
     fetchAndCacheGroupMembers,
     isOffline,
+    messagesRef,
   });
 
   const { handleForward, handleCloseForward, handleSendForward } =
@@ -585,10 +586,19 @@ export const useConversation = ({
     const id = selectedCustomer?.ConversationId;
     if (!id || !msgState.data.length) return;
     if (cacheWriteTimer.current) clearTimeout(cacheWriteTimer.current);
-    cacheWriteTimer.current = setTimeout(
-      () => saveConversationToCache(id, msgState.data, auth),
-      800
-    );
+    cacheWriteTimer.current = setTimeout(() => {
+      // The clone+put walks every message synchronously — run it at idle
+      // time so it doesn't compete with conversation-switch rendering.
+      const schedule =
+        typeof window !== "undefined" && "requestIdleCallback" in window
+          ? window.requestIdleCallback
+          : (cb: () => void) => window.setTimeout(cb, 1);
+      schedule(() => {
+        // Cap at 500 — the deep clone + bulkPut walks every message on the
+        // main thread; 2000 was a ~130ms chunk even at idle time.
+        saveConversationToCache(id, msgState.data, auth, 500);
+      });
+    }, 800);
     return () => {
       if (cacheWriteTimer.current) clearTimeout(cacheWriteTimer.current);
     };

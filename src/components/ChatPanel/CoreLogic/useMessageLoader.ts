@@ -49,6 +49,10 @@ export function useMessageLoader({
   isStarFilter = 0,
 }: UseMessageLoaderProps) {
   const latestRequestRef = useRef(0);
+  // Bumped ONLY by loadConversation (initial/reset loads). loadOlderMessages /
+  // loadNewerMessages leave it alone, so an in-flight prefetch stays valid
+  // across scroll loads but is dropped after a real conversation reset.
+  const loadGenerationRef = useRef(0);
   const initAbortRef = useRef<AbortController | null>(null);
   const olderAbortRef = useRef<AbortController | null>(null);
   const newerAbortRef = useRef<AbortController | null>(null);
@@ -61,6 +65,7 @@ export function useMessageLoader({
   const autoLoadNewerRef = useRef(false);
   const loadNewerMessagesRef = useRef<() => void>(() => {});
   const isStarFilterRef = useRef(isStarFilter);
+  const hasMoreAfterRef = useRef(msgState.hasMoreAfter);
 
   // Abort all in-flight requests on unmount so older/newer/prefetch
   // requests don't continue after the component is gone.
@@ -82,7 +87,80 @@ export function useMessageLoader({
       before: msgState.beforeCursor,
       after: msgState.afterCursor,
     };
-  }, [msgState.data, msgState.beforeCursor, msgState.afterCursor]);
+    hasMoreAfterRef.current = msgState.hasMoreAfter;
+  }, [msgState.data, msgState.beforeCursor, msgState.afterCursor, msgState.hasMoreAfter]);
+
+  const prefetchOlderPage = useCallback(
+    (
+      convId: string | number,
+      beforeCursor: number,
+      generation: number,
+      starFilter: 0 | 1
+    ) => {
+      if (!auth) return;
+      conversationViewCursor(
+        convId,
+        2 as CursorDirection, // BEFORE
+        beforeCursor,
+        pageSize,
+        auth,
+        undefined,
+        undefined,
+        starFilter
+      )
+        .then((prefetch) => {
+          if (generation !== loadGenerationRef.current) return;
+          if (String(convId) !== String(selectedCustomer?.ConversationId)) return;
+
+          const older = prefetch.data as ChatMessage[];
+          if (older.length > 0) {
+            saveConversationToCache(convId, older, auth).catch(() => {});
+          }
+
+          // Bind cursors/hasMore synchronously — if the user scrolls to the
+          // top before the deferred PREPEND runs, loadOlderMessages must see
+          // the advanced cursor (otherwise it refetches this same page and
+          // the PREPEND gate could drop it, leaving a hole in history).
+          if (older.length === 0) {
+            dispatchMsg({ type: MSG.SET_HAS_MORE_BEFORE, value: false });
+            dispatchMsg({ type: MSG.SET_HAS_MORE, value: hasMoreAfterRef.current });
+            return;
+          }
+          const cursorUnchanged =
+            prefetch.beforeCursor == null || prefetch.beforeCursor === beforeCursor;
+          const hasMore = prefetch.hasMoreBefore && !cursorUnchanged;
+          cursorRef.current.before = prefetch.beforeCursor;
+          dispatchMsg({ type: MSG.SET_HAS_MORE_BEFORE, value: hasMore });
+          dispatchMsg({
+            type: MSG.SET_CURSORS,
+            beforeCursor: prefetch.beforeCursor,
+            afterCursor: cursorRef.current.after,
+          });
+          dispatchMsg({
+            type: MSG.SET_HAS_MORE,
+            value: hasMore || hasMoreAfterRef.current,
+          });
+
+          const schedule =
+            typeof window !== "undefined" && "requestIdleCallback" in window
+              ? (cb: () => void) => window.requestIdleCallback(cb, { timeout: 800 })
+              : (cb: () => void) => window.setTimeout(cb, 50);
+
+          schedule(() => {
+            // generation + convId only — not requestId. A loadOlderMessages
+            // call bumps latestRequestRef but not the generation, and this
+            // page's rows are still needed (PREPEND dedupes by id anyway).
+            if (generation !== loadGenerationRef.current) return;
+            if (String(convId) !== String(selectedCustomer?.ConversationId)) return;
+            // Notify BEFORE the PREPEND dispatch (synchronous) so MessageList
+            window.dispatchEvent(new CustomEvent("CHAT_PREPEND_PENDING"));
+            dispatchMsg({ type: MSG.PREPEND, data: older, total: prefetch.total });
+          });
+        })
+        .catch(() => {});
+    },
+    [auth, pageSize, dispatchMsg, selectedCustomer?.ConversationId]
+  );
 
   const loadConversation = useCallback(
     async (page = 1, reset = false, ignoreCache = false, cursorId: number = 0, starOverride?: 0 | 1) => {
@@ -91,6 +169,7 @@ export function useMessageLoader({
       autoLoadNewerRef.current = false;
 
       const requestId = ++latestRequestRef.current;
+      const generation = ++loadGenerationRef.current;
       const controller = new AbortController();
       if (initAbortRef.current) initAbortRef.current.abort();
       initAbortRef.current = controller;
@@ -98,20 +177,29 @@ export function useMessageLoader({
       const effectiveStar = starOverride !== undefined ? starOverride : isStarFilterRef.current;
 
       const selectedId = convId;
+
+      const apiPromise = conversationViewCursor(
+        selectedId,
+        0 as CursorDirection, // INITIAL — latest page
+        cursorId,
+        initialPageSize,
+        auth,
+        controller.signal,
+        undefined,
+        effectiveStar
+      );
+
       let didShowCache = false;
       if (reset && !ignoreCache) {
-        // Clear previous conversation's messages IMMEDIATELY so they don't
-        // leak into the new conversation while the cache read is in flight.
-        // CLEAR resets the entire state (including loading) to initial, so
-        // it MUST be dispatched BEFORE SET_LOADING — otherwise CLEAR wipes
-        // the loading flag and the loader never shows.
         dispatchMsg({ type: MSG.CLEAR });
-        // Set loading=true AFTER clearing so the UI shows a loader while
-        // the cache read / API call is in flight.
         dispatchMsg({ type: MSG.SET_LOADING, value: true });
 
         try {
-          const cached = await getConversationFromCache(selectedId, auth);
+          const cached = await getConversationFromCache(
+            selectedId,
+            auth,
+            Math.max(initialPageSize, 50)
+          );
           if (
             cached.length > 0 &&
             requestId === latestRequestRef.current &&
@@ -133,16 +221,7 @@ export function useMessageLoader({
       loadingRef.current = true;
 
       try {
-        const response = await conversationViewCursor(
-          selectedId,
-          0 as CursorDirection, // INITIAL — latest page
-          cursorId,
-          initialPageSize,
-          auth,
-          controller.signal,
-          undefined,
-          effectiveStar
-        );
+        const response = await apiPromise;
 
         // Race condition guard
         if (
@@ -201,6 +280,20 @@ export function useMessageLoader({
           selectedId
         );
 
+        // Skip the LOAD dispatch when the server page is identical to what's
+        // already displayed (cache hit → same page). mergeMessages creates new
+        // message objects, so dispatching would rebind every row and produce a
+        // visible "blink" on each conversation reopen.
+        const sameMessages =
+          merged.length === msgDataRef.current.length &&
+          merged.every((m, i) => {
+            const p = msgDataRef.current[i];
+            return (
+              String(m.MessageId ?? m.Id) === String(p?.MessageId ?? p?.Id) &&
+              m.Status === p?.Status
+            );
+          });
+
         // ── Unread anchor: scroll to first unread message instead of bottom ──
         // When opening a conversation with UnreadCount > 0, compute the first
         // unread message ID so MessageList can scroll to it (WhatsApp-style).
@@ -235,7 +328,12 @@ export function useMessageLoader({
           dispatchMsg({ type: MSG.SET_UNREAD_ANCHOR, messageId: null, count: 0 });
         }
 
-        dispatchMsg({ type: MSG.LOAD, data: merged, total: response.total });
+        if (!sameMessages) {
+          dispatchMsg({ type: MSG.LOAD, data: merged, total: response.total });
+        } else if (msgState.total !== response.total) {
+          // Same messages — keep data identity but refresh total if it moved.
+          dispatchMsg({ type: MSG.LOAD, data: msgDataRef.current, total: response.total });
+        }
         dispatchMsg({
           type: MSG.SET_HAS_MORE,
           value: response.hasMoreBefore,
@@ -270,27 +368,11 @@ export function useMessageLoader({
           }
         }
 
-        // One-page-ahead prefetch: if there are older messages on the server,
-        // fetch them silently into IDB so scrolling up is instant.
+        // One-page-ahead prefetch: fetch the next older page and bind it
+        // silently into state — when the user reaches the top the data is
+        // already rendered, so there's no loader/reload flash.
         if (response.hasMoreBefore && response.beforeCursor != null) {
-          conversationViewCursor(
-            selectedId,
-            2 as CursorDirection,
-            response.beforeCursor,
-            pageSize,
-            auth,
-            undefined,
-            undefined,
-            effectiveStar
-          ).then((prefetch) => {
-            // Guard: bail if the user switched conversations while the
-            // prefetch was in flight, so we don't write stale messages for
-            // the wrong conversation into IndexedDB.
-            if (requestId !== latestRequestRef.current) return;
-            if (prefetch.data.length > 0) {
-              saveConversationToCache(selectedId, prefetch.data as ChatMessage[], auth).catch(() => {});
-            }
-          }).catch(() => {});
+          prefetchOlderPage(selectedId, response.beforeCursor, generation, effectiveStar);
         }
       } catch (err) {
         if (err instanceof Error && err.name !== "AbortError") {
@@ -303,7 +385,7 @@ export function useMessageLoader({
         }
       }
     },
-    [selectedCustomer?.ConversationId, auth, initialPageSize, dispatchMsg]
+    [selectedCustomer?.ConversationId, auth, initialPageSize, dispatchMsg, prefetchOlderPage]
   );
 
   // ── Load older messages (scroll up, Direction 2 = BEFORE) ────────────────
@@ -329,7 +411,21 @@ export function useMessageLoader({
     const selectedId = selectedCustomer.ConversationId;
     const prevBeforeCursor = cursorRef.current.before;
 
-    // Cache-first: try loading older messages from IndexedDB before hitting API.
+    // Fire the API request immediately so it overlaps the IndexedDB read
+    // (same pattern as loadConversation — cache fills instantly, network
+    // runs in parallel instead of waiting on it).
+    const apiPromise = conversationViewCursor(
+      selectedId,
+      2 as CursorDirection, // BEFORE
+      prevBeforeCursor,
+      pageSize,
+      auth,
+      controller.signal,
+      undefined,
+      isStarFilterRef.current
+    );
+
+    // Cache-first: show older messages from IndexedDB while the API runs.
     const firstMsg = msgDataRef.current[0];
     const firstMsgId = firstMsg ? (firstMsg.MessageId ?? firstMsg.Id) : null;
     if (firstMsgId) {
@@ -349,16 +445,7 @@ export function useMessageLoader({
     }
 
     try {
-      const response = await conversationViewCursor(
-        selectedId,
-        2 as CursorDirection, // BEFORE
-        prevBeforeCursor,
-        pageSize,
-        auth,
-        controller.signal,
-        undefined,
-        isStarFilterRef.current
-      );
+      const response = await apiPromise;
 
       if (
         requestId !== latestRequestRef.current ||
@@ -398,6 +485,17 @@ export function useMessageLoader({
         type: MSG.SET_HAS_MORE,
         value: finalHasMoreBefore || msgState.hasMoreAfter,
       });
+
+      // Keep one page ahead: silently prefetch the next older page so the
+      // next scroll-to-top already has data bound.
+      if (finalHasMoreBefore && response.beforeCursor != null) {
+        prefetchOlderPage(
+          selectedId,
+          response.beforeCursor,
+          loadGenerationRef.current,
+          isStarFilterRef.current
+        );
+      }
     } catch (err) {
       if (err instanceof Error && err.message !== "AbortError" && err.name !== "AbortError") {
         console.error("loadOlderMessages error:", err);
@@ -420,6 +518,7 @@ export function useMessageLoader({
     pageSize,
     auth,
     dispatchMsg,
+    prefetchOlderPage,
   ]);
 
   // ── Load newer messages (scroll down, Direction 1 = AFTER) ───────────────

@@ -116,13 +116,21 @@ export function useOutboxSync(auth: AuthData | null) {
                 } catch {
                   serverAttachments = [];
                 }
-                mediaItems = uploadedFiles.map((file, index) => ({
-                  url: uploadedUrls[index],
-                  filename: file.name,
-                  mimeType: file.type,
-                  size: file.size,
-                  attachmentId: String(serverAttachments[index]?.Id ?? serverAttachments[index]?.id ?? "") || null,
-                }));
+                mediaItems = uploadedFiles.map((file, index) => {
+                  // Carry Width/Height into mediaItems so bubbles reserve the
+                  // correct aspect ratio — fall back to the server-returned
+                  // attachment dims if the outbox file record lacks them.
+                  const w = Number(mediaFiles[index]?.width ?? serverAttachments[index]?.Width) || null;
+                  const h = Number(mediaFiles[index]?.height ?? serverAttachments[index]?.Height) || null;
+                  return {
+                    url: uploadedUrls[index],
+                    filename: file.name,
+                    mimeType: file.type,
+                    size: file.size,
+                    attachmentId: String(serverAttachments[index]?.Id ?? serverAttachments[index]?.id ?? "") || null,
+                    ...(w && h ? { width: w, height: h } : {}),
+                  };
+                });
 
                 // ── Documents: backend returns comma-separated MessageIds
                 // (one per document). Emit individual socket messages and

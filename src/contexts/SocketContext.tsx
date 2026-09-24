@@ -13,6 +13,7 @@ import {
   initializeSocket,
   disconnectSocket,
   isSocketConnected,
+  reconnectSocket,
   addSessionLogoutHandler,
   emitInternalStoreSocketData,
   type SocketStatus,
@@ -106,6 +107,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.log("✅ Socket connected:", socket.id);
           setSocketId(socket.id ?? null);
           setStatus("connected");
+          window.dispatchEvent(new CustomEvent("SERVICE_UP"));
 
           // Register socket ID with the server (emit store socket data)
           const currentAuth = authRef.current;
@@ -177,11 +179,30 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           onConnect();
         }
 
-        // Periodic connection status check (every 5s — matches old app)
+        const reconnectWhenOnline = () => {
+          if (!isMounted || navigator.onLine === false || isSocketConnected()) return;
+          setStatus("connecting");
+          reconnectSocket();
+        };
+        const handleOffline = () => {
+          if (!isMounted) return;
+          setStatus("disconnected");
+          setSocketId(null);
+        };
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === "visible") reconnectWhenOnline();
+        };
+
+        window.addEventListener("online", reconnectWhenOnline);
+        window.addEventListener("offline", handleOffline);
+        window.addEventListener("focus", reconnectWhenOnline);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
         const interval = setInterval(() => {
           if (!isMounted) return;
           const connected = isSocketConnected();
-          setStatus(connected ? "connected" : "disconnected");
+          if (!connected && navigator.onLine !== false) reconnectSocket();
+          setStatus(connected ? "connected" : navigator.onLine === false ? "disconnected" : "connecting");
           if (connected && socket.id) {
             setSocketId(socket.id ?? null);
           } else if (!connected) {
@@ -191,6 +212,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         cleanup = () => {
           clearInterval(interval);
+          window.removeEventListener("online", reconnectWhenOnline);
+          window.removeEventListener("offline", handleOffline);
+          window.removeEventListener("focus", reconnectWhenOnline);
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
           socket.off("connect", onConnect);
           socket.off("disconnect", onDisconnect);
           socket.off("connect_error", onConnectError);

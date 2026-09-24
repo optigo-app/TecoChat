@@ -1009,9 +1009,6 @@
         }
 
         // ── Starred message effect ───────────────────────────────────────────
-        // Small gold glow accent at the top-right corner only.
-        // Layered as background-image so it paints above the bubble's
-        // background-color — no z-index, no layout change to children.
         &.starred {
             background-image: radial-gradient(
                 circle at top right,
@@ -1022,9 +1019,6 @@
         }
 
         // ── Outgoing bubble: override mention + search highlight colors ──────
-        // The outgoing bubble is solid purple, so blue mentions and purple
-        // search highlights won't be visible. Use light lavender for mentions
-        // and gold for search highlights instead.
         &.outgoing {
             .message-mention-highlight {
                 color: var(--color-mention-text-outgoing) !important;
@@ -1063,8 +1057,7 @@
     line-height: 1;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
-    // Ensure adequate touch target on mobile
-    min-height: 32px;
+    min-height: 24px;
 
     .emoji-item {
         display: inline-flex;

@@ -198,11 +198,28 @@ function HomeContent() {
       });
     };
 
+    const handleUpdateMute = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail) return;
+      const conversationId = detail.conversationId ?? detail.ConversationId;
+      if (conversationId == null) return;
+      setSelectedCustomer((prev) => {
+        if (!prev || Number(prev.ConversationId) !== Number(conversationId)) return prev;
+        return {
+          ...prev,
+          IsMuted: detail.isMuted ?? detail.IsMuted,
+          MuteExpiresAt:
+            "muteExpiresAt" in detail ? detail.muteExpiresAt : detail.MuteExpiresAt,
+        } as ConversationListEntry;
+      });
+    };
+
     window.addEventListener("SELECT_CONVERSATION", handleSelectConversation as EventListener);
     window.addEventListener("SELECT_NEW_CONVERSATION", handleSelectNewConversation as EventListener);
     window.addEventListener("DELETE_CONVERSATION", handleDeleteConversation as EventListener);
     window.addEventListener("DELETE_CONVERSATION_ITEM", handleDeleteConversation as EventListener);
     window.addEventListener("UPDATE_CONVERSATION_ITEM", handleUpdateConversationItem as EventListener);
+    window.addEventListener("UPDATE_CONVERSATION_MUTE", handleUpdateMute as EventListener);
 
     return () => {
       window.removeEventListener("SELECT_CONVERSATION", handleSelectConversation as EventListener);
@@ -210,6 +227,7 @@ function HomeContent() {
       window.removeEventListener("DELETE_CONVERSATION", handleDeleteConversation as EventListener);
       window.removeEventListener("DELETE_CONVERSATION_ITEM", handleDeleteConversation as EventListener);
       window.removeEventListener("UPDATE_CONVERSATION_ITEM", handleUpdateConversationItem as EventListener);
+      window.removeEventListener("UPDATE_CONVERSATION_MUTE", handleUpdateMute as EventListener);
     };
   }, []);
 

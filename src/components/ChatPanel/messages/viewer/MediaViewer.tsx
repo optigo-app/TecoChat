@@ -485,7 +485,7 @@ const MediaViewerComponent = ({
                             <div className="reaction-pills">
                               {(() => {
                                 try {
-                                  const reactions = JSON.parse(liveMessage.ReactionEmojis);
+                                  const reactions = parseReactions(liveMessage.ReactionEmojis);
                                   if (Array.isArray(reactions)) {
                                     const uniqueEmojis = [
                                       ...new Set(reactions.map((r) => r?.Reaction || r?.Emoji)),
@@ -498,7 +498,7 @@ const MediaViewerComponent = ({
                                             <SafeEmoji
                                               key={idx}
                                               unified={unified}
-                                              emoji={emojiChar}
+                                              emoji={emojiChar || ""}
                                               size={20}
                                             />
                                           ) : (

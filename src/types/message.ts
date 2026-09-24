@@ -62,6 +62,7 @@ export interface ChatMessage {
   ContextType?: ContextType;
   ContextId?: string | number;
   ReplyContextMsg?: string;
+  ReplyToSenderName?: string | null;
   ReplyToAttachmentId?: string | number | null;
 
   /** Forwarded */
@@ -70,8 +71,15 @@ export interface ChatMessage {
   /** Starred message flag — 1 = starred by current user, 0 = not starred */
   IsStar?: 0 | 1;
 
-  /** Reactions */
-  ReactionEmojis?: string;
+  /** Reactions — JSON string or already-parsed array (socket payloads vary) */
+  ReactionEmojis?: string | Array<{
+    Reaction?: string;
+    Emoji?: string;
+    Unified?: string;
+    Direction?: number;
+    UserId?: number | string;
+    UserName?: string;
+  }>;
 
   /** Media attachment info */
   AttachmentId?: string | number;

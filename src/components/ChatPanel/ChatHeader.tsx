@@ -20,12 +20,8 @@ interface ChatHeaderProps {
   onToggleStarFilter?: () => void;
   starNewMessageCount?: number;
   onSearchByDate?: (date: string) => void;
-  /** Trigger the jump-to-date picker (raised into ChatPanel so the picker can
-   *  also be opened from the mobile More menu). */
   onOpenDatePicker?: () => void;
   isOffline?: boolean;
-  /** Ref attached to the calendar (jump-to-date) button so the DatePicker
-   *  popup can anchor to it instead of floating at the bottom of the panel. */
   datePickerButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
@@ -53,13 +49,11 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
   const isGroup = (selectedCustomer as { IsGroup?: number }).IsGroup === 1;
   const groupDesc = (selectedCustomer as { GroupDesc?: string }).GroupDesc;
   const email = (selectedCustomer as { Email?: string }).Email;
-  // For groups: show GroupDesc. For direct chats: show email.
   const displayEmail = isGroup ? (groupDesc || "") : (email || "");
 
   return (
     <div className="chat-header no-select">
       <div className="chat-header__left">
-        {/* Back button — mobile only (WhatsApp-like: go back to conversation list) */}
         {isMobile && onBack && (
           <IconButton
             onClick={onBack}
@@ -115,7 +109,6 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
             </Box>
           </Tooltip>
         )}
-        {/* Refresh — hidden on mobile to save space (available in more menu) */}
         {!isMobile && (
           <Tooltip title={isOffline ? "You're offline" : "Refresh"} arrow>
             <span>
@@ -135,8 +128,6 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
             <Search size={isMobile ? 22 : 20} />
           </IconButton>
         </Tooltip>
-        {/* Calendar (jump-to-date) — desktop only. On mobile it lives in the
-            More menu to keep the header compact (WhatsApp-like). */}
         {!isMobile && onSearchByDate && (
           <Tooltip title="Jump to date" arrow>
             <IconButton
@@ -149,7 +140,6 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
             </IconButton>
           </Tooltip>
         )}
-        {/* Star filter — desktop only. On mobile it lives in the More menu. */}
         {!isMobile && onToggleStarFilter && (
           <Tooltip title={starFilter ? "Show all messages" : "Show starred only"} arrow>
             <IconButton

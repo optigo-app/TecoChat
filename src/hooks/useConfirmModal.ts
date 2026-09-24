@@ -202,6 +202,20 @@ export function useConfirmModal({
             detail: { conversationId: convId },
           })
         );
+        window.dispatchEvent(
+          new CustomEvent("UPDATE_CONVERSATION_ITEM", {
+            detail: {
+              ConversationId: convId,
+              isChatClear: true,
+              Message: "",
+              MessageType: "text",
+              MessageId: "",
+              unreadCount: 0,
+              UnreadCount: 0,
+              isStatusChange: true,
+            },
+          })
+        );
         close();
         refresh?.();
       } else {

@@ -39,6 +39,7 @@ import {
   autoScrollOnNewMessage,
   type ScrollAnchor,
 } from "./CoreLogic/scrollUtils";
+import { parseReactions } from "../../utils/EmojiUtils";
 
 export interface MessageListRef {
   scrollToMessage: (messageId: string | number, attachmentId?: string | null) => void;
@@ -78,18 +79,13 @@ interface MessageListProps {
   onFlushNewMessages?: () => void;
   onLoadNewer?: () => void;
   onJumpToLatest?: () => Promise<boolean | void>;
-  /** Ref that's true while the loader is auto-loading newer messages
-   *  (initial BETWEEN → latest). Distinguishes auto-load from user scroll. */
   isAutoLoadingNewerRef?: React.MutableRefObject<boolean>;
-  /** Error states for retry */
   olderError?: boolean;
   newerError?: boolean;
   onRetryOlder?: () => void;
   onRetryNewer?: () => void;
-  /** Unread separator anchor — stable message ID */
   unreadAnchorMessageId?: string | number | null;
   unreadCount?: number;
-  /** Scroll position restoration */
   scrollRestoreKey?: string | number;
   processFiles?: (files: File[]) => void;
   onContainerRef?: (ref: HTMLDivElement | null) => void;
@@ -101,8 +97,6 @@ interface MessageListProps {
   ) => Promise<void> | void;
   isMediaPreviewOpen?: boolean;
   scrollToBottomRightOffset?: number;
-  /** Date string (YYYY-MM-DD) when a date search returned no results.
-   *  Rendered as a centered pill in the message area. */
   noResultsDate?: string | null;
 }
 
@@ -173,19 +167,15 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     }, [expandedMessageIds]);
     const isMobile = useIsMobile();
 
-    // ── Safe-link inspection ──────────────────────────────────────────────
-    // Intercepts <a> clicks inside the message list and routes them through
-    // inspectUrl(). Suspicious links show the ConfirmationDialog first.
     const { linkDialog, openLinkSafely } = useSafeLink();
 
     const handleListClick = useCallback(
       (e: React.MouseEvent<HTMLDivElement>) => {
-        // Only intercept clicks on <a> tags with target="_blank" (case-insensitive)
         const target = e.target as HTMLElement;
         const anchor = target.closest("a");
         if (!anchor || anchor.target.trim().toLowerCase() !== "_blank") return;
         e.preventDefault();
-        const href = anchor.href; // resolved absolute URL
+        const href = anchor.href;
         if (!href) return;
         openLinkSafely(href);
       },
@@ -207,10 +197,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     const stickyDateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const stickyDateRef = useRef<string | null>(null);
 
-    // Auto-hide scrollbar: while the user is actively scrolling we add a
-    // `scrollbar-active` class to the scroll container so the thumb becomes
-    // visible; it fades out shortly after scrolling stops. Direct DOM
-    // manipulation (no React state) to avoid re-renders on every scroll event.
     const scrollbarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const pendingNewCountRef = useRef(0);
@@ -251,7 +237,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         }
       }, observerOptions);
 
-      // Bottom sentinel — load newer messages (historical view only)
       const bottomObserver = new IntersectionObserver((entries) => {
         if (entries[0]?.isIntersecting && hasMoreAfter && !loadingNewer && !newerError) {
           if (!suppressScrollLoadRef.current) {
@@ -269,8 +254,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       };
     }, [hasMoreBefore, hasMoreAfter, loadingOlder, loadingNewer, olderError, newerError, onScrollToTop, onLoadNewer]);
 
-    // ── Scroll position restoration per conversation ────────────────────────
-    // Save scroll position when conversation changes away
     useEffect(() => {
       if (!scrollRestoreKey) return;
       const outer = outerRef.current;
@@ -283,24 +266,18 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       };
     }, [scrollRestoreKey]);
 
-    // Restore scroll position when returning to a conversation
     useLayoutEffect(() => {
       if (!scrollRestoreKey) return;
       const outer = outerRef.current;
       if (!outer) return;
       const saved = scrollRestoreRef.current;
       if (saved && saved.key === scrollRestoreKey && saved.scrollHeight > 0) {
-        // Only restore if we're not in initial load
         if (didInitialScroll.current && rows.length > 2) {
           restoreScrollPosition(outer, saved.scrollTop, saved.scrollHeight);
         }
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [scrollRestoreKey]);
 
-    // Helper: suppress scroll loads for a short period, then re-enable.
-    // This prevents loops where programmatic scroll → scroll handler → load →
-    // programmatic scroll → ...
     const suppressScrollLoadsTemporarily = useCallback((ms = 400) => {
       suppressScrollLoadRef.current = true;
       if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
@@ -331,9 +308,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         else next.add(key);
         return next;
       });
-      // When expanding a long message, scroll it into view so the newly
-      // revealed content stays visible (WhatsApp behavior). Wait a frame
-      // for the DOM to re-render with the expanded height before scrolling.
+
       if (willExpand) {
         doubleRequestAnimationFrame(() => {
           const outer = outerRef.current;
@@ -352,7 +327,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       }
     }, [loadingOlder]);
 
-    // ── Scroll anchoring: restore after rows change (older messages prepended) ─
     useLayoutEffect(() => {
       const outer = outerRef.current;
       if (!outer || !scrollAnchorRef.current) return;
@@ -361,6 +335,20 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       distanceFromBottomRef.current = getDistanceFromBottom(outer);
       scrollAnchorRef.current = null;
     }, [rows]);
+
+    useEffect(() => {
+      const onPrependPending = () => {
+        const outer = outerRef.current;
+        if (!outer || !didInitialScroll.current) return;
+        if (!scrollAnchorRef.current) {
+          scrollAnchorRef.current = captureScrollAnchor(outer);
+        }
+        wasLoadingOlderRef.current = true;
+      };
+      window.addEventListener("CHAT_PREPEND_PENDING", onPrependPending);
+      return () =>
+        window.removeEventListener("CHAT_PREPEND_PENDING", onPrependPending);
+    }, []);
 
     // ── Conversation change: reset ──────────────────────────────────────────
     useLayoutEffect(() => {
@@ -383,13 +371,9 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       setStickyDateVisible(false);
       stickyDateRef.current = null;
       linkDialog.close();
-      // Reset drag state — a drag may have been in progress when the
-      // conversation switched (e.g., clicking a search result), leaving
-      // the overlay stuck visible with stale dragCounter.
       setIsDragging(false);
       dragCounter.current = 0;
       if (convLoadTimerRef.current) clearTimeout(convLoadTimerRef.current);
-      // Fallback: if data doesn't arrive in 800ms, show whatever we have
       convLoadTimerRef.current = setTimeout(() => setListVisible(true), 800);
     }, [selectedCustomer?.ConversationId]);
 
@@ -401,27 +385,18 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       };
     }, []);
 
-    // ── Initial scroll-to-bottom + auto-scroll on new messages ───────────────
-    // Does NOT handle scroll-anchor restore (that's in a separate effect above).
     useLayoutEffect(() => {
       const outer = outerRef.current;
       if (!outer) return;
-
-      // Skip if loading older (scroll-anchor effect handles it)
       if (loadingOlder) {
         wasLoadingOlderRef.current = true;
         return;
       }
 
-      // Skip if loading newer — but track it so we know when it finishes.
-      // Only set wasAutoLoadingNewerRef if this is the initial auto-load
-      // sequence (not user-triggered scroll-down load).
       if (loadingNewer) {
         if (isAutoLoadingNewerRef?.current || isScrollingToBottomRef.current) {
           wasAutoLoadingNewerRef.current = true;
         } else {
-          // User-triggered newer load (sentinel) — track so we can skip
-          // the auto-scroll-to-bottom after append and preserve position.
           wasLoadingNewerRef.current = true;
         }
         return;
@@ -534,8 +509,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       const outer = outerRef.current;
       if (!outer) return;
 
-      // ── Auto-hide scrollbar (mobile) ──
-      // Show the thumb while scrolling; hide it after scrolling stops.
       if (!outer.classList.contains("scrollbar-active")) {
         outer.classList.add("scrollbar-active");
       }
@@ -555,9 +528,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         onFlushNewMessages();
       }
 
-      // ── Sticky date pill ──
-      // Find the date row at or just above the scroll top.
-      // Uses getBoundingClientRect for accuracy (offsetTop depends on offsetParent).
       const outerRect = outer.getBoundingClientRect();
       const dateRows = outer.querySelectorAll<HTMLElement>("[data-date-row]");
       let currentDate: string | null = null;
@@ -582,8 +552,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         setStickyDateVisible(false);
       }
 
-      // Auto-hide the pill 3s after scrolling stops.
-      // Reset the timer on every scroll event so it stays visible while scrolling.
       if (stickyDateTimerRef.current) clearTimeout(stickyDateTimerRef.current);
       if (currentDate) {
         stickyDateTimerRef.current = setTimeout(() => {
@@ -682,17 +650,12 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         if (e.dataTransfer.files?.length > 0 && processFiles) {
           const files = Array.from(e.dataTransfer.files);
           e.dataTransfer.clearData();
-          // Defer file processing to next tick so the drop handler returns immediately
-          // and the overlay disappears without lag
           requestAnimationFrame(() => processFiles(files));
         }
       },
       [processFiles, isExternalFileDrag]
     );
 
-    // Reset drag state if a drag ends outside the message area (e.g., user
-    // drags files in, then releases over another window or the desktop).
-    // Without this, dragCounter can stay > 0 and the overlay stays visible.
     useEffect(() => {
       const handleDragEnd = () => {
         setIsDragging(false);
@@ -715,6 +678,18 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       [processFiles]
     );
 
+    const handleScrollToMessage = useCallback(
+      (
+        messageId: string | number,
+        _containerRef: React.MutableRefObject<HTMLElement | null>,
+        attachmentId?: string | null
+      ) => scrollToMessage(messageId, attachmentId),
+      [scrollToMessage]
+    );
+
+    const selectedIsGroup = selectedCustomer?.IsGroup === 1;
+    const selectedConvId = selectedCustomer?.ConversationId;
+
     // ── Render row ──────────────────────────────────────────────────────────
     const renderRow = useCallback(
       (row: FlattenedRow, _index: number) => {
@@ -727,7 +702,13 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               key={`date:${row.date}:${_index}`}
               data-date-row
               data-date-value={formatDateTime(row.date, "dateNumeric")}
-              style={{ display: "flex", justifyContent: "center", margin: "8px 0 4px 0" }}
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                margin: "8px 0 4px 0",
+                contentVisibility: "auto",
+                containIntrinsicSize: "auto 36px",
+              }}
             >
               <Typography variant="caption" className="typoDate">
                 {formatDateTime(row.date, "dateHeader")}
@@ -743,7 +724,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             >
               <TypingIndicator
                 typingStatus={typingStatus}
-                isGroup={selectedCustomer?.IsGroup === 1}
+                isGroup={selectedIsGroup}
               />
             </div>
           );
@@ -751,20 +732,32 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         const msg = (row as { msg: ChatMessage; msgIndex: number }).msg;
         const msgIndex = (row as { msg: ChatMessage; msgIndex: number }).msgIndex;
         const msgId = msg.Id ?? msg.MessageId;
+        // Reaction badges hang ~18px below the bubble (position absolute,
+        // bottom: -18) — reserve just enough room so they aren't clipped at
+        // the scroll container's edge. Quick check first, then parseReactions
+        // so rows with only removed-reaction placeholders don't get dead space.
+        const re = msg.ReactionEmojis;
+        const hasReactions =
+          (Array.isArray(re) ? re.length > 0 : !!re && re !== "" && re !== "[]") &&
+          parseReactions(re).length > 0;
+        const bottomPad = hasReactions ? 20 : 4;
         return (
           <div
             key={`msg:${msgId ?? msgIndex}`}
             data-message-id={msgId != null ? String(msgId) : undefined}
             style={{
               padding: isMobile
-                ? "0 12px 4px 12px"
-                : "0 20px 4px 24px",
+                ? `0 12px ${bottomPad}px 12px`
+                : `0 20px ${bottomPad}px 24px`,
+              contentVisibility: "auto",
+              containIntrinsicSize: "auto 80px",
             }}
           >
             <MessageItem
               msg={msg}
               index={msgIndex}
-              selectedCustomer={selectedCustomer}
+              isGroup={selectedIsGroup}
+              conversationId={selectedConvId}
               blinkMessageId={blinkMessageId}
               searchHighlightQuery={searchHighlightQuery}
               searchHighlightMessageId={searchHighlightMessageId}
@@ -781,12 +774,10 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               markLoaded={markLoaded}
               getMediaSrcForMessage={getMediaSrcForMessage}
               messageById={messageById}
-              scrollToMessage={(messageId, _containerRef, attachmentId) =>
-                scrollToMessage(messageId, attachmentId)
-              }
+              scrollToMessage={handleScrollToMessage}
               containerRef={containerRef}
               isExpanded={expandedMessageIds.has(String(msgId))}
-              onToggleExpand={() => toggleMessageExpand(msgId)}
+              onToggleExpand={toggleMessageExpand}
               auth={auth}
             />
           </div>
@@ -794,7 +785,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       },
       [
         typingStatus,
-        selectedCustomer,
+        selectedIsGroup,
+        selectedConvId,
         blinkMessageId,
         searchHighlightQuery,
         searchHighlightMessageId,
@@ -811,7 +803,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         markLoaded,
         getMediaSrcForMessage,
         messageById,
-        scrollToMessage,
+        handleScrollToMessage,
         expandedMessageIds,
         toggleMessageExpand,
       ]

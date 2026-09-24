@@ -50,6 +50,7 @@ interface UseMessageActionsProps {
   }) => Promise<void>;
   fetchAndCacheGroupMembers?: (conversationId: string | number) => Promise<{ members: Array<{ UserId?: number; userId?: number; id?: number }> } | null>;
   isOffline?: boolean;
+  messagesRef?: React.MutableRefObject<ChatMessage[]>;
 }
 
 export function useMessageActions({
@@ -64,6 +65,7 @@ export function useMessageActions({
   uploadAndSendMedia,
   fetchAndCacheGroupMembers,
   isOffline = false,
+  messagesRef,
 }: UseMessageActionsProps) {
   const handleSendMessage = useCallback(
     async (
@@ -486,6 +488,23 @@ export function useMessageActions({
         const response = await deleteMessageApi(auth, messageId, mode, customer?.ConversationId);
         const deletedInfo = response?.Data?.rd?.[0] || response?.rd?.[0];
         if (deletedInfo?.stat != 0) {
+          const deletedMsg = (messagesRef?.current ?? []).find(
+            (m) => String(m.MessageId ?? m.Id ?? "") === String(messageId)
+          );
+          const notifyListUpdate = (detail: Record<string, unknown>) => {
+            if (!customer?.ConversationId) return;
+            window.dispatchEvent(
+              new CustomEvent("UPDATE_CONVERSATION_ITEM", {
+                detail: {
+                  ConversationId: customer.ConversationId,
+                  isMessageDeletion: true,
+                  DeletedMessageId: messageId,
+                  isStatusChange: true,
+                  ...detail,
+                },
+              })
+            );
+          };
           if (Number(mode) === 2) {
             dispatchMsg({ type: MSG.DELETE_ALL, messageId, deletedInfo });
             const isGroup = customer?.IsGroup === 1;
@@ -521,6 +540,19 @@ export function useMessageActions({
             if (customer?.ConversationId) {
               deleteMessage(auth, customer.ConversationId, messageId, deletedInfo).catch(() => {});
             }
+            // Update own conversation-list preview in realtime — the socket
+            // emit only reaches other users, so the list must be told locally.
+            notifyListUpdate({
+              MessageId: messageId,
+              Message:
+                deletedMsg?.Direction === 1
+                  ? (deletedInfo.Message1 || "You deleted this message.")
+                  : (deletedInfo.Message || "This message was deleted."),
+              MessageType: "text",
+              IsDeletedForEveryone: 1,
+              DateTime: deletedInfo.DeletedAt || new Date().toISOString(),
+              SenderId: deletedMsg?.SenderId ?? auth?.id,
+            });
           } else {
             dispatchMsg({ type: MSG.DELETE_ME, messageId });
             // Write-through to IDB — remove the row entirely so the deleted
@@ -528,6 +560,21 @@ export function useMessageActions({
             if (customer?.ConversationId) {
               deleteMessageRow(auth, customer.ConversationId, messageId).catch(() => {});
             }
+            // Delete-for-me removes the row — roll the list preview back to
+            // the previous last message (or clear it when none remain).
+            const remaining = (messagesRef?.current ?? []).filter(
+              (m) => String(m.MessageId ?? m.Id ?? "") !== String(messageId)
+            );
+            const newLast = remaining[remaining.length - 1];
+            notifyListUpdate({
+              MessageId: newLast?.MessageId ?? newLast?.Id ?? "",
+              Message: newLast?.Message ?? "",
+              MessageType: newLast?.MessageType ?? "text",
+              IsDeletedForEveryone: newLast?.IsDeletedForEveryone ?? 0,
+              DateTime: newLast?.DateTime ?? newLast?.Date ?? "",
+              MessageStatus: newLast?.Status,
+              SenderId: newLast?.SenderId ?? auth?.id,
+            });
           }
           showToast("Message deleted successfully", "success");
         } else {
@@ -538,7 +585,7 @@ export function useMessageActions({
         showToast("Error deleting message", "error");
       }
     },
-    [auth, selectedCustomerRef, selectedCustomer, dispatchMsg, fetchAndCacheGroupMembers]
+    [auth, selectedCustomerRef, selectedCustomer, dispatchMsg, fetchAndCacheGroupMembers, messagesRef]
   );
 
   const handleEditMessage = useCallback(

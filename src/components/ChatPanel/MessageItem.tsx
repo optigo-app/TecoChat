@@ -11,7 +11,8 @@ import type { ConversationListEntry } from "../../types/conversation";
 interface MessageItemProps {
   msg: ChatMessage;
   index: number;
-  selectedCustomer: ConversationListEntry | null;
+  isGroup: boolean;
+  conversationId?: string | number | null;
   blinkMessageId: string | null;
   searchHighlightQuery?: string | null;
   searchHighlightMessageId?: string | null;
@@ -35,14 +36,15 @@ interface MessageItemProps {
   ) => void;
   containerRef?: React.MutableRefObject<HTMLElement | null>;
   isExpanded?: boolean;
-  onToggleExpand?: () => void;
+  onToggleExpand?: (id: string | number) => void;
   auth?: { id?: string | number; userId?: string | number } | null;
 }
 
 const MessageItemComponent = ({
   msg,
   index,
-  selectedCustomer,
+  isGroup,
+  conversationId,
   blinkMessageId,
   searchHighlightQuery,
   searchHighlightMessageId,
@@ -70,9 +72,6 @@ const MessageItemComponent = ({
 
   const messageDomId = msg.Id ?? msg.MessageId;
   const isBlinking = blinkMessageId === messageDomId;
-  // Highlight stays even after blink ends — cleared only on user interaction.
-  // Checks the message ID match, not isBlinking, so the highlight persists
-  // after the 3s blink animation finishes.
   const isSearchHighlighted = searchHighlightMessageId === String(messageDomId);
 
   const handleMouseEnter = useCallback(() => {
@@ -99,7 +98,6 @@ const MessageItemComponent = ({
   }
 
   const isOutgoing = msg.Direction === 1;
-  const isGroup = (selectedCustomer as { IsGroup?: number })?.IsGroup === 1;
 
   return (
     <Box
@@ -111,7 +109,6 @@ const MessageItemComponent = ({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Group sender avatar for incoming group messages */}
       {isGroup && !isOutgoing && (
         <Box
           sx={{
@@ -135,7 +132,8 @@ const MessageItemComponent = ({
       <MessageBubble
         msg={msg}
         isOutgoing={isOutgoing}
-        selectedCustomer={selectedCustomer}
+        isGroup={isGroup}
+        conversationId={conversationId}
         getMessageStatusIcon={getMessageStatusIcon}
         onContextMenu={onContextMenu}
         onMenuClick={onMenuClick}
@@ -161,4 +159,19 @@ const MessageItemComponent = ({
   );
 };
 
-export default memo(MessageItemComponent);
+const arePropsEqual = (prev: MessageItemProps, next: MessageItemProps): boolean => {
+  for (const key of Object.keys(next) as Array<keyof MessageItemProps>) {
+    if (key === "loadedMedia") continue;
+    if (prev[key] !== next[key]) return false;
+  }
+  if (prev.loadedMedia !== next.loadedMedia) {
+    const count = Math.max(prev.msg?.mediaItems?.length ?? 0, 1);
+    for (let i = 0; i < count; i++) {
+      const k = prev.getMediaKey(prev.msg, i);
+      if (prev.loadedMedia[k] !== next.loadedMedia[k]) return false;
+    }
+  }
+  return true;
+};
+
+export default memo(MessageItemComponent, arePropsEqual);

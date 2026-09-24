@@ -5,6 +5,7 @@ import { addReactionApi } from "../../../API/SendMessage/addReactionApi";
 import { removeReactionApi } from "../../../API/SendMessage/removeReactionApi";
 import { emitSendReaction, emitRemoveReaction } from "../../../socket";
 import { MSG, type MsgAction } from "./conversationReducer";
+import { parseReactions } from "../../../utils/EmojiUtils";
 import type { ChatMessage } from "../../../types/message";
 import type { AuthData } from "../../../contexts/LoginData";
 import type { ConversationListEntry } from "../../../types/conversation";
@@ -170,12 +171,7 @@ export function useReactions({
           // Get current message from ref and compute new reactions
           const list = messagesRef.current || [];
           const currentMsg = list.find((m) => String(m?.MessageId ?? m?.Id) === String(messageIdToUse));
-          let currentReactions: Array<{ Reaction?: string; Emoji?: string; UserId?: number }> = [];
-          try {
-            currentReactions = JSON.parse(currentMsg?.ReactionEmojis || "[]");
-          } catch {
-            currentReactions = [];
-          }
+          const currentReactions = parseReactions(currentMsg?.ReactionEmojis);
           const newReactions = currentReactions.filter(
             (r) =>
               !(

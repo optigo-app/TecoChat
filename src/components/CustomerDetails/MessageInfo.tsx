@@ -18,7 +18,7 @@ import {
 } from "../../utils/globalFunc";
 import { formatDateTime } from "../../utils/dateUtils";
 import { readMessageMemberList } from "../../API/Groups/ReadMessageMemberListApi";
-import { charToUnified } from "../../utils/EmojiUtils";
+import { charToUnified, parseReactions } from "../../utils/EmojiUtils";
 import { DocumentTypeIcon } from "../ChatPanel/messages/bubble/DocumentTypeIcon";
 
 interface MessageInfoMember {
@@ -176,7 +176,9 @@ const MessageInfo = ({ messageInfo, localGroupData, auth, selectedCustomer, mess
                 const computedSender =
                   original?.Direction === 1
                     ? "You"
-                    : original?.SenderInfo || original?.Sender || "Member";
+                    : original?.SenderInfo || original?.Sender ||
+                      (messageInfo as { ReplyToSenderName?: string })?.ReplyToSenderName ||
+                      "Member";
 
                 return (
                   <Box
@@ -520,7 +522,7 @@ const MessageInfo = ({ messageInfo, localGroupData, auth, selectedCustomer, mess
               >
                 {(() => {
                   try {
-                    const reactions = JSON.parse(messageInfo.ReactionEmojis);
+                    const reactions = parseReactions(messageInfo.ReactionEmojis);
                     if (Array.isArray(reactions)) {
                       return reactions.map((r: any, idx: number) => {
                         const emojiChar = r?.Reaction || r?.Emoji;

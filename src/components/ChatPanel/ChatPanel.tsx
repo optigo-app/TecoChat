@@ -107,7 +107,7 @@ export const ChatPanel = memo(({
   const isMobile = useIsMobile(); // <= 768px
   const { status: socketStatus } = useSocketContext();
   const isOnline = useOnlineStatus();
-  const isOffline = !isOnline || socketStatus === "disconnected" || socketStatus === "error";
+  const isOffline = !isOnline || socketStatus !== "connected";
 
   const scrollToBottomRightOffset = 30;
 
@@ -822,29 +822,51 @@ export const ChatPanel = memo(({
           return (selectedCustomer as any)?.AllowDeleteForAll === 1 || (selectedCustomer as any)?.AllowDeleteForAll === true;
         })()}
         onMemberRedirect={(msg) => {
-          const member = msg as any;
-          if (member) {
-            if (member.ConversationId) {
-              window.dispatchEvent(
-                new CustomEvent("SELECT_CONVERSATION", {
-                  detail: { conversationId: member.ConversationId },
-                })
-              );
-            } else {
-              window.dispatchEvent(
-                new CustomEvent("SELECT_NEW_CONVERSATION", {
-                  detail: {
-                    customer: {
-                      ...member,
-                      UserId: member.UserId,
-                      name: member.Name || member.MemberName,
-                      ProfileImageUrl: member.ProfileImageUrl || member.ProfileImage,
-                      IsGroup: 0,
-                    },
+          const m = msg as any;
+          // msg.ConversationId is the GROUP conversation — resolve the sender
+          // in groupMembers to get their direct 1-1 conversation instead.
+          const member = groupMembers.find(
+            (gm) =>
+              String(gm.UserId ?? "") === String(m.SenderId ?? "") ||
+              String((gm as any).id ?? "") === String(m.SenderId ?? "") ||
+              (m.SenderEmail && String(gm.UserId) === String(m.SenderEmail))
+          );
+          if (member?.ConversationId) {
+            window.dispatchEvent(
+              new CustomEvent("SELECT_CONVERSATION", {
+                detail: {
+                  conversationId: member.ConversationId,
+                  // Fallback customer so page.tsx can open the chat even if
+                  // the conversation isn't in the currently loaded list page.
+                  customer: {
+                    ConversationId: member.ConversationId,
+                    id: member.UserId,
+                    UserId: member.UserId,
+                    ReceiverId: member.UserId,
+                    name: member.MemberName || member.UserName || m.SenderInfo,
+                    UserName: member.MemberName || member.UserName || m.SenderInfo,
+                    ProfileImageUrl: member.ProfileImage || m.SenderProfilePicture,
+                    IsGroup: 0,
                   },
-                })
-              );
-            }
+                },
+              })
+            );
+          } else {
+            window.dispatchEvent(
+              new CustomEvent("SELECT_NEW_CONVERSATION", {
+                detail: {
+                  customer: {
+                    id: member?.UserId ?? m.SenderId,
+                    UserId: member?.UserId ?? m.SenderId,
+                    ReceiverId: member?.UserId ?? m.SenderId,
+                    name: member?.MemberName || member?.UserName || m.SenderInfo || m.Sender,
+                    UserName: member?.MemberName || member?.UserName || m.SenderInfo || m.Sender,
+                    ProfileImageUrl: member?.ProfileImage || m.SenderProfilePicture,
+                    IsGroup: 0,
+                  },
+                },
+              })
+            );
           }
         }}
       />

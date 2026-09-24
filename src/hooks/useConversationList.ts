@@ -61,7 +61,7 @@ interface UseConversationListReturn {
   showEmptyState: boolean;
   serviceDown: boolean;
   serviceMessage?: string;
-  loadMembers: (page?: number, reset?: boolean, search?: string | null) => Promise<void>;
+  loadMembers: (page?: number, reset?: boolean, search?: string | null, skipCacheRead?: boolean) => Promise<void>;
   handleSearchChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   clearSearch: () => void;
   setChatMembers: React.Dispatch<React.SetStateAction<ConversationListData | null>>;
@@ -89,6 +89,7 @@ export const useConversationList = ({
   const [drafts, setDrafts] = useState<Record<number, string>>({});
 
   const fetchControllerRef = useRef<AbortController | null>(null);
+  const requestInFlightRef = useRef(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTermRef = useRef("");
   const selectedConversationIdRef = useRef<string | number | undefined>(undefined);
@@ -123,25 +124,32 @@ export const useConversationList = ({
 
   // ── Load members ──────────────────────────────────────────────────────────
   const loadMembers = useCallback(
-    async (page = 1, reset = false, search: string | null = null) => {
-      if (loading || (!reset && !hasMore)) return;
+    async (page = 1, reset = false, search: string | null = null, skipCacheRead = false) => {
+      if ((!reset && requestInFlightRef.current) || (!reset && !hasMore)) return;
       if (!auth?.token || !auth?.userId) return;
 
-      // Cancel previous request
       if (fetchControllerRef.current) {
         fetchControllerRef.current.abort();
       }
       const controller = new AbortController();
       fetchControllerRef.current = controller;
+      requestInFlightRef.current = true;
 
-      if (reset) setShowEmptyState(false);
+      if (reset) {
+        setShowEmptyState(false);
+        setCurrentPage(1);
+        setHasMore(true);
+      }
 
       const searchToUse = search !== null ? search : searchTermRef.current;
       const isSearchRequest = Boolean(searchToUse) && reset;
       if (isSearchRequest) setSearchLoading(true);
 
-      let didShowCache = false;
-      if (reset && !isSearchRequest) {
+      // skipCacheRead: the mount effect already read + painted the IDB cache,
+      // so don't re-query it — but still count as "cache shown" so the API
+      // refresh runs silently without a loading spinner over painted data.
+      let didShowCache = skipCacheRead;
+      if (reset && !isSearchRequest && !skipCacheRead) {
         try {
           const cached = await getConversations(auth);
           if (cached.length > 0) {
@@ -214,17 +222,34 @@ export const useConversationList = ({
 
         setChatMembers((prev) => {
           let finalData = sortedConversations;
-          if (reset && prev?.data) {
-            const missing = prev.data.filter(
-              (old) =>
-                !sortedConversations.some(
-                  (n) =>
-                    Number((n as { ConversationId?: string | number }).ConversationId ?? 0) ===
-                    Number((old as { ConversationId?: string | number }).ConversationId ?? 0)
-                )
-            );
-            if (missing.length) {
-              finalData = [...sortedConversations, ...missing];
+          if (prev?.data) {
+            if (reset) {
+              // Reset (page 1 / refresh / new search): keep items the server
+              // didn't return so the list doesn't flicker or lose entries.
+              const missing = prev.data.filter(
+                (old) =>
+                  !sortedConversations.some(
+                    (n) =>
+                      Number((n as { ConversationId?: string | number }).ConversationId ?? 0) ===
+                      Number((old as { ConversationId?: string | number }).ConversationId ?? 0)
+                  )
+              );
+              if (missing.length) {
+                finalData = [...sortedConversations, ...missing];
+                finalData.sort(conversationComparator);
+              }
+            } else {
+              // Pagination (page 2+): APPEND — merge by ConversationId so the
+              // new page adds to the list instead of replacing page 1.
+              // New entries win on dupes (fresher fields).
+              const map = new Map<string, ConversationListEntry>();
+              for (const c of prev.data) {
+                map.set(String((c as { ConversationId?: string | number }).ConversationId ?? ""), c);
+              }
+              for (const c of sortedConversations) {
+                map.set(String((c as { ConversationId?: string | number }).ConversationId ?? ""), c);
+              }
+              finalData = Array.from(map.values());
               finalData.sort(conversationComparator);
             }
           }
@@ -234,9 +259,9 @@ export const useConversationList = ({
           };
         });
 
-        const moreAvailable = response?.hasMore ?? sortedConversations.length > 0;
+        const moreAvailable = response?.hasMore ?? sortedConversations.length === pageSize;
         setHasMore(moreAvailable);
-        if (moreAvailable) setCurrentPage(page);
+        setCurrentPage(page);
 
         // Persist the fresh conversation list to IndexedDB (best-effort).
         if (!isSearchRequest && sortedConversations.length > 0) {
@@ -249,12 +274,13 @@ export const useConversationList = ({
         console.error("Error loading members:", error);
       } finally {
         if (fetchControllerRef.current === controller) {
+          requestInFlightRef.current = false;
           if (isSearchRequest) setSearchLoading(false);
           else setLoading(false);
         }
       }
     },
-    [loading, hasMore, auth, pageSize]
+    [hasMore, auth, pageSize]
   );
 
   // ── Search handler (debounced 500ms) ──────────────────────────────────────
@@ -341,9 +367,10 @@ export const useConversationList = ({
           SystemMsg: (incoming.SystemMsg as number) ?? (incoming.LastMessageSystemMsg as number) ?? (existingChat?.SystemMsg as number),
           IsDeletedForEveryone: incoming.IsDeletedForEveryone as number,
         };
-        const messagePreview = getMessagePreview(previewMsg);
-        const messagePreviewText = messagePreview.text;
-        const messagePreviewNode = messagePreview.node;
+        // Lazy: status-only receipts early-return before the preview is used —
+        // don't build a ReactNode for them.
+        let cachedPreview: { text: string; node: React.ReactNode } | null = null;
+        const getPreview = () => (cachedPreview ??= getMessagePreview(previewMsg));
         const dateTime = (incoming.DateTime as string) || (incoming.LastMessageDate as string) || (incoming.LastUpdatedDate as string);
         const formattedTime = formatDateTime(dateTime, "chatTimestamp");
 
@@ -370,7 +397,7 @@ export const useConversationList = ({
         if (shouldNotify) {
           pendingNotify = {
             senderName: resolvedName,
-            message: messagePreviewText,
+            message: getPreview().text,
             conversationId,
             conversationName: (existingChat?.name as string) || (incoming.ConversationName as string),
             isGroup: (existingChat?.IsGroup as number) ?? (incoming.IsGroup as number),
@@ -406,8 +433,18 @@ export const useConversationList = ({
             : ((incoming.MessageId as string | number) ?? (incoming.Id as string | number));
           const isSameMessage = incomingId
             ? String(incomingId) === String(currentChat.LastMessageId)
-            : (currentChat.lastMessageText === messagePreviewText &&
+            : (currentChat.lastMessageText === getPreview().text &&
                currentChat.lastMessageTime === formattedTime);
+
+          // Delete-for-everyone events: only rewrite the preview when the
+          // deleted message is the conversation's current last message.
+          if (
+            incoming.IsDeletedForEveryone === 1 &&
+            incomingId != null &&
+            String(incomingId) !== String(currentChat.LastMessageId)
+          ) {
+            return prev;
+          }
 
           if (isStatusChange && !incoming.Message) {
             // Status-only receipt — update ONLY LastMessageStatus and unread
@@ -436,8 +473,8 @@ export const useConversationList = ({
           merged.name = (String(currentChat.name ?? "").trim() && String(currentChat.name).trim() !== "Unknown")
             ? currentChat.name
             : resolvedName;
-          merged.lastMessage = messagePreviewNode;
-          merged.lastMessageText = messagePreviewText;
+          merged.lastMessage = getPreview().node;
+          merged.lastMessageText = getPreview().text;
           merged.lastMessageTime = formattedTime;
           merged.lastMessageTimeValue = isStatusChange
             ? currentChat.lastMessageTimeValue
@@ -469,8 +506,8 @@ export const useConversationList = ({
             ConversationId: conversationId,
             name: effectiveName,
             ConversationName: effectiveName,
-            lastMessage: messagePreviewNode,
-            lastMessageText: messagePreviewText,
+            lastMessage: getPreview().node,
+            lastMessageText: getPreview().text,
             lastMessageTime: formattedTime,
             lastMessageTimeValue: dateTime,
             unreadCount: unread,
@@ -744,16 +781,14 @@ export const useConversationList = ({
       let cached: ConversationListEntry[] = [];
       try {
         cached = await getConversations(auth);
-        console.log("[RELOAD] Cache read:", cached.length, "conversations found");
-      } catch (err) {
-        console.error("[RELOAD] Cache read error:", err);
+      } catch {
+        /* ignore cache read errors */
       }
 
       if (cancelled) return;
 
       if (cached.length > 0) {
         // Cache exists → show instantly
-        console.log("[RELOAD] Showing cached list instantly");
         setChatMembers({ data: cached, total: cached.length });
         setLoading(false);
         setShowEmptyState(false);
@@ -762,25 +797,32 @@ export const useConversationList = ({
         setPreloading(true);
       }
 
-      loadMembers(1, true, "");
+      // skipCacheRead — this effect already read + painted the IDB cache
+      // above, so loadMembers goes straight to the silent API refresh.
+      loadMembers(1, true, "", true);
 
-      preLoadConversations(1, pageSize, auth)
-        .then(({ messagesByConversation }) => {
-          if (cancelled) return;
-          for (const [convId, rawMsgs] of messagesByConversation) {
-            const normalized = normalizeServerMessages(rawMsgs, auth, convId);
-            if (normalized.length > 0) {
-              putMessages(auth, convId, normalized as never).catch(() => {});
+      // Only run the heavy bulk preload when there's NO cached data — it
+      // warms the message cache while SyncingScreen is up. With a warm cache
+      // it would be a redundant API call + normalization + IDB writes on
+      // every single reload (each conversation refreshes on open anyway).
+      if (cached.length === 0) {
+        preLoadConversations(1, pageSize, auth)
+          .then(({ messagesByConversation }) => {
+            if (cancelled) return;
+            for (const [convId, rawMsgs] of messagesByConversation) {
+              const normalized = normalizeServerMessages(rawMsgs, auth, convId);
+              if (normalized.length > 0) {
+                putMessages(auth, convId, normalized as never).catch(() => {});
+              }
             }
-          }
-          console.log("[RELOAD] Preloaded messages for", messagesByConversation.size, "conversations");
-        })
-        .catch(() => {
-          /* ignore preload errors */
-        })
-        .finally(() => {
-          if (!cancelled) setPreloading(false);
-        });
+          })
+          .catch(() => {
+            /* ignore preload errors */
+          })
+          .finally(() => {
+            if (!cancelled) setPreloading(false);
+          });
+      }
     })();
 
     return () => {
@@ -852,6 +894,17 @@ export const useConversationList = ({
             return { ...prev, data: updatedData };
           }
 
+          // ── Message deletion: only touch the preview when the deleted
+          // message is the conversation's current last message.
+          if (detail.isMessageDeletion) {
+            const deletedId = detail.DeletedMessageId ?? detail.MessageId;
+            if (String(deletedId ?? "") !== String(merged.LastMessageId ?? "")) {
+              updatedData[idx] = merged as ConversationListEntry;
+              updatedData.sort(conversationComparator);
+              return { ...prev, data: updatedData };
+            }
+          }
+
           // ── Phase 2: message update (only if Message/LastMessage present) ──
           const hasMessage = detail.Message !== undefined || detail.LastMessage !== undefined;
 
@@ -909,7 +962,9 @@ export const useConversationList = ({
 
             // Status-only update (no new message content) — never touch
             // direction/preview fields so the tick icon state is preserved.
-            if (isStatusChange && !detail.Message) {
+            // Deletion/chat-clear events bypass this: an empty Message still
+            // means the preview must be cleared/rolled back.
+            if (isStatusChange && !detail.Message && !detail.isMessageDeletion && !detail.isChatClear) {
               merged.unreadCount = unreadFinal;
               merged.UnreadCount = unreadFinal;
               const newStatus = detail.MessageStatus ?? detail.Status ?? detail.status;

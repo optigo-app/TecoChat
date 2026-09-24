@@ -50,6 +50,18 @@ interface AuthLike {
   userId?: string;
 }
 
+// Cache DateTime parsing per message object — sorts and echo-match loops
+// would otherwise call `new Date()` O(n log n) times per merge.
+const tsCache = new WeakMap<ChatMessage, number>();
+const tsOf = (m: ChatMessage): number => {
+  let t = tsCache.get(m);
+  if (t === undefined) {
+    t = new Date(m.DateTime || 0).getTime();
+    tsCache.set(m, t);
+  }
+  return t;
+};
+
 /**
  * Merge server messages with any optimistic/socket messages already in state.
  * Deduplicates by ID, preserving socket messages that aren't yet on the server.
@@ -79,12 +91,12 @@ export const mergeMessages = (
     const id = getMessageId(msg);
     if (!id || map.has(id)) continue;
     if (id.startsWith("temp_")) {
-      const ts = new Date(msg.DateTime || 0).getTime();
+      const ts = tsOf(msg);
       const matched = serverMessages.some(
         (sm) =>
           sm.Direction === msg.Direction &&
           sm.Message === msg.Message &&
-          Math.abs(new Date(sm.DateTime || 0).getTime() - ts) < 15000
+          Math.abs(tsOf(sm) - ts) < 15000
       );
       if (matched) continue;
     }
@@ -94,20 +106,17 @@ export const mergeMessages = (
   for (const om of optimistic) {
     const id = getMessageId(om);
     if (!id || map.has(id)) continue;
-    const ts = new Date(om.DateTime || 0).getTime();
+    const ts = tsOf(om);
     const matched = serverMessages.some(
       (sm) =>
         sm.Direction === om.Direction &&
         sm.Message === om.Message &&
-        Math.abs(new Date(sm.DateTime || 0).getTime() - ts) < 15000
+        Math.abs(tsOf(sm) - ts) < 15000
     );
     if (!matched) map.set(id, om);
   }
 
-  return Array.from(map.values()).sort(
-    (a, b) =>
-      new Date(a.DateTime || 0).getTime() - new Date(b.DateTime || 0).getTime()
-  );
+  return Array.from(map.values()).sort((a, b) => tsOf(a) - tsOf(b));
 };
 
 /** Group messages by date key for UI date separators. */

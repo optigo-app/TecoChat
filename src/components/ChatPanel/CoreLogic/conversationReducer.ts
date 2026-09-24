@@ -5,6 +5,19 @@
 
 import type { ChatMessage } from "../../../types/message";
 import { getMessageId } from "./messageHelpers";
+import { parseReactions } from "../../../utils/EmojiUtils";
+
+// Cache DateTime parsing per message object for sorts — Date construction is
+// one of the hotter costs in PREPEND/APPEND on large lists.
+const tsCache = new WeakMap<ChatMessage, number>();
+const tsOf = (m: ChatMessage): number => {
+  let t = tsCache.get(m);
+  if (t === undefined) {
+    t = new Date(m.DateTime || 0).getTime();
+    tsCache.set(m, t);
+  }
+  return t;
+};
 
 // ─── Action types ────────────────────────────────────────────────────────────
 export const MSG = {
@@ -152,9 +165,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       }
       return {
         ...state,
-        data: Array.from(map.values()).sort(
-          (a, b) => new Date(a.DateTime || 0).getTime() - new Date(b.DateTime || 0).getTime()
-        ),
+        data: Array.from(map.values()).sort((a, b) => tsOf(a) - tsOf(b)),
         total: action.total,
       };
     }
@@ -169,10 +180,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
         const k = getMessageId(m);
         if (k && !map.has(k)) map.set(k, m);
       }
-      const merged = Array.from(map.values()).sort(
-        (a, b) =>
-          new Date(a.DateTime || 0).getTime() - new Date(b.DateTime || 0).getTime()
-      );
+      const merged = Array.from(map.values()).sort((a, b) => tsOf(a) - tsOf(b));
       return { ...state, data: merged, total: action.total };
     }
 
@@ -314,18 +322,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
           const id = msg.MessageId || msg.Id;
           if (String(id ?? "") !== String(messageId)) return msg;
 
-          let current: Array<{ Reaction?: string; UserId?: string | number }> = [];
-          try {
-            current =
-              typeof msg.ReactionEmojis === "string"
-                ? JSON.parse(msg.ReactionEmojis || "[]")
-                : msg.ReactionEmojis
-                ? []
-                : [];
-          } catch {
-            current = [];
-          }
-          if (!Array.isArray(current)) current = [];
+          let current = parseReactions(msg.ReactionEmojis);
 
           if (Array.isArray(reactions) && reactions.length > 0) {
             reactions.forEach((incoming) => {

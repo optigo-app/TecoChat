@@ -5,7 +5,6 @@ import { Box, Typography, IconButton, Avatar, Tooltip, useTheme, alpha } from "@
 import { CheckCheck, CircleMinus, ChevronDown, Forward, Clock, Star, RotateCcw } from "lucide-react";
 import { SafeEmoji } from "./input/SafeEmoji";
 import type { ChatMessage } from "../../types/message";
-import type { ConversationListEntry } from "../../types/conversation";
 import { formatDateTime } from "../../utils/dateUtils";
 import { normalizeMessageText, getSoftAvatarColors } from "../../utils/globalFunc";
 import { renderMessageText } from "../../utils/messageTextRenderer";
@@ -17,7 +16,10 @@ import { useLinkPreview } from "../../hooks/useLinkPreview";
 interface MessageBubbleProps {
   msg: ChatMessage;
   isOutgoing: boolean;
-  selectedCustomer: ConversationListEntry | null;
+  /** Primitives — bubbles only need IsGroup/ConversationId; passing the whole
+   *  customer object re-renders every row on each list/socket update. */
+  isGroup: boolean;
+  conversationId?: string | number | null;
   getMessageStatusIcon: (msg: ChatMessage) => "sent" | "delivered" | "read" | null;
   onContextMenu?: (e: React.MouseEvent, msg: ChatMessage) => void;
   onMenuClick?: (e: React.MouseEvent, msg: ChatMessage) => void;
@@ -40,7 +42,7 @@ interface MessageBubbleProps {
   containerRef?: React.MutableRefObject<HTMLElement | null>;
   shouldShowActions?: boolean;
   isExpanded?: boolean;
-  onToggleExpand?: () => void;
+  onToggleExpand?: (id: string | number) => void;
   auth?: { id?: string | number; userId?: string | number } | null;
   highlightQuery?: string | null;
 }
@@ -48,7 +50,8 @@ interface MessageBubbleProps {
 const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
   msg,
   isOutgoing,
-  selectedCustomer,
+  isGroup,
+  conversationId,
   getMessageStatusIcon,
   onContextMenu,
   onMenuClick,
@@ -70,7 +73,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
   highlightQuery,
 }) => {
   const theme = useTheme();
-  const isGroup = (selectedCustomer as { IsGroup?: number }).IsGroup === 1;
+
   const isDeleted = msg.IsDeletedForEveryone === 1;
   const isReply = msg.ContextType === 2;
   const isForwarded = !!msg.ForwardedFrom && msg.ForwardedFrom !== "0";
@@ -218,7 +221,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 LastName: (msg as any).LastName,
                 ProfileImageUrl: (msg as any).SenderProfilePicture,
                 IsGroup: 0,
-                ConversationId: selectedCustomer?.ConversationId,
+                ConversationId: conversationId,
               };
               window.dispatchEvent(
                 new CustomEvent("SHOW_MEMBER_INFO", { detail: memberData })
@@ -266,7 +269,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
               maxLines={20}
               minChars={1200}
               isExpanded={isExpanded}
-              onToggle={onToggleExpand}
+              onToggle={() => onToggleExpand?.(msg.Id ?? msg.MessageId ?? "")}
               sx={{ color: theme.palette.text.primary }}
               mentionUsers={msg.Mentions || msg.MentionUsers}
               highlightQuery={highlightQuery}
@@ -298,7 +301,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 maxLines={20}
                 minChars={1200}
                 isExpanded={isExpanded}
-                onToggle={onToggleExpand}
+                onToggle={() => onToggleExpand?.(msg.Id ?? msg.MessageId ?? "")}
                 sx={{ mt: 0.5, color: theme.palette.text.primary }}
                 mentionUsers={msg.Mentions || msg.MentionUsers}
                 highlightQuery={highlightQuery}
@@ -393,7 +396,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         </Box>
 
         {/* Reactions */}
-        {msg.ReactionEmojis && msg.ReactionEmojis !== "" && msg.ReactionEmojis !== "[]" && (
+        {parsedReactions.length > 0 && (
           <Box
             className={`message-reaction ${isOutgoing ? "outgoing" : "incoming"}`}
             onClick={(e) => {
@@ -402,10 +405,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
             }}
             sx={{
               position: "absolute",
-              bottom: -24,
+              bottom: -18,
               display: "flex",
               alignItems: "center",
-              padding: "2px 8px",
+              padding: "1px 8px",
               background: theme.palette.background.paper,
               border: `1px solid ${theme.palette.divider}`,
               borderRadius: "20px",
@@ -418,7 +421,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
           >
             {(() => {
               try {
-                const reactions = JSON.parse(msg.ReactionEmojis);
+                const reactions = parsedReactions;
                 if (Array.isArray(reactions)) {
                   // Group identical reactions with count
                   const emojiGroups = new Map<string, { Reaction?: string; Emoji?: string; Unified?: string; count: number }>();

@@ -343,9 +343,18 @@ const LoginPageV2 = () => {
                         onChange={handleChange}
                         onBlur={handleCompanyCodeBlur}
                         onKeyDown={(e) => {
-                          if (e.key !== "Enter") return;
-                          e.preventDefault();
-                          handleCompanySubmit(e);
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleCompanySubmit(e);
+                            return;
+                          }
+                          // Tab = verify & move to next step (same as
+                          // Enter/Continue). preventDefault also stops the
+                          // blur, so the verify doesn't run twice.
+                          if (e.key === "Tab" && !e.shiftKey && credentials.companycode.trim()) {
+                            e.preventDefault();
+                            handleCompanySubmit(e);
+                          }
                         }}
                         autoComplete="organization"
                         autoCapitalize="none"

@@ -15,15 +15,24 @@ export const charToUnified = (char: string | null | undefined): string | null =>
 };
 
 /**
- * Parses the raw ReactionEmojis string into a JSON array.
+ * Parses ReactionEmojis into a JSON array. Accepts a JSON string OR an
+ * already-parsed array — socket/normalization paths can store it either way,
+ * and a plain JSON.parse on an array throws (hiding the reaction badge).
  */
 export const parseReactions = (
-  rawString: string | null | undefined
-): Array<{ Reaction?: string; Emoji?: string; Unified?: string; Direction?: number; UserId?: number; UserName?: string }> => {
+  raw: unknown
+): Array<{ Reaction?: string; Emoji?: string; Unified?: string; Direction?: number; UserId?: number | string; UserName?: string }> => {
   try {
-    if (!rawString || rawString === "" || rawString === "[]") return [];
-    const raw = JSON.parse(rawString);
-    return Array.isArray(raw) ? raw : [];
+    if (!raw || raw === "" || raw === "[]") return [];
+    if (Array.isArray(raw)) {
+      // Server keeps removed reactions as { Reaction: "" } placeholders —
+      // drop them so empty pills don't render.
+      return raw.filter((r) => !!r && !!(r.Reaction || r.Emoji));
+    }
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed)
+      ? parsed.filter((r: { Reaction?: string; Emoji?: string }) => !!r && !!(r.Reaction || r.Emoji))
+      : [];
   } catch {
     return [];
   }
