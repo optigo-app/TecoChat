@@ -127,7 +127,9 @@
 
     // ── Header ──────────────────────────────────────────────────────────────
     .customer_lists_header {
-        padding: 10px 16px;
+        // WhatsApp-style: less left padding so the back arrow sits near
+        // the screen edge when the archive view is open.
+        padding: 10px 16px 10px 8px;
         padding-top: max(10px, var(--safe-top));
         border-bottom: 1px solid $sidebar-borderColor;
         display: flex;
@@ -177,12 +179,12 @@
             padding: 8px;
             transition: all $transition-duration ease;
             border-radius: 50%;
-            background-color: $hover-bg;
+            // Plain arrow like WhatsApp — no filled circle, pulled to the edge
+            margin-left: -4px;
 
             &:hover {
                 color: $primary-main;
-                background-color: $hover-bg-strong;
-                transform: scale(1.08);
+                background-color: $hover-bg;
             }
         }
     }
@@ -252,6 +254,39 @@
     .customer_lists_main {
         flex: 1;
         overflow: hidden;
+        position: relative;
+
+        // Pull-to-refresh indicator — sits above the list, revealed by the
+        // pull transform. Determinate ring fills with the pull; switches to
+        // an indeterminate spinner while the refresh runs.
+        .ptr-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            overflow: hidden;
+
+            .ptr-spinner {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                background-color: $sidebar-Bgcolor;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+                color: $primary-main;
+
+                .MuiCircularProgress-root {
+                    color: $primary-main;
+                }
+            }
+        }
 
         ul {
             padding: 6px;
@@ -737,5 +772,30 @@
 @keyframes spin {
     to {
         transform: rotate(360deg);
+    }
+}
+
+// ── WhatsApp-style floating new-chat button (mobile) ─────────────────────────
+.new-chat-fab {
+    position: fixed;
+    right: calc(16px + var(--safe-right, 0px));
+    bottom: calc(var(--app-bottom-nav-height, 64px) + var(--safe-bottom, 0px) + 16px);
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: $primary-main;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 2px 4px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    z-index: 15;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+    &:active {
+        transform: scale(0.94);
     }
 }

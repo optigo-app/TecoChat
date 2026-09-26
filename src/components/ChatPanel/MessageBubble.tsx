@@ -12,6 +12,7 @@ import { charToUnified, parseReactions } from "../../utils/EmojiUtils";
 import { ReplyPreview, MediaMessage, ReadMoreText, LinkPreviewCard, LinkPreviewSkeleton } from "./messages/bubble";
 import { MessageActions, ReactionDetailsMenu } from "./messages/interactions";
 import { useLinkPreview } from "../../hooks/useLinkPreview";
+import { getMessageId } from "./CoreLogic/messageHelpers";
 
 interface MessageBubbleProps {
   msg: ChatMessage;
@@ -127,7 +128,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     <Box
       className={`message-bubble-wrapper ${isOutgoing ? "outgoing" : "incoming"}`}
       onContextMenu={(e) => onContextMenu?.(e, msg)}
-      data-message-id={msg.Id ?? msg.MessageId}
+      data-message-id={getMessageId(msg)}
     >
       <Box
         className={`message-bubble ${isOutgoing ? "outgoing" : "incoming"} ${
@@ -269,7 +270,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
               maxLines={20}
               minChars={1200}
               isExpanded={isExpanded}
-              onToggle={() => onToggleExpand?.(msg.Id ?? msg.MessageId ?? "")}
+              onToggle={() => onToggleExpand?.(getMessageId(msg))}
               sx={{ color: theme.palette.text.primary }}
               mentionUsers={msg.Mentions || msg.MentionUsers}
               highlightQuery={highlightQuery}
@@ -301,7 +302,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 maxLines={20}
                 minChars={1200}
                 isExpanded={isExpanded}
-                onToggle={() => onToggleExpand?.(msg.Id ?? msg.MessageId ?? "")}
+                onToggle={() => onToggleExpand?.(getMessageId(msg))}
                 sx={{ mt: 0.5, color: theme.palette.text.primary }}
                 mentionUsers={msg.Mentions || msg.MentionUsers}
                 highlightQuery={highlightQuery}

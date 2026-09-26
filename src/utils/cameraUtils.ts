@@ -13,25 +13,6 @@ export const checkCameraAvailability = async (): Promise<boolean> => {
   }
 };
 
-export const requestCameraPermission = async (): Promise<{
-  granted: boolean;
-  stream: MediaStream | null;
-}> => {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    return { granted: true, stream };
-  } catch (error) {
-    console.error("Camera permission denied or error:", error);
-    return { granted: false, stream: null };
-  }
-};
-
-export const stopMediaStream = (stream: MediaStream | null) => {
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
-  }
-};
-
 export const openImageFilePicker = (
   onFileSelect: (files: File[]) => void,
   multiple = false

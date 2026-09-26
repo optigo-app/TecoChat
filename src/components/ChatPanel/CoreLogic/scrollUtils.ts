@@ -1,6 +1,6 @@
 "use client";
 
-export function setScrollTop(
+function setScrollTop(
   outer: HTMLElement,
   top: number
 ): void {
@@ -29,7 +29,7 @@ export function scrollToMessageElement(
   messageId: string | number
 ): boolean {
   const el = outer.querySelector(
-    `[data-message-id="${String(messageId)}"]`
+    `[data-message-id="${CSS.escape(String(messageId))}"]`
   ) as HTMLElement | null;
   if (el) {
     el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -44,7 +44,7 @@ export function scrollToMessageNearTop(
   offset = 20
 ): boolean {
   const el = outer.querySelector(
-    `[data-message-id="${String(messageId)}"]`
+    `[data-message-id="${CSS.escape(String(messageId))}"]`
   ) as HTMLElement | null;
   if (el) {
     setScrollTop(outer, el.offsetTop - offset);
@@ -55,10 +55,6 @@ export function scrollToMessageNearTop(
 
 export function getDistanceFromBottom(outer: HTMLElement): number {
   return outer.scrollHeight - outer.clientHeight - outer.scrollTop;
-}
-
-export function isAtBottom(outer: HTMLElement, threshold = 100): boolean {
-  return getDistanceFromBottom(outer) <= threshold;
 }
 
 export interface ScrollAnchor {

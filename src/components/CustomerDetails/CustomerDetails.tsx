@@ -135,6 +135,7 @@ interface CustomerDetailsProps {
   isSearching?: boolean;
   onSearchMessages?: (query: string) => void;
   onSearchByDate?: (date: string) => void;
+  starFilter?: boolean;
   containerRef?: React.MutableRefObject<HTMLElement | null>;
 }
 
@@ -153,6 +154,7 @@ const CustomerDetails = ({
   isSearching = false,
   onSearchMessages,
   onSearchByDate,
+  starFilter = false,
   containerRef,
 }: CustomerDetailsProps) => {
   const { auth } = useLoginContext();
@@ -1468,6 +1470,7 @@ const CustomerDetails = ({
               isSearching={isSearching}
               onSearchMessages={onSearchMessages}
               onSearchByDate={onSearchByDate}
+              starFilter={starFilter}
               containerRef={containerRef}
               hasConversation={hasConversation}
               onStartChat={handleStartChat}

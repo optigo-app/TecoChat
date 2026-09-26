@@ -6,6 +6,7 @@ import { AuthGuard } from "@/src/components/AuthGuard";
 import { AppLayout } from "@/src/components/AppLayout/AppLayout";
 import { CustomerLists } from "@/src/components/CustomerLists/CustomerLists";
 import { ChatPanel } from "@/src/components/ChatPanel/ChatPanel";
+import ConfirmationDialog from "@/src/components/ReusableComponent/ConfirmationDialog";
 import { NotificationPermissionModal } from "@/src/components/ReusableComponent/NotificationPermissionModal";
 import UpdateNotification from "@/src/components/UpdateNotification/UpdateNotification";
 import { getConversations } from "@/src/db/conversationCache";
@@ -89,6 +90,83 @@ function HomeContent() {
   useEffect(() => {
     selectedCustomerRef.current = selectedCustomer;
   }, [selectedCustomer]);
+
+  // ── Mobile back-button navigation ─────────────────────────────────────────
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (!history.state?.tecochat) {
+      history.replaceState({ tecochat: "root" }, "");
+      history.pushState({ tecochat: "list" }, "");
+    }
+    const onPop = () => {
+      const win = window as unknown as { __tecochatPop?: boolean };
+      if (win.__tecochatPop) {
+        win.__tecochatPop = false;
+        return;
+      }
+      const st = history.state?.tecochat;
+      // Ask CustomerLists (synchronous) whether an overlay/tab is open.
+      const probe = { open: false };
+      window.dispatchEvent(
+        new CustomEvent<{ open: boolean }>("TECOCHAT_QUERY_OVERLAY", { detail: probe })
+      );
+
+      if (selectedCustomerRef.current) {
+        setSelectedCustomer(null);
+        if (st === "overlay" && !probe.open) history.back();
+        return;
+      }
+      if (probe.open) {
+        window.dispatchEvent(new CustomEvent("TECOCHAT_POP_OVERLAY"));
+        if (st === "root") history.pushState({ tecochat: "list" }, "");
+        return;
+      }
+      if (st === "overlay") {
+        // Overlay already closed via UI — skip the stale history entry.
+        history.back();
+        return;
+      }
+      if (st === "root") {
+        // Back on the root screen — ask before exiting the app.
+        setExitConfirmOpen(true);
+        // Re-push the sentinel so cancelling keeps back interception working.
+        history.pushState({ tecochat: "list" }, "");
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [isMobile]);
+
+  // Push a history entry when a conversation opens on mobile.
+  const prevCustomerRef = useRef<ConversationListEntry | null>(null);
+  useEffect(() => {
+    if (!isMobile) {
+      prevCustomerRef.current = selectedCustomer;
+      return;
+    }
+    const prev = prevCustomerRef.current;
+    prevCustomerRef.current = selectedCustomer;
+    if (selectedCustomer && !prev && history.state?.tecochat !== "chat") {
+      history.pushState({ tecochat: "chat" }, "");
+    }
+  }, [isMobile, selectedCustomer]);
+
+  // UI back arrow: route through history so the stack stays in sync.
+  const handleMobileBack = useCallback(() => {
+    if (isMobile && history.state?.tecochat === "chat") {
+      history.back(); // popstate handler clears the selection
+    } else {
+      setSelectedCustomer(null);
+    }
+  }, [isMobile]);
+
+  const handleExitConfirm = useCallback(() => {
+    setExitConfirmOpen(false);
+    // Pop the re-pushed "list" + "root" sentinel so the app actually exits.
+    history.go(-2);
+  }, []);
 
   // ── Service down/up events ──────────────────────────────────────────────────
   // When SERVICE_DOWN fires, re-check the cache before triggering the maintenance
@@ -280,13 +358,24 @@ function HomeContent() {
             onCustomerSelect={setSelectedCustomer}
             onConversationRead={handleConversationRead}
             onDetailsPanelOpenChange={setDetailsPanelOpen}
-            onBack={isMobile ? () => setSelectedCustomer(null) : undefined}
+            onBack={isMobile ? handleMobileBack : undefined}
           />
         </div>
       </div>
 
       {/* Notification permission guide modal */}
       <NotificationPermissionModal />
+
+      {/* Exit confirmation — shown when back is pressed on the root screen */}
+      <ConfirmationDialog
+        isOpen={exitConfirmOpen}
+        onClose={() => setExitConfirmOpen(false)}
+        onConfirm={handleExitConfirm}
+        title="Exit TecoChat?"
+        description="Are you sure you want to exit the app?"
+        confirmText="Exit"
+        cancelText="Stay"
+      />
 
       {serviceDown && !hasCachedData && cacheCheckDone && (
         <Box

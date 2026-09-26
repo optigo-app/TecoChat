@@ -95,8 +95,6 @@ export const showBrowserNotification = async ({
     tag: tag || `msg-${(data as any)?.conversationId || (data as any)?.ConversationId}`,
     requireInteraction: false,
     renotify: true,
-    // App plays its own synthesized sound — silence the OS default to avoid double audio
-    silent: true,
   };
 
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -114,8 +112,7 @@ export const showBrowserNotification = async ({
 
   // WhatsApp Web behavior: Only show browser notifications if window is not active
   if (!active) {
-    console.log("[NOTIFY] Window NOT active — showing notification + sound");
-    playSoundIfNeeded();
+    console.log("[NOTIFY] Window NOT active — showing OS notification (sound+vibration via OS)");
 
     try {
       // Use Service Worker if available
@@ -128,7 +125,7 @@ export const showBrowserNotification = async ({
         const reg = await navigator.serviceWorker.ready;
         if (reg && typeof reg.showNotification === "function") {
           console.log("[NOTIFY] Showing via Service Worker");
-          reg.showNotification(title, options);
+          await reg.showNotification(title, options);
           return;
         }
       }
@@ -156,8 +153,10 @@ export const showBrowserNotification = async ({
         showToast(body, "info", { title, data });
       }
     } catch (error) {
-      console.warn("[NOTIFY] Browser notification failed, falling back to toast:", error);
-      // Don't replay sound here — already played above if needed
+      console.warn("[NOTIFY] Browser notification failed, falling back to sound + toast:", error);
+      // OS notification failed — at least play our sound + show a toast so
+      // the alert isn't completely lost.
+      playSoundIfNeeded();
       showToast(body, "info", { title, data });
     }
   } else {

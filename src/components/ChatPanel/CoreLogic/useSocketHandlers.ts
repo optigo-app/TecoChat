@@ -206,12 +206,25 @@ export function useSocketHandlers({
 
     const handleInternalMessage = (data: Record<string, unknown>) => {
       if (!data || typeof data !== "object") return;
+      // Skip echoes of our own messages — the optimistic row + API UPSERT
+      // already reconcile them; re-adding would duplicate the bubble.
+      const myId = Number(auth?.id ?? auth?.userId);
+      const senderNum = Number(data.SenderId ?? data.Sender ?? data.UserId);
+      if (myId && Number.isFinite(senderNum) && senderNum === myId) return;
+      // Some echo shapes carry the sender's name instead of a numeric id —
+      // without this check the message would come back as an incoming row.
+      const senderName = String(
+        data.SenderName ??
+          data.SenderInfo ??
+          (!Number.isFinite(senderNum) ? data.Sender : "") ??
+          ""
+      ).trim();
       if (
-        Number(data?.SenderId) === Number(auth?.id) ||
-        Number(data?.Sender) === Number(auth?.id)
-      ) {
+        senderName &&
+        auth?.username &&
+        senderName === String(auth.username).trim()
+      )
         return;
-      }
 
       const incomingConvId = data.ConversationId as string | number | undefined;
       const activeConvId = selectedCustomerRef.current?.ConversationId;

@@ -107,8 +107,3 @@ export async function deleteConversation(
   await db.conversations.delete(String(conversationId));
 }
 
-export async function clearConversations(auth: AuthData | null): Promise<void> {
-  const db = getDbForAuth(auth);
-  if (!db) return;
-  await db.conversations.clear();
-}

@@ -2,7 +2,7 @@
 
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useState } from "react";
 
 interface Tag {
   id: string | number;
@@ -18,14 +18,6 @@ interface TagsContextValue {
 }
 
 const TagsContext = createContext<TagsContextValue | undefined>(undefined);
-
-export const useTagsContext = (): TagsContextValue => {
-  const ctx = useContext(TagsContext);
-  if (!ctx) {
-    throw new Error("useTagsContext must be used within a TagsProvider");
-  }
-  return ctx;
-};
 
 export const TagsProvider = ({ children }: { children: React.ReactNode }) => {
   const [tags, setTags] = useState<Tag[]>([]);

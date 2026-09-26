@@ -44,6 +44,19 @@ const EmojiPickerPopperComponent = ({
     onClose();
   };
 
+  // Escape closes the picker (works even when the search input is focused)
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open, onClose]);
+
   useEffect(() => {
     if (!open || !anchorEl) return;
     const recompute = () => {
@@ -122,6 +135,7 @@ const EmojiPickerPopperComponent = ({
                 onEmojiClick={onEmojiClick}
                 width="100%"
                 height={height}
+                autoFocusSearch={true}
                 searchDisabled={false}
                 skinTonesDisabled={true}
                 previewConfig={{ showPreview: true }}

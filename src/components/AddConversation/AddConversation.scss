@@ -19,8 +19,9 @@
     }
 
     .customer_lists_header {
-        // Mobile: fluid padding with safe-area top
-        padding: calc(var(--safe-top) + var(--space-sm)) var(--space-md) var(--space-sm);
+        // Mobile: fluid padding with safe-area top — tighter on the left so
+        // the back arrow sits near the screen edge (WhatsApp-style)
+        padding: calc(var(--safe-top) + var(--space-sm)) var(--space-sm) var(--space-sm) var(--space-xs);
         border-bottom: 1px solid $sidebar-borderColor;
 
         display: flex;
@@ -40,6 +41,12 @@
                 min-width: auto;
                 min-height: auto;
             }
+        }
+
+        // The back arrow is the first .add_conv inside .add_conv_box — pull
+        // its tap target slightly off-edge so the glyph hugs the screen edge.
+        .add_conv_box .add_conv:first-child {
+            margin-left: -6px;
         }
 
         .header_title {

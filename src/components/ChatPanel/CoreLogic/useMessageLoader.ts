@@ -20,10 +20,12 @@ import {
 import { MSG, type MsgState, type MsgAction } from "./conversationReducer";
 import {
   mergeMessages,
+  getMessageId,
+  getMessageAliasIds,
   getConversationFromCache,
   saveConversationToCache,
 } from "./messageHelpers";
-import { getMessagesBefore, getMessagesAfter } from "../../../db/messageCache";
+import { getMessagesBefore, getMessagesAfter, dedupeConversationCache } from "../../../db/messageCache";
 import { setSyncState } from "../../../db/outboxCache";
 import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
@@ -231,7 +233,11 @@ export function useMessageLoader({
           return;
 
         let serverMessages = response.data as ChatMessage[];
-       
+
+        // Self-heal the IDB cache in the background — collapses orphan-key
+        // duplicates and re-keys stale rows (throttled once/min per conv).
+        dedupeConversationCache(auth, selectedId).catch(() => {});
+
         if (serverMessages.length === 0 && cursorId !== 0) {
           const fallbackResponse = await conversationViewCursor(
             selectedId,
@@ -289,7 +295,7 @@ export function useMessageLoader({
           merged.every((m, i) => {
             const p = msgDataRef.current[i];
             return (
-              String(m.MessageId ?? m.Id) === String(p?.MessageId ?? p?.Id) &&
+              getMessageId(m) === getMessageId(p) &&
               m.Status === p?.Status
             );
           });
@@ -432,8 +438,12 @@ export function useMessageLoader({
       try {
         const cachedOlder = await getMessagesBefore(auth, selectedId, firstMsgId, pageSize);
         if (cachedOlder.length > 0) {
-          const existingIds = new Set(msgDataRef.current.map((m) => String(m.MessageId ?? m.Id ?? "")));
-          const newOnes = cachedOlder.filter((m) => !existingIds.has(String(m.MessageId ?? m.Id ?? "")));
+          const existingIds = new Set(
+            msgDataRef.current.flatMap((m) => getMessageAliasIds(m))
+          );
+          const newOnes = cachedOlder.filter(
+            (m) => !getMessageAliasIds(m).some((a) => existingIds.has(a))
+          );
           if (newOnes.length > 0) {
             dispatchMsg({ type: MSG.PREPEND, data: newOnes, total: msgState.total });
             // Still fetch from API to check if there are even older messages.
@@ -551,8 +561,12 @@ export function useMessageLoader({
       try {
         const cachedNewer = await getMessagesAfter(auth, selectedId, lastMsgId, pageSize);
         if (cachedNewer.length > 0) {
-          const existingIds = new Set(msgDataRef.current.map((m) => String(m.MessageId ?? m.Id ?? "")));
-          const newOnes = cachedNewer.filter((m) => !existingIds.has(String(m.MessageId ?? m.Id ?? "")));
+          const existingIds = new Set(
+            msgDataRef.current.flatMap((m) => getMessageAliasIds(m))
+          );
+          const newOnes = cachedNewer.filter(
+            (m) => !getMessageAliasIds(m).some((a) => existingIds.has(a))
+          );
           if (newOnes.length > 0) {
             dispatchMsg({ type: MSG.APPEND, data: newOnes, total: msgState.total });
           }

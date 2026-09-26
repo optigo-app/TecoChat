@@ -38,6 +38,8 @@ interface SearchMessagesProps {
   isSearching?: boolean;
   onSearchMessages?: (query: string) => void;
   onSearchByDate?: (date: string) => void;
+  /** Starred-messages mode — results are limited to starred messages. */
+  starFilter?: boolean;
 }
 
 const SearchMessages = ({
@@ -48,6 +50,7 @@ const SearchMessages = ({
   isSearching = false,
   onSearchMessages,
   onSearchByDate,
+  starFilter = false,
 }: SearchMessagesProps) => {
   const theme = useTheme();
   const [localQuery, setLocalQuery] = useState(searchQuery || "");
@@ -163,7 +166,7 @@ const SearchMessages = ({
         <Box sx={{ flex: "1 1 auto", minWidth: 0 }}>
           <TextField
             fullWidth
-            placeholder="Search messages..."
+            placeholder={starFilter ? "Search starred messages..." : "Search messages..."}
             variant="outlined"
             size="small"
             value={localQuery}
@@ -260,13 +263,17 @@ const SearchMessages = ({
               </Box>
             ))}
           </Box>
-        ) : localQuery.trim() === "" ? (
+        ) : localQuery.trim() === "" && !starFilter ? (
           <div className="search-empty-state">
             <Typography variant="body2">Search for messages within this chat.</Typography>
           </div>
         ) : searchResults.length === 0 ? (
           <div className="search-empty-state">
-            <Typography variant="body2">No messages found for "{localQuery}"</Typography>
+            <Typography variant="body2">
+              {localQuery.trim() === ""
+                ? "No starred messages yet."
+                : `No ${starFilter ? "starred " : ""}messages found for "${localQuery}"`}
+            </Typography>
           </div>
         ) : (
           <List className="search-results-list" ref={listRef}>

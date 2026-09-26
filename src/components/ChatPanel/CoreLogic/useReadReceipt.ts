@@ -86,9 +86,11 @@ export function useReadReceipt({
             }
           }
 
-          if (isSocketConnected()) {
-            if (onConversationRead) onConversationRead(true);
+          // Clear the list badge as soon as the user is actually viewing the
+          // conversation — even when the socket is offline.
+          if (onConversationRead) onConversationRead(true);
 
+          if (isSocketConnected()) {
             const msgs = messagesRef.current;
             const unread = msgs.filter((m) => m.Direction === 0 && Number(m.Status) < 3);
             if (unread.length === 0) return;

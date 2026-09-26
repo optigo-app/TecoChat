@@ -39,6 +39,7 @@ import {
   autoScrollOnNewMessage,
   type ScrollAnchor,
 } from "./CoreLogic/scrollUtils";
+import { getMessageId } from "./CoreLogic/messageHelpers";
 import { parseReactions } from "../../utils/EmojiUtils";
 
 export interface MessageListRef {
@@ -193,6 +194,15 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     const blinkRef = useRef<string | null>(null);
     const suppressScrollLoadRef = useRef(true);
     const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // A sentinel intersection that arrived while suppressed is remembered here
+    // and fired when suppression clears — otherwise a programmatic scroll can
+    // wedge pagination (e.g. sitting at the bottom with hasMoreAfter but the
+    // observer never re-firing because nothing changed).
+    const deferredSentinelRef = useRef<"top" | "bottom" | null>(null);
+    const loadCallbacksRef = useRef({ onScrollToTop, onLoadNewer, hasMoreBefore, hasMoreAfter });
+    useEffect(() => {
+      loadCallbacksRef.current = { onScrollToTop, onLoadNewer, hasMoreBefore, hasMoreAfter };
+    }, [onScrollToTop, onLoadNewer, hasMoreBefore, hasMoreAfter]);
     const skipNextAutoScrollRef = useRef(false);
     const stickyDateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const stickyDateRef = useRef<string | null>(null);
@@ -230,19 +240,25 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
 
       // Top sentinel — load older messages
       const topObserver = new IntersectionObserver((entries) => {
-        if (entries[0]?.isIntersecting && hasMoreBefore && !loadingOlder && !olderError) {
-          if (!suppressScrollLoadRef.current) {
-            onScrollToTop?.();
-          }
+        if (!(entries[0]?.isIntersecting) || !hasMoreBefore || loadingOlder || olderError) return;
+        // A jump-to-message is in progress (blink set) — pagination must not
+        // fire from the programmatic scroll or the target drifts off-screen.
+        if (blinkRef.current) return;
+        if (suppressScrollLoadRef.current) {
+          deferredSentinelRef.current = "top";
+          return;
         }
+        onScrollToTop?.();
       }, observerOptions);
 
       const bottomObserver = new IntersectionObserver((entries) => {
-        if (entries[0]?.isIntersecting && hasMoreAfter && !loadingNewer && !newerError) {
-          if (!suppressScrollLoadRef.current) {
-            onLoadNewer?.();
-          }
+        if (!(entries[0]?.isIntersecting) || !hasMoreAfter || loadingNewer || newerError) return;
+        if (blinkRef.current) return;
+        if (suppressScrollLoadRef.current) {
+          deferredSentinelRef.current = "bottom";
+          return;
         }
+        onLoadNewer?.();
       }, observerOptions);
 
       if (topSentinelRef.current) topObserver.observe(topSentinelRef.current);
@@ -283,6 +299,18 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
       suppressTimerRef.current = setTimeout(() => {
         suppressScrollLoadRef.current = false;
+        // Fire a sentinel load that was skipped while suppressed — but only
+        // if we're still near that edge (a jump may have moved us away).
+        const deferred = deferredSentinelRef.current;
+        deferredSentinelRef.current = null;
+        const outer = outerRef.current;
+        if (!outer || !deferred) return;
+        const { onScrollToTop, onLoadNewer, hasMoreBefore, hasMoreAfter } = loadCallbacksRef.current;
+        if (deferred === "top" && outer.scrollTop < 150 && hasMoreBefore) {
+          onScrollToTop?.();
+        } else if (deferred === "bottom" && getDistanceFromBottom(outer) < 150 && hasMoreAfter) {
+          onLoadNewer?.();
+        }
       }, ms);
     }, []);
 
@@ -297,6 +325,29 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       () => rows.filter((r) => r.type === "message").length,
       [rows]
     );
+
+    // ── Typing indicator auto-scroll ────────────────────────────────────────
+    // The typing row is appended below the last message but does NOT bump
+    // msgRowCount, so the generic auto-scroll never fires for it and the
+    // indicator sits below the fold (mobile especially). When typing starts
+    // and the user is near the bottom, scroll just enough to reveal it.
+    const prevTypingRef = useRef(false);
+    useEffect(() => {
+      const isTyping = !!typingStatus;
+      const becameTyping = isTyping && !prevTypingRef.current;
+      prevTypingRef.current = isTyping;
+      if (!becameTyping) return;
+      const outer = outerRef.current;
+      if (!outer || !didInitialScroll.current) return;
+      // Live measurement — distanceFromBottomRef can be stale (only updated
+      // on scroll events, and the appended row already changed scrollHeight).
+      if (getDistanceFromBottom(outer) <= 180) {
+        doubleRequestAnimationFrame(() => {
+          const o = outerRef.current;
+          if (o) scrollToBottomInstant(o);
+        });
+      }
+    }, [typingStatus]);
 
     const toggleMessageExpand = useCallback((id?: string | number) => {
       if (!id) return;
@@ -491,7 +542,11 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       if (!inner) return;
 
       const resizeObserver = new ResizeObserver(() => {
-        if (distanceFromBottomRef.current <= 100 && didInitialScroll.current) {
+        if (
+          !blinkRef.current &&
+          distanceFromBottomRef.current <= 100 &&
+          didInitialScroll.current
+        ) {
           scrollToBottomInstant(outer);
           distanceFromBottomRef.current = 0;
         }
@@ -524,7 +579,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
       const atBottom = dist <= 100;
       if (isAtBottomRef) isAtBottomRef.current = atBottom;
 
-      if (atBottom && pendingNewCountRef.current > 0 && onFlushNewMessages) {
+      if (atBottom && onFlushNewMessages) {
         onFlushNewMessages();
       }
 
@@ -564,15 +619,18 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     const scrollToMessage = useCallback(
       async (messageId: string | number, attachmentId?: string | null) => {
         if (!messageId) return;
+        // Let the prop own scrolling (it decides smooth vs instant + blink) —
+        // a second scroll here races the prop's scrollIntoView and makes the
+        // list visibly scroll twice.
+        if (scrollToMessageProp) {
+          return scrollToMessageProp(messageId, containerRef, attachmentId);
+        }
         const outer = outerRef.current;
         if (outer) {
           scrollToMessageElement(outer, messageId);
         }
-        if (scrollToMessageProp) {
-          return scrollToMessageProp(messageId, containerRef, attachmentId);
-        }
       },
-      [scrollToMessageProp]
+      [scrollToMessageProp, containerRef]
     );
 
     const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
@@ -731,7 +789,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
         }
         const msg = (row as { msg: ChatMessage; msgIndex: number }).msg;
         const msgIndex = (row as { msg: ChatMessage; msgIndex: number }).msgIndex;
-        const msgId = msg.Id ?? msg.MessageId;
+        const msgId = getMessageId(msg);
         // Reaction badges hang ~18px below the bubble (position absolute,
         // bottom: -18) — reserve just enough room so they aren't clipped at
         // the scroll container's edge. Quick check first, then parseReactions
@@ -741,6 +799,10 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
           (Array.isArray(re) ? re.length > 0 : !!re && re !== "" && re !== "[]") &&
           parseReactions(re).length > 0;
         const bottomPad = hasReactions ? 20 : 4;
+        // Media rows are ~320px; a flat 80px estimate makes far jumps drift
+        // badly while real heights resolve. Estimate per message type so
+        // content-visibility's placeholder height is closer to reality.
+        const isMediaMsg = ["image", "video", "document", "file"].includes(msg.MessageType || "");
         return (
           <div
             key={`msg:${msgId ?? msgIndex}`}
@@ -750,7 +812,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
                 ? `0 12px ${bottomPad}px 12px`
                 : `0 20px ${bottomPad}px 24px`,
               contentVisibility: "auto",
-              containIntrinsicSize: "auto 80px",
+              containIntrinsicSize: `auto ${isMediaMsg ? 320 : 80}px`,
             }}
           >
             <MessageItem
@@ -864,16 +926,33 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             scrollToBottom("smooth");
           }}
           showMenu={hasMoreAfter}
-          onJumpToLatest={() => {
+          onJumpToLatest={async () => {
             if (pendingNewMessages.length > 0 && onFlushNewMessages) {
               onFlushNewMessages();
             }
-            onJumpToLatest?.();
+            const loaded = await onJumpToLatest?.();
+            if (loaded) {
+              let tries = 0;
+              const loop = () => {
+                const outer = outerRef.current;
+                if (!outer) return;
+                scrollToBottomInstant(outer);
+                distanceFromBottomRef.current = 0;
+                if (isAtBottomRef) isAtBottomRef.current = true;
+                setShowScrollBtn(false);
+                suppressScrollLoadsTemporarily(250);
+                if (++tries < 12) requestAnimationFrame(loop);
+              };
+              requestAnimationFrame(loop);
+            } else {
+              scrollToBottom("smooth");
+            }
           }}
           onLoadOnePage={() => {
             if (pendingNewMessages.length > 0 && onFlushNewMessages) {
               onFlushNewMessages();
             }
+            onLoadNewer?.();
             scrollToBottom("smooth");
           }}
           right={scrollToBottomRightOffset}
@@ -881,7 +960,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
           unreadCount={pendingNewMessages.length}
         />
 
-        {/* ── Sticky date pill (WhatsApp-style) ── */}
         <Box
           className="sticky-date-pill"
           sx={{
@@ -913,9 +991,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
           </Typography>
         </Box>
 
-        {/* ── No messages found on this date (floating overlay — visible
-            regardless of scroll position, so it works even when the list
-            already has messages and the user is at the bottom) ── */}
         {noResultsDate && (
           <Box
             sx={{
@@ -971,8 +1046,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             sx={{
               height: "100%",
               overflowY: "auto",
-              // Allow horizontal scrolling (e.g. wide media / code blocks) but
-              // hide the horizontal scrollbar — vertical scrollbar stays visible.
               overflowX: "auto",
               outline: "none",
               scrollBehavior: "smooth",
@@ -990,12 +1063,10 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             onClick={handleListClick}
             onAuxClick={handleListClick}
           >
-            {/* ── TOP SENTINEL (IntersectionObserver target for older pagination) ── */}
             {hasMoreBefore && (
               <div ref={topSentinelRef} style={{ height: 1 }} />
             )}
 
-            {/* ── Loading older indicator ── */}
             {loadingOlder && (
               <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, py: 0.75 }}>
                 <CircularProgress size={16} thickness={5} />
@@ -1026,7 +1097,6 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               </Box>
             )}
 
-            {/* ── Beginning of conversation indicator ── */}
             {!hasMoreBefore && !loadingOlder && rows.length > 0 && (
               <Box sx={{ display: "flex", justifyContent: "center", py: 1.5 }}>
                 <Typography
@@ -1050,12 +1120,10 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               );
             })}
 
-            {/* ── BOTTOM SENTINEL (auto-load newer when scrolling near bottom) ── */}
             {hasMoreAfter && (
               <div ref={bottomSentinelRef} style={{ height: 1 }} />
             )}
 
-            {/* ── Loading newer indicator ── */}
             {loadingNewer && (
               <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, py: 0.75 }}>
                 <CircularProgress size={16} thickness={5} />
@@ -1086,12 +1154,9 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
               </Box>
             )}
 
-            {/* ── Bottom sentinel auto-loads newer messages on scroll ── */}
-            {/* No manual button — same smooth auto-load as top sentinel */}
           </Box>
         </Box>
 
-        {/* ── Suspicious-link confirmation dialog ── */}
         <ConfirmationDialog
           isOpen={linkDialog.isOpen}
           onClose={linkDialog.close}

@@ -281,57 +281,80 @@ async function playTone(opts: ToneOptions): Promise<void> {
 // ── Sound definitions ───────────────────────────────────────────────────────
 
 async function playNotificationTone(): Promise<void> {
-  // Incoming message: sine wave 880Hz → 440Hz, 150ms, pleasant "pop"
+  // Incoming message — WhatsApp-style "pop": a quick upward pluck
+  // (620Hz → 980Hz) followed by a soft decaying tail, like the bubble-pop
+  // you hear while a chat is open. Replaces the old descending "doo".
   await playTone({
     type: "sine",
-    frequency: 880,
-    frequencyEnd: 440,
-    durationMs: 150,
-    attackMs: 5,
-    volume: 0.35,
-  });
-}
-
-async function playSendTone(): Promise<void> {
-  // Outgoing message: triangle 600Hz → 200Hz, 100ms, subtle "whoosh"
-  await playTone({
-    type: "triangle",
-    frequency: 600,
-    frequencyEnd: 200,
-    durationMs: 100,
-    attackMs: 5,
-    volume: 0.25,
-  });
-}
-
-async function playDeliveredTone(): Promise<void> {
-  // Delivered: two short square clicks at 1200Hz, 50ms each
-  await playTone({
-    type: "square",
-    frequency: 1200,
-    durationMs: 50,
-    attackMs: 2,
-    volume: 0.2,
-    delayMs: 0,
+    frequency: 620,
+    frequencyEnd: 980,
+    durationMs: 95,
+    attackMs: 4,
+    volume: 0.32,
   });
   await playTone({
-    type: "square",
-    frequency: 1200,
-    durationMs: 50,
-    attackMs: 2,
-    volume: 0.2,
+    type: "sine",
+    frequency: 980,
+    frequencyEnd: 740,
+    durationMs: 75,
+    attackMs: 3,
+    volume: 0.13,
     delayMs: 80,
   });
 }
 
-async function playReadTone(): Promise<void> {
-  // Read: single soft sine click at 1000Hz, 60ms
+async function playSendTone(): Promise<void> {
+  // Outgoing message — WhatsApp-style "whoosh": a fast UPWARD pitch sweep
+  // (sine 380Hz → 1050Hz over ~130ms) layered with a short high tail-tick.
+  // The previous tone swept downward (600→200) which read as a low thud.
   await playTone({
     type: "sine",
-    frequency: 1000,
-    durationMs: 60,
+    frequency: 380,
+    frequencyEnd: 1050,
+    durationMs: 130,
+    attackMs: 6,
+    volume: 0.28,
+  });
+  // Tail tick — soft high blip right as the sweep peaks
+  await playTone({
+    type: "triangle",
+    frequency: 1500,
+    durationMs: 40,
     attackMs: 2,
-    volume: 0.2,
+    volume: 0.09,
+    delayMs: 95,
+  });
+}
+
+async function playDeliveredTone(): Promise<void> {
+  // Delivered: two soft sine ticks (like double-check landing) — gentler
+  // than the old harsh square clicks
+  await playTone({
+    type: "sine",
+    frequency: 1050,
+    durationMs: 32,
+    attackMs: 2,
+    volume: 0.16,
+    delayMs: 0,
+  });
+  await playTone({
+    type: "sine",
+    frequency: 1050,
+    durationMs: 32,
+    attackMs: 2,
+    volume: 0.16,
+    delayMs: 85,
+  });
+}
+
+async function playReadTone(): Promise<void> {
+  // Read: single soft high tick, very brief
+  await playTone({
+    type: "sine",
+    frequency: 1280,
+    durationMs: 38,
+    attackMs: 2,
+    volume: 0.14,
   });
 }
 
@@ -448,12 +471,7 @@ export const setSoundSettings = (partial: Partial<SoundSettings>): void => {
   saveSettings(currentSettings);
 };
 
-export const isSoundEnabled = (type: SoundType): boolean =>
-  currentSettings.enabled && currentSettings[type];
 
-export const isAudioUnlocked = (): boolean => isUnlocked;
-
-export const needsUserGesture = (): boolean => needsGesture;
 
 // ── Wake/sleep detection ────────────────────────────────────────────────────
 // Safari's AudioContext can become a zombie after sleep/wake.
@@ -521,7 +539,7 @@ if (typeof window !== "undefined") {
  * close the AudioContext. Safe to call multiple times. Intended for HMR,
  * unit tests, and explicit SPA teardown — pagehide auto-calls this too.
  */
-export const destroySoundManager = (): void => {
+const destroySoundManager = (): void => {
   if (typeof window !== "undefined") {
     if (pageshowHandler) {
       window.removeEventListener("pageshow", pageshowHandler);

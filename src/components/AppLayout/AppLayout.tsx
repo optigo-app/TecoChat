@@ -6,7 +6,7 @@ import { useIsMobile, useIsTablet } from "@/src/hooks/useIsMobile";
 import "./AppLayout.scss";
 
 // Context to share the mobile menu trigger node with children (e.g. CustomerLists)
-export const MobileTriggerContext = createContext<React.ReactNode>(null);
+const MobileTriggerContext = createContext<React.ReactNode>(null);
 export const useMobileTrigger = () => useContext(MobileTriggerContext);
 
 interface AppLayoutProps {

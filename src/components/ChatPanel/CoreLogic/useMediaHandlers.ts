@@ -109,8 +109,22 @@ export function useMediaHandlers({
   const processFiles = useCallback(
     async (files: File[], mode?: "replace" | "add") => {
       if (!files?.length) return;
+      const existingFiles = uiState.mediaFiles;
+      // "add" must respect the COMBINED selection — the old app re-validated
+      // the merged list, so existing files consume part of the 30-file /
+      // 100MB budget before the new batch is checked.
+      const preExisting =
+        mode === "add" && existingFiles.length > 0
+          ? {
+              count: existingFiles.length,
+              bytes: existingFiles.reduce(
+                (sum, m) => sum + (m.file?.size ?? 0),
+                0
+              ),
+            }
+          : undefined;
       const { acceptedFiles, skippedSize, skippedTotal, skippedCount } =
-        validateMediaFiles(files);
+        validateMediaFiles(files, preExisting);
 
       if (skippedCount > 0) showToast(`Only 30 files allowed. ${skippedCount} removed.`, "error");
       if (skippedSize.length > 0) showToast(`Files too large: ${skippedSize.slice(0, 2).join(", ")}`, "error");
@@ -121,7 +135,6 @@ export function useMediaHandlers({
       const newMediaFiles = await buildMediaFileItems(acceptedFiles);
 
       // If there are already media files and no explicit mode, ask the user
-      const existingFiles = uiState.mediaFiles;
       if (existingFiles.length > 0 && !mode) {
         // Dispatch event for ChatPanel to show the replace/add dialog
         window.dispatchEvent(
@@ -482,6 +495,7 @@ export function useMediaHandlers({
             msg: {
               Id: sentId,
               MessageId: sentId,
+              ClientMessageId: tempId,
               previewUrl: uploadedUrls[0],
               mediaItems: enrichedItems,
               isUploading: false,

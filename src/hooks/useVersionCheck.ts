@@ -61,6 +61,14 @@ export function useVersionCheck(): VersionCheckResult {
     isCheckingRef.current = true;
 
     try {
+      // Nudge the browser to re-check the service worker too. Browsers only
+      // re-fetch sw.js every ~24h otherwise — a deployed build goes unnoticed
+      // in an installed PWA until then. sw.js uses skipWaiting+clients.claim,
+      // so an updated SW activates immediately and fires `controllerchange`.
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => {});
+      }
+
       const info = await fetchServerVersion();
       if (!info) return;
 
@@ -117,7 +125,24 @@ export function useVersionCheck(): VersionCheckResult {
     performCheck();
 
     const pollTimer = setInterval(performCheck, POLL_INTERVAL);
-    return () => clearInterval(pollTimer);
+
+    // A new service worker taking control means a new build was deployed —
+    // check version.json immediately so the update banner shows without
+    // waiting for the next poll (matters most for installed PWAs).
+    const onControllerChange = () => {
+      isCheckingRef.current = false;
+      performCheck();
+    };
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    }
+
+    return () => {
+      clearInterval(pollTimer);
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      }
+    };
   }, [performCheck]);
 
   // 2. Visibility change — check when user returns to the tab

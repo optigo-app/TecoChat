@@ -5,9 +5,18 @@
 import { uploadMediaAPi } from "../../../API/FileUpload/uploadHelpers";
 import { generateMediaFolderName } from "../../../utils/globalFunc";
 
-/** Validate media files: max 30 files, max 16MB each, max 100MB total. */
+/**
+ * Validate media files: max 30 files, max 100MB each, max 100MB total.
+ * (Matches OldChatReactCode globalFunc.js limits.)
+ *
+ * `preExisting` lets callers validate against an existing selection — the
+ * count/byte budget already consumed by files the user picked earlier. Used
+ * by "add more" so the COMBINED list can't exceed the limits (old app
+ * behavior: it re-validated the combined list).
+ */
 export const validateMediaFiles = (
-  files: File[]
+  files: File[],
+  preExisting?: { count: number; bytes: number }
 ): {
   acceptedFiles: File[];
   skippedSize: string[];
@@ -15,16 +24,17 @@ export const validateMediaFiles = (
   skippedCount: number;
 } => {
   const MAX_FILES = 30;
-  const MAX_FILE_SIZE = 16 * 1024 * 1024; // 16MB
+  const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
   const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB
 
   const acceptedFiles: File[] = [];
   const skippedSize: string[] = [];
   const skippedTotal: string[] = [];
-  let totalSize = 0;
+  let totalSize = preExisting?.bytes ?? 0;
+  const baseCount = preExisting?.count ?? 0;
 
   for (const file of files) {
-    if (acceptedFiles.length >= MAX_FILES) {
+    if (baseCount + acceptedFiles.length >= MAX_FILES) {
       skippedTotal.push(file.name);
       continue;
     }

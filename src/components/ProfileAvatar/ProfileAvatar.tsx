@@ -28,6 +28,7 @@ import ConfirmationDialog from "@/src/components/ReusableComponent/ConfirmationD
 import { CONFIRM_CONFIG } from "@/src/hooks/confirmConfig";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
 import { deleteDb } from "@/src/db/tecoDb";
+import { getAppVersion } from "@/src/utils/versionManager";
 import "./ProfileAvatar.scss";
 
 const isValidUrl = (url: unknown): url is string => {
@@ -551,6 +552,26 @@ export const ProfileAvatar = ({ collapsed = false, headerVariant = false }: Prof
             <ListItemText primary="Log out" />
           </MenuItem>
         </Box>
+
+        {/* ── App version (WhatsApp-style footer) ───────────────────────── */}
+        {getAppVersion() !== "0.0.0" && (
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              textAlign: "center",
+              borderTop: "1px solid",
+              borderColor: (t) =>
+                t.palette.mode === "dark"
+                  ? "rgba(255,255,255,0.06)"
+                  : "rgba(0,0,0,0.06)",
+            }}
+          >
+            <Typography sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
+              TeCoChat v{getAppVersion()}
+            </Typography>
+          </Box>
+        )}
       </Menu>
     </div>
 

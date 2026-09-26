@@ -22,6 +22,39 @@ export interface LinkPreviewData {
 const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB — some sites (YouTube) have og: tags 700KB+ into the HTML
 const FETCH_TIMEOUT_MS = 5000;
 
+// ── Shared server-side cache ──────────────────────────────────────────────────
+// The client caches per-browser (memory + sessionStorage), so without this the
+// same link gets fetched upstream once per user session. A group chat sharing
+// a link means N users → N upstream fetches + N regex parses. This process-level
+// LRU + in-flight dedup collapses that to a single fetch per URL.
+const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const PREVIEW_MAX_ENTRIES = 1000;
+
+const previewCache = new Map<string, { data: LinkPreviewData; expiresAt: number }>();
+const previewInflight = new Map<string, Promise<LinkPreviewData>>();
+
+function previewCacheGet(url: string): LinkPreviewData | null {
+  const hit = previewCache.get(url);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    previewCache.delete(url);
+    return null;
+  }
+  // LRU touch
+  previewCache.delete(url);
+  previewCache.set(url, hit);
+  return hit.data;
+}
+
+function previewCacheSet(url: string, data: LinkPreviewData) {
+  while (previewCache.size >= PREVIEW_MAX_ENTRIES) {
+    const oldest = previewCache.keys().next().value;
+    if (oldest === undefined) break;
+    previewCache.delete(oldest);
+  }
+  previewCache.set(url, { data, expiresAt: Date.now() + PREVIEW_TTL_MS });
+}
+
 function extractMetaTag(html: string, patterns: string[]): string {
   for (const pattern of patterns) {
     const regex = new RegExp(pattern, "i");
@@ -58,6 +91,121 @@ function extractAllMetaTags(
   return "";
 }
 
+class PreviewError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// Fetches the page and parses its metadata. Throws PreviewError with an HTTP
+// status on failure, or AbortError (from the fetch timeout) on slow upstreams.
+async function fetchLinkPreview(parsedUrl: URL): Promise<LinkPreviewData> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(parsedUrl.toString(), {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; TecoChat-LinkPreview/1.0; +https://tecochat.app)",
+        Accept: "text/html,application/xhtml+xml,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeout);
+    throw err;
+  }
+
+  if (!upstream.ok) {
+    throw new PreviewError(`Upstream returned ${upstream.status}`, upstream.status);
+  }
+
+  // Read up to MAX_BODY_BYTES — we only need the <head> section
+  const reader = upstream.body?.getReader();
+  if (!reader) {
+    throw new PreviewError("Failed to read response body", 502);
+  }
+
+  let html = "";
+  let totalBytes = 0;
+  let headClosed = false;
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    totalBytes += value.byteLength;
+    html += decoder.decode(value, { stream: true });
+
+    // Stop early once we have the full <head>
+    if (/<\/head>/i.test(html)) {
+      headClosed = true;
+      break;
+    }
+
+    if (totalBytes >= MAX_BODY_BYTES) break;
+  }
+  // Timeout also bounds slow-trickling bodies, not just the initial response.
+  clearTimeout(timeout);
+
+  // If we didn't find </head>, try to extract just the head portion
+  if (!headClosed) {
+    const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+    if (headMatch) {
+      html = headMatch[0];
+    }
+  }
+
+  // Extract metadata in priority order
+  const title =
+    extractAllMetaTags(html, ["og:title", "twitter:title"]) ||
+    extractMetaTag(html, ["<title[^>]*>([^<]*)</title>"]);
+
+  const description = extractAllMetaTags(html, [
+    "og:description",
+    "twitter:description",
+    "description",
+  ]);
+
+  const image =
+    extractAllMetaTags(html, ["og:image", "twitter:image", "og:image:secure_url"]) ||
+    "";
+
+  const siteName =
+    extractAllMetaTags(html, ["og:site_name", "application:name"]) ||
+    parsedUrl.hostname.replace(/^www\./, "");
+
+  // If no title and no description, the page has no useful metadata
+  if (!title && !description) {
+    throw new PreviewError("No metadata found", 404);
+  }
+
+  // Resolve relative image URLs
+  let resolvedImage = image;
+  if (image && !image.startsWith("http") && !image.startsWith("data:")) {
+    try {
+      resolvedImage = new URL(image, parsedUrl.origin).href;
+    } catch {
+      resolvedImage = "";
+    }
+  }
+
+  return {
+    url: parsedUrl.href,
+    title: title || "",
+    description: description || "",
+    image: resolvedImage,
+    siteName: siteName || parsedUrl.hostname.replace(/^www\./, ""),
+  };
+}
+
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get("url");
 
@@ -92,110 +240,26 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-    const upstream = await fetch(parsedUrl.toString(), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; TecoChat-LinkPreview/1.0; +https://tecochat.app)",
-        Accept: "text/html,application/xhtml+xml,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      redirect: "follow",
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!upstream.ok) {
-      return NextResponse.json(
-        { error: `Upstream returned ${upstream.status}` },
-        { status: upstream.status }
-      );
-    }
-
-    // Read up to MAX_BODY_BYTES — we only need the <head> section
-    const reader = upstream.body?.getReader();
-    if (!reader) {
-      return NextResponse.json(
-        { error: "Failed to read response body" },
-        { status: 502 }
-      );
-    }
-
-    let html = "";
-    let totalBytes = 0;
-    let headClosed = false;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      totalBytes += value.byteLength;
-      html += new TextDecoder().decode(value, { stream: true });
-
-      // Stop early once we have the full <head>
-      if (/<\/head>/i.test(html)) {
-        headClosed = true;
-        break;
+    const cacheKey = parsedUrl.toString();
+    const cached = previewCacheGet(cacheKey);
+    const data = cached ?? (await (() => {
+      // In-flight dedup: concurrent requests for the same URL share one
+      // upstream fetch + parse instead of each doing their own.
+      let pending = previewInflight.get(cacheKey);
+      if (!pending) {
+        pending = fetchLinkPreview(parsedUrl);
+        previewInflight.set(cacheKey, pending);
+        // `then(onFulfilled, onRejected)` so a rejected shared promise doesn't
+        // produce an unhandled rejection from a derived `finally` chain.
+        pending.then(
+          () => previewInflight.delete(cacheKey),
+          () => previewInflight.delete(cacheKey)
+        );
       }
+      return pending;
+    })());
 
-      if (totalBytes >= MAX_BODY_BYTES) break;
-    }
-
-    // If we didn't find </head>, try to extract just the head portion
-    if (!headClosed) {
-      const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-      if (headMatch) {
-        html = headMatch[0];
-      }
-    }
-
-    // Extract metadata in priority order
-    const title =
-      extractAllMetaTags(html, ["og:title", "twitter:title"]) ||
-      extractMetaTag(html, ["<title[^>]*>([^<]*)</title>"]);
-
-    const description = extractAllMetaTags(html, [
-      "og:description",
-      "twitter:description",
-      "description",
-    ]);
-
-    const image =
-      extractAllMetaTags(html, ["og:image", "twitter:image", "og:image:secure_url"]) ||
-      "";
-
-    const siteName =
-      extractAllMetaTags(html, ["og:site_name", "application:name"]) ||
-      parsedUrl.hostname.replace(/^www\./, "");
-
-    // If no title and no description, the page has no useful metadata
-    if (!title && !description) {
-      return NextResponse.json(
-        { error: "No metadata found" },
-        { status: 404 }
-      );
-    }
-
-    // Resolve relative image URLs
-    let resolvedImage = image;
-    if (image && !image.startsWith("http") && !image.startsWith("data:")) {
-      try {
-        resolvedImage = new URL(image, parsedUrl.origin).href;
-      } catch {
-        resolvedImage = "";
-      }
-    }
-
-    const data: LinkPreviewData = {
-      url: parsedUrl.href,
-      title: title || "",
-      description: description || "",
-      image: resolvedImage,
-      siteName: siteName || parsedUrl.hostname.replace(/^www\./, ""),
-    };
+    if (!cached) previewCacheSet(cacheKey, data);
 
     return NextResponse.json(data, {
       headers: {
@@ -204,6 +268,12 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
+    if (error instanceof PreviewError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      );
+    }
     if (error?.name === "AbortError") {
       return NextResponse.json(
         { error: "Request timed out" },

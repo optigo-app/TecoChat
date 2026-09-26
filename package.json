@@ -9,9 +9,9 @@
     "Edge >= 100"
   ],
   "scripts": {
-    "dev": "npx fix-react2shell-next && next dev -p 5017",
+    "dev": "npx fix-react2shell-next && next dev -p 6008",
     "build": "npx fix-react2shell-next && next build",
-    "start": "npx fix-react2shell-next && next start -p 5017",
+    "start": "npx fix-react2shell-next && next start -p 6008",
     "lint": "eslint"
   },
   "dependencies": {

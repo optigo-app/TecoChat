@@ -50,15 +50,3 @@ export async function setSearchCache(
   });
 }
 
-export async function clearSearchCache(
-  auth: AuthData | null,
-  conversationId?: string | number
-): Promise<void> {
-  const db = getDbForAuth(auth);
-  if (!db) return;
-  if (conversationId) {
-    await db.searchCache.where("conversationId").equals(String(conversationId)).delete();
-  } else {
-    await db.searchCache.clear();
-  }
-}

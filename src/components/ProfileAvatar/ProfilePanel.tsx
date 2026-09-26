@@ -13,6 +13,7 @@ import { useSoundSettings } from "../../hooks/useSoundSettings";
 import { eraseCookie } from "../../utils/cookieUtils";
 import { disconnectSocket } from "../../socket";
 import { deleteDb } from "../../db/tecoDb";
+import { getAppVersion } from "../../utils/versionManager";
 import IOSSwitch from "../ReusableComponent/IOSSwitch";
 import ConfirmationDialog from "../ReusableComponent/ConfirmationDialog";
 import { CONFIRM_CONFIG } from "../../hooks/confirmConfig";
@@ -497,6 +498,15 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
             </Typography>
           </Box>
         </Box>
+
+        {/* ── App version (WhatsApp-style footer) ────────────────────────── */}
+        {getAppVersion() !== "0.0.0" && (
+          <Box sx={{ textAlign: "center", py: 2, pb: "calc(var(--safe-bottom, 0px) + 16px)" }}>
+            <Typography sx={{ fontSize: "0.72rem", color: theme.palette.text.secondary }}>
+              TeCoChat v{getAppVersion()}
+            </Typography>
+          </Box>
+        )}
       </Box>
 
       {/* ── Logout confirmation dialog ─────────────────────────────────────── */}

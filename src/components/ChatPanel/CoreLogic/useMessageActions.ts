@@ -365,6 +365,7 @@ export function useMessageActions({
             msg: {
               Id: sentId,
               MessageId: sentId,
+              ClientMessageId: tempId,
               Status: 1,
               SenderId: auth?.id,
               Direction: 1,
@@ -373,6 +374,9 @@ export function useMessageActions({
           });
           if (convIdForOutbox) {
             removeFromOutbox(auth, convIdForOutbox, tempId).catch(() => {});
+            // If a stale temp row was ever persisted to the message cache
+            // (pending ghost), remove it — the real row writes under sentId.
+            deleteMessageRow(auth, convIdForOutbox, tempId).catch(() => {});
           }
         } else {
           console.error("Failed to send message");

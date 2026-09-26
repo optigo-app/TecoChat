@@ -125,6 +125,7 @@ interface DetailsViewsProps {
   isSearching?: boolean;
   onSearchMessages?: (query: string) => void;
   onSearchByDate?: (date: string) => void;
+  starFilter?: boolean;
   containerRef?: React.RefObject<any>;
   open: boolean;
   /** Whether an existing conversation exists. When false (new-chat contact),
@@ -198,6 +199,7 @@ const DetailsViews = ({
   isSearching = false,
   onSearchMessages,
   onSearchByDate,
+  starFilter = false,
   containerRef,
   open,
   hasConversation = true,
@@ -442,6 +444,7 @@ const DetailsViews = ({
             isSearching={isSearching}
             onSearchMessages={onSearchMessages}
             onSearchByDate={onSearchByDate}
+            starFilter={starFilter}
           />
         </div>
       ) : currentViewState === "permissions" ? (

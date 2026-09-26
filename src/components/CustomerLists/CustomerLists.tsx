@@ -20,6 +20,8 @@ import SyncingScreen from "../SyncingScreen/SyncingScreen";
 import { NotificationPermissionBar } from "../ReusableComponent/NotificationPermissionBar";
 import { useFaviconBadge } from "../../hooks/useFaviconBadge";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { usePullToRefresh, PTR_THRESHOLD } from "../../hooks/usePullToRefresh";
 
 import ProfilePanel from "../ProfileAvatar/ProfilePanel";
 import { useMobileTrigger } from "../AppLayout/AppLayout";
@@ -42,6 +44,7 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
   const mobileMenuTrigger = useMobileTrigger();
   const { auth } = useLoginContext();
   const isOnline = useOnlineStatus();
+  const isMobile = useIsMobile();
   const {
     chatMembers,
     loading,
@@ -79,6 +82,54 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
     return () => window.removeEventListener("OPEN_PROFILE_PANEL", handleOpenProfile);
   }, []);
 
+  // ── Back-button integration for bottom-nav destinations ──────────────────
+  const overlayOpen =
+    showNewChat || showCreateGroup || isArchiveOpen || profileOpen;
+  const overlayOpenRef = useRef(overlayOpen);
+  useEffect(() => {
+    overlayOpenRef.current = overlayOpen;
+  }, [overlayOpen]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (overlayOpen && window.history.state?.tecochat !== "overlay") {
+      window.history.pushState({ tecochat: "overlay" }, "");
+    }
+    if (
+      !overlayOpen &&
+      window.history.state?.tecochat === "overlay" &&
+      !(window as unknown as { __tecochatPop?: boolean }).__tecochatPop
+    ) {
+      (window as unknown as { __tecochatPop?: boolean }).__tecochatPop = true;
+      window.history.back();
+      // Safety: if the pop somehow never lands, don't let the flag swallow
+      // the user's next real back press.
+      setTimeout(() => {
+        (window as unknown as { __tecochatPop?: boolean }).__tecochatPop = false;
+      }, 300);
+    }
+  }, [isMobile, overlayOpen]);
+
+  useEffect(() => {
+    const onQuery = (e: Event) => {
+      if (overlayOpenRef.current) {
+        (e as CustomEvent<{ open: boolean }>).detail.open = true;
+      }
+    };
+    const onPop = () => {
+      setShowNewChat(false);
+      setShowCreateGroup(false);
+      setIsArchiveOpen(false);
+      setProfileOpen(false);
+    };
+    window.addEventListener("TECOCHAT_QUERY_OVERLAY", onQuery as EventListener);
+    window.addEventListener("TECOCHAT_POP_OVERLAY", onPop);
+    return () => {
+      window.removeEventListener("TECOCHAT_QUERY_OVERLAY", onQuery as EventListener);
+      window.removeEventListener("TECOCHAT_POP_OVERLAY", onPop);
+    };
+  }, []);
+
   // Listen for SELECT_CONVERSATION — when only a conversationId is provided
   // (no customer object), find it in the conversation list and select it.
   // This is used by mention clicks, common groups, context menu "Message user", etc.
@@ -105,6 +156,19 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
 
   const containerRef = useRef<HTMLUListElement | null>(null);
   const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Pull-to-refresh (mobile) ──────────────────────────────────────────────
+  // Pulling down from the top of the list silently re-fetches page 1 from the
+  // API (cache skipped), like WhatsApp's pull-to-refresh on the chats tab.
+  const searchTermRef = useRef(searchTerm);
+  useEffect(() => {
+    searchTermRef.current = searchTerm;
+  }, [searchTerm]);
+
+  const { pull, refreshing } = usePullToRefresh(containerRef, {
+    disabled: !isMobile || overlayOpen,
+    onRefresh: () => loadMembers(1, true, searchTermRef.current || "", true),
+  });
 
   const selectedConvId = selectedCustomer
     ? Number((selectedCustomer as { ConversationId?: string | number }).ConversationId ?? 0)
@@ -442,31 +506,52 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
   // reachable with one-hand use. Rendered only on mobile by MobileBottomNav
   // itself (returns null on desktop). Hides when the keyboard opens via the
   // .hide-on-keyboard helper so it never covers the search field.
+  // The New Chat / Create Group overlays sit above the list but below the nav,
+  // so a nav tap while one is open must also close it — otherwise the tap
+  // appears to do nothing.
+  const closeNavOverlays = () => {
+    setShowNewChat(false);
+    setShowCreateGroup(false);
+  };
   const bottomNavItems: MobileNavItem[] = [
     {
       key: "chats",
       label: "Chats",
       icon: <MessageSquare size={22} />,
-      onClick: () => setIsArchiveOpen(false),
+      onClick: () => {
+        closeNavOverlays();
+        setIsArchiveOpen(false);
+      },
     },
     {
       key: "archived",
       label: "Archived",
       icon: <Archive size={22} />,
       badge: archivedCount,
-      onClick: () => setIsArchiveOpen(true),
+      onClick: () => {
+        closeNavOverlays();
+        setIsArchiveOpen(true);
+      },
     },
     {
       key: "new-chat",
       label: "New Chat",
       icon: <MessageSquarePlus size={22} />,
-      onClick: () => setShowNewChat(true),
+      onClick: () => {
+        setShowCreateGroup(false);
+        setIsArchiveOpen(false);
+        setShowNewChat(true);
+      },
     },
     {
       key: "create-group",
       label: "New Group",
       icon: <Users size={22} />,
-      onClick: () => setShowCreateGroup(true),
+      onClick: () => {
+        setShowNewChat(false);
+        setIsArchiveOpen(false);
+        setShowCreateGroup(true);
+      },
     },
   ];
   const bottomNavActiveKey = isArchiveOpen ? "archived" : "chats";
@@ -512,6 +597,33 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
 
       {/* List */}
       <div className="customer_lists_main">
+        {/* Pull-to-refresh indicator (mobile) — reveals as the list is pulled */}
+        {isMobile && (pull > 0 || refreshing) && (
+          <div
+            className={`ptr-indicator ${refreshing ? "ptr-refreshing" : ""}`}
+            style={{
+              height: pull,
+              opacity: Math.min(pull / PTR_THRESHOLD, 1),
+            }}
+          >
+            <div
+              className="ptr-spinner"
+              style={{
+                transform: refreshing
+                  ? undefined
+                  : `rotate(${pull * 3.6}deg) scale(${0.6 + 0.4 * Math.min(pull / PTR_THRESHOLD, 1)})`,
+              }}
+            >
+              <CircularProgress
+                size={24}
+                thickness={4.5}
+                variant={refreshing ? "indeterminate" : "determinate"}
+                value={Math.min((pull / PTR_THRESHOLD) * 100, 100)}
+              />
+            </div>
+          </div>
+        )}
+
         {serviceDown && serviceMessage && (
           <Box sx={{ p: 3, textAlign: "center" }}>
             <Typography color="error" variant="body2">
@@ -520,7 +632,18 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
           </Box>
         )}
 
-        <ul ref={containerRef} className="app-scroll">
+        <ul
+          ref={containerRef}
+          className="app-scroll"
+          style={
+            pull > 0
+              ? {
+                  transform: `translateY(${pull}px)`,
+                  transition: refreshing ? "transform 160ms ease" : "none",
+                }
+              : { transition: "transform 200ms ease" }
+          }
+        >
           {/* Archived row — only in normal view, hidden in archive view and favorite tab */}
           {archivedCount > 0 && !searchTerm && !isArchiveOpen && tabValue !== 2 && (
             <li className="member-item archived-row" onClick={() => setIsArchiveOpen(true)}>
@@ -807,13 +930,32 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
         </Box>
       )}
 
+      {/* WhatsApp-style floating "new chat" button — mobile only, above the
+          bottom nav. Hidden while any overlay screen or the archive view is
+          open, and when the keyboard is up. */}
+      {isMobile && !profileOpen && !showNewChat && !showCreateGroup && !isArchiveOpen && (
+        <div className="hide-on-keyboard">
+          <button
+            type="button"
+            className="new-chat-fab tap-target"
+            aria-label="New chat"
+            onClick={() => setShowNewChat(true)}
+          >
+            <MessageSquarePlus size={24} />
+          </button>
+        </div>
+      )}
+
       {/* Mobile bottom navigation — chat list screen only.
           MobileBottomNav returns null on desktop. Wrapped in .hide-on-keyboard
           so it disappears when the on-screen keyboard opens (keeps the search
-          field visible and avoids covering content). */}
-      <div className="hide-on-keyboard">
-        <MobileBottomNav items={bottomNavItems} activeKey={bottomNavActiveKey} />
-      </div>
+          field visible and avoids covering content). Hidden while the
+          full-screen ProfilePanel is open. */}
+      {!profileOpen && (
+        <div className="hide-on-keyboard">
+          <MobileBottomNav items={bottomNavItems} activeKey={bottomNavActiveKey} />
+        </div>
+      )}
     </div>
   );
 };

@@ -63,7 +63,3 @@ export const showToast = (
       });
   }
 };
-
-export const dismissToast = (toastId?: string) => {
-  toast.dismiss(toastId);
-};

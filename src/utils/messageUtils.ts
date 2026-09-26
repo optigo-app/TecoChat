@@ -330,20 +330,3 @@ export const sortMessagesByDate = <T extends { DateTime?: string; SentAt?: strin
   };
   return [...messages].sort((a, b) => tsOf(a) - tsOf(b));
 };
-
-/**
- * Merge new server messages with existing messages, deduplicating by Id.
- */
-export const mergeMessages = <T extends { Id?: string | number; MessageId?: string | number }>(
-  newMsgs: T[],
-  existing: T[]
-): T[] => {
-  const existingIds = new Set(
-    existing.map((m) => String(m.Id ?? m.MessageId ?? "")).filter(Boolean)
-  );
-  const unique = newMsgs.filter((m) => {
-    const id = String(m.Id ?? m.MessageId ?? "");
-    return id && !existingIds.has(id);
-  });
-  return [...existing, ...unique];
-};

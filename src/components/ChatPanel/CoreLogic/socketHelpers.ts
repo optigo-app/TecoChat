@@ -1,17 +1,10 @@
 // ─── Socket emit helpers ────────────────────────────────────────────────────
-// Ported from OldChatReactCode/.../CoreLogic/socketHelpers.js
-// Wraps socket emit functions with typed payloads.
 
 import {
   emitInternalMessageSend,
   emitInternalMessageRead,
-  emitSendReaction,
-  emitRemoveReaction,
-  emitInternalTyping,
   emitInternalMessageDelete,
 } from "../../../socket";
-import type { AuthData } from "../../../contexts/LoginData";
-import type { ConversationListEntry } from "../../../types/conversation";
 
 interface AuthLike {
   id?: string;
@@ -148,39 +141,6 @@ export const emitReadReceipt = (
     if (ok) any = true;
   }
   return any;
-};
-
-/** Emit a reaction. */
-export const emitReaction = (
-  auth: AuthLike | null,
-  payload: Record<string, unknown>
-): boolean => {
-  if (!auth) return false;
-  return emitSendReaction({
-    Id: auth.SocketId ?? auth.id,
-    ufcc: auth.ufcc,
-    SenderId: auth.id,
-    ...payload,
-  });
-};
-
-/** Emit a reaction removal. */
-export const emitReactionRemove = (
-  auth: AuthLike | null,
-  payload: Record<string, unknown>
-): boolean => {
-  if (!auth) return false;
-  return emitRemoveReaction({
-    Id: auth.SocketId ?? auth.id,
-    ufcc: auth.ufcc,
-    SenderId: auth.id,
-    ...payload,
-  });
-};
-
-/** Emit typing indicator. */
-export const emitTyping = (payload: Record<string, unknown>): boolean => {
-  return emitInternalTyping(payload);
 };
 
 /** Emit message deletion. */

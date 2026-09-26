@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, forwardRef } from "react";
 import { Box, Button, ImageList, ImageListItem, Skeleton, Typography } from "@mui/material";
 import useLazyLoading from "./useLazyLoading";
-import { Image, Play } from "lucide-react";
+import { Image, ImageOff, Play } from "lucide-react";
 
 interface MediaItem {
   Id?: string | number;
@@ -29,6 +29,137 @@ interface MediaSectionProps {
   onMediaClick: (media: MediaItem) => void;
   paginationFlag: boolean;
 }
+
+// ── Progressive tile ────────────────────────────────────────────────────────
+// Each cell keeps its own loading state: a skeleton is shown until that
+// specific image (or video metadata) finishes loading, then the thumbnail
+// fades in. Items therefore appear one-by-one as they arrive instead of the
+// whole grid popping in at once.
+interface MediaTileProps {
+  item: MediaItem;
+  isVideo: boolean;
+  title: string;
+  src: string;
+  onClick: () => void;
+}
+
+const MediaTile = forwardRef<HTMLLIElement, MediaTileProps>(
+  ({ item, isVideo, title, src, onClick }, ref) => {
+    const [loaded, setLoaded] = useState(false);
+    const [failed, setFailed] = useState(false);
+
+    return (
+      <ImageListItem
+        ref={ref}
+        key={item.Id}
+        onClick={onClick}
+        title={title}
+        sx={{ cursor: "pointer" }}
+      >
+        <Box
+          sx={{
+            position: "relative",
+            width: "100%",
+            aspectRatio: "1 / 1",
+            borderRadius: 2,
+            overflow: "hidden",
+            bgcolor: "action.hover",
+          }}
+        >
+          {/* Skeleton placeholder until this item's thumbnail loads */}
+          {!loaded && (
+            <Skeleton
+              variant="rounded"
+              animation="wave"
+              width="100%"
+              height="100%"
+              sx={{ position: "absolute", inset: 0, borderRadius: 0 }}
+            />
+          )}
+
+          {src &&
+            (isVideo ? (
+              <Box
+                component="video"
+                preload="metadata"
+                playsInline
+                muted
+                onLoadedData={() => setLoaded(true)}
+                onError={() => setFailed(true)}
+                sx={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                  opacity: loaded ? 1 : 0,
+                  transition: "opacity 220ms ease",
+                }}
+              >
+                <source src={src} type="video/mp4" />
+              </Box>
+            ) : (
+              <Box
+                component="img"
+                src={src}
+                alt="Shared media"
+                loading="lazy"
+                decoding="async"
+                onLoad={() => setLoaded(true)}
+                onError={() => setFailed(true)}
+                sx={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                  opacity: loaded ? 1 : 0,
+                  transition: "opacity 220ms ease",
+                }}
+              />
+            ))}
+
+          {/* Broken thumbnail fallback — muted icon instead of endless skeleton */}
+          {failed && (
+            <Box
+              sx={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "text.disabled",
+                bgcolor: "action.hover",
+              }}
+            >
+              <ImageOff size={22} />
+            </Box>
+          )}
+
+          <Box
+            sx={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              bgcolor: "rgba(0,0,0,0.28)",
+              opacity: 0,
+              transition: "opacity 160ms ease",
+              "&:hover": { opacity: 1 },
+            }}
+          >
+            {loaded &&
+              (isVideo ? (
+                <Play size={22} color="#fff" />
+              ) : (
+                <Image size={22} color="#fff" />
+              ))}
+          </Box>
+        </Box>
+      </ImageListItem>
+    );
+  }
+);
+MediaTile.displayName = "MediaTile";
 
 const MediaSection = ({
   mediaItems,
@@ -142,85 +273,15 @@ const MediaSection = ({
             const src = item.src || item.FileUrl || "";
 
             return (
-              <ImageListItem
-                ref={isLastElement ? lastMediaElementRef : null}
+              <MediaTile
                 key={item.Id}
-                onClick={() => onMediaClick(item)}
+                ref={isLastElement ? lastMediaElementRef : null}
+                item={item}
+                isVideo={!!isVideo}
                 title={title}
-                sx={{ cursor: "pointer" }}
-              >
-                <Box
-                  sx={{
-                    position: "relative",
-                    width: "100%",
-                    aspectRatio: "1 / 1",
-                    borderRadius: 2,
-                    overflow: "hidden",
-                    bgcolor: "action.hover",
-                  }}
-                >
-                  {!src ? (
-                    <Skeleton
-                      variant="rounded"
-                      width="100%"
-                      height="100%"
-                      sx={{ position: "absolute", inset: 0, borderRadius: 0 }}
-                    />
-                  ) : isVideo ? (
-                    <Box
-                      component="video"
-                      preload="metadata"
-                      playsInline
-                      muted
-                      sx={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    >
-                      <source src={src} type="video/mp4" />
-                    </Box>
-                  ) : (
-                    <Box
-                      component="img"
-                      src={src}
-                      alt="Shared media"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                      sx={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
-                  )}
-
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      bgcolor: "rgba(0,0,0,0.28)",
-                      opacity: 0,
-                      transition: "opacity 160ms ease",
-                      "&:hover": { opacity: 1 },
-                    }}
-                  >
-                    {src ? (
-                      isVideo ? (
-                        <Play size={22} color="#fff" />
-                      ) : (
-                        <Image size={22} color="#fff" />
-                      )
-                    ) : null}
-                  </Box>
-                </Box>
-              </ImageListItem>
+                src={src}
+                onClick={() => onMediaClick(item)}
+              />
             );
           })}
         </ImageList>

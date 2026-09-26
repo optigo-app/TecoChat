@@ -7,6 +7,7 @@ import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
 import { SystemMessage } from "./messages/list";
 import type { ChatMessage } from "../../types/message";
 import type { ConversationListEntry } from "../../types/conversation";
+import { getMessageId } from "./CoreLogic/messageHelpers";
 
 interface MessageItemProps {
   msg: ChatMessage;
@@ -70,8 +71,9 @@ const MessageItemComponent = ({
   const [hovered, setHovered] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const messageDomId = msg.Id ?? msg.MessageId;
-  const isBlinking = blinkMessageId === messageDomId;
+  const messageDomId = getMessageId(msg);
+  const isBlinking =
+    blinkMessageId != null && String(blinkMessageId) === String(messageDomId);
   const isSearchHighlighted = searchHighlightMessageId === String(messageDomId);
 
   const handleMouseEnter = useCallback(() => {

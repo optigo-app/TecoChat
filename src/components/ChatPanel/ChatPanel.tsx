@@ -445,13 +445,27 @@ export const ChatPanel = memo(({
     setMenuAnchor(null);
   }, []);
 
+  // Closing the drawer also exits starred mode — the header star icon
+  // shouldn't stay lit while its panel is closed.
+  const handleCloseDrawer = useCallback(() => {
+    if (starFilter) handleToggleStarFilter();
+    closeDrawer();
+  }, [starFilter, handleToggleStarFilter, closeDrawer]);
+
   const handleSearch = useCallback(() => {
     if (drawerOpen && drawerViewState === "search") {
-      closeDrawer();
+      handleCloseDrawer();
     } else {
       openSearch();
     }
-  }, [drawerOpen, drawerViewState, openSearch, closeDrawer]);
+  }, [drawerOpen, drawerViewState, openSearch, handleCloseDrawer]);
+
+  // Star click → open the search drawer in starred-messages mode (WhatsApp
+  // "Starred messages"). Toggling off leaves the drawer as a normal search.
+  const handleStarToggle = useCallback(() => {
+    if (!starFilter) openSearch();
+    handleToggleStarFilter();
+  }, [starFilter, openSearch, handleToggleStarFilter]);
 
   // ── No-results date search — inline pill in the message area ────────────
   const [noResultsDate, setNoResultsDate] = useState<string | null>(null);
@@ -657,7 +671,7 @@ export const ChatPanel = memo(({
         onOpenInfo={openInfo}
         onBack={onBack}
         starFilter={starFilter}
-        onToggleStarFilter={handleToggleStarFilter}
+        onToggleStarFilter={handleStarToggle}
         starNewMessageCount={starNewMessageCount}
         onSearchByDate={handleSearchByDate}
         onOpenDatePicker={openDatePicker}
@@ -787,7 +801,7 @@ export const ChatPanel = memo(({
         starFilter={starFilter}
         onMenuAction={handleMenuAction}
         onOpenDatePicker={openDatePicker}
-        onToggleStarFilter={handleToggleStarFilter}
+        onToggleStarFilter={handleStarToggle}
       />
 
       <JumpToDatePicker
@@ -993,7 +1007,7 @@ export const ChatPanel = memo(({
       {drawerOpen && selectedCustomer && (
         <CustomerDetails
           customer={(infoMember || selectedCustomer) as ConversationListEntry}
-          onClose={closeDrawer}
+          onClose={handleCloseDrawer}
           open={drawerOpen}
           variant={isNarrowScreen ? "drawer" : "panel"}
           initialViewState={drawerViewState}
@@ -1003,6 +1017,7 @@ export const ChatPanel = memo(({
           searchResults={searchResults}
           isSearching={isSearching}
           onSearchMessages={searchMessages}
+          starFilter={starFilter}
           onSearchByDate={isNarrowScreen ? handleSearchByDateFromPanel : handleSearchByDate}
           containerRef={containerRef}
         />

@@ -17,9 +17,11 @@ import {
 import {
   saveConversationToCache,
   getMessageId,
+  getMessageAliasIds,
   mergeMessages,
 } from "../components/ChatPanel/CoreLogic/messageHelpers";
 import { useMessageLoader } from "../components/ChatPanel/CoreLogic/useMessageLoader";
+import { doubleRequestAnimationFrame } from "../components/ChatPanel/CoreLogic/scrollUtils";
 import { conversationView, conversationViewCursor, type CursorDirection } from "../API/ConversationView/ConversationView";
 import { useSocketHandlers } from "../components/ChatPanel/CoreLogic/useSocketHandlers";
 import { useReadReceipt } from "../components/ChatPanel/CoreLogic/useReadReceipt";
@@ -71,6 +73,10 @@ export const useConversation = ({
   // Updated by MessageList's scroll handler, read by socket handler to
   // decide whether to insert new messages immediately or buffer them.
   const isAtBottomRef = useRef(true);
+  // Jump-to-message sequencing — bumped on every scrollToMessage call so a
+  // newer click cancels older in-flight fetches, retries, and blinks.
+  const navSeqRef = useRef(0);
+  const pendingNavRef = useRef<{ sid: string; attachmentId?: string | null } | null>(null);
 
   useEffect(() => {
     selectedCustomerRef.current = selectedCustomer;
@@ -259,7 +265,9 @@ export const useConversation = ({
       initialPageSize: 20,
       msgState,
       dispatchMsg,
-      isStarFilter: uiState.starFilter ? 1 : 0,
+      // Star mode now lives in the search drawer — the main message list is
+      // never star-filtered, so the loader always fetches normal messages.
+      isStarFilter: 0,
     });
 
   const { handleReadMessage } = useReadReceipt({
@@ -491,6 +499,13 @@ export const useConversation = ({
       saveDraftRef.current(prevId, latestInputValueRef.current);
     }
 
+    // Cancel any in-flight jump-to-message navigation and clear its
+    // highlight state so it can't flash on the new conversation's rows.
+    navSeqRef.current++;
+    pendingNavRef.current = null;
+    dispatchUI({ type: UI.SET_BLINK, value: null });
+    dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: null, messageId: null } });
+
     if (!nextId) {
       dispatchMsg({ type: MSG.CLEAR });
       dispatchUI({ type: UI.SET_INPUT, value: "" });
@@ -502,6 +517,7 @@ export const useConversation = ({
     dispatchUI({ type: UI.SET_FORWARD, value: null });
     // Reset star filter when switching conversations
     dispatchUI({ type: UI.SET_STAR_FILTER, value: false });
+    starFilterRef.current = false;
     // Clear any buffered new messages from previous conversation
     dispatchMsg({ type: MSG.CLEAR_BUFFER });
     // NOTE: Do NOT set SET_LOADING here — loadConversation handles it.
@@ -610,8 +626,9 @@ export const useConversation = ({
   const messageById = useMemo(() => {
     const map = new Map<string | number, ChatMessage>();
     for (const m of msgState.data) {
-      const id = m.Id ?? m.MessageId;
-      if (id != null) map.set(id, m);
+      // Register every identity alias so lookups by MessageId, Id, or
+      // ClientMessageId (e.g. reply ContextId) all resolve.
+      for (const a of getMessageAliasIds(m)) map.set(a, m);
     }
     return map;
   }, [msgState.data]);
@@ -619,10 +636,9 @@ export const useConversation = ({
   const flattenedRows = useMemo((): FlattenedRow[] => {
     const rows: FlattenedRow[] = [{ type: "spacer-top" }];
     let lastDateKey = "";
-    // When star filter is active, only show starred messages
-    const data = uiState.starFilter
-      ? msgState.data.filter((m) => m.IsStar === 1)
-      : msgState.data;
+    // Star mode shows starred messages inside the search drawer only —
+    // the main list always renders the full message set.
+    const data = msgState.data;
     for (let i = 0; i < data.length; i++) {
       const msg = data[i];
       const dateKey = formatDateTime(msg.Date || msg.DateTime || msg.dateTime, "dateKey");
@@ -635,30 +651,55 @@ export const useConversation = ({
     if (typingStatus) rows.push({ type: "typing" });
     rows.push({ type: "spacer-bottom" });
     return rows;
-  }, [msgState.data, typingStatus, uiState.starFilter]);
+  }, [msgState.data, typingStatus]);
 
   // ── Stable helpers ───────────────────────────────────────────────────────
 
-  // ── Star filter: toggle and reload messages with IsStar filter ───────────
-  // When enabled, sends IsStar=1 to GetMessagesCursor so the backend returns
-  // only starred messages. When disabled, reloads normally (IsStar=0).
+  // ── Star filter: search-drawer mode ──────────────────────────────────────
+  // Star click opens the search drawer listing only starred messages
+  // (WhatsApp "Starred messages"). The main list is never filtered.
   const starFilterRef = useRef(false);
   useEffect(() => {
     starFilterRef.current = uiState.starFilter;
   }, [uiState.starFilter]);
 
+  // Fetch all starred messages into searchResults for the drawer.
+  const loadStarredMessages = useCallback(async () => {
+    const convId = selectedCustomerRef.current?.ConversationId;
+    if (!convId || !auth) return;
+    dispatchUI({ type: UI.SET_SEARCHING, value: true });
+    try {
+      const response = await conversationViewCursor(
+        convId,
+        0 as CursorDirection, // INITIAL — latest page of starred messages
+        0,
+        100,
+        auth,
+        null,
+        "Starred Messages ( Filter )",
+        1 // IsStar
+      );
+      if (selectedCustomerRef.current?.ConversationId !== convId) return;
+      dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: response.data });
+    } catch {
+      dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
+    } finally {
+      dispatchUI({ type: UI.SET_SEARCHING, value: false });
+    }
+  }, [auth, dispatchUI, selectedCustomerRef]);
+
   const handleToggleStarFilter = useCallback(() => {
     const next = !uiState.starFilter;
     dispatchUI({ type: UI.SET_STAR_FILTER, value: next });
-    // Update the ref immediately so loadConversation uses the correct
-    // IsStar value on this render cycle (the useEffect update lags by
-    // one render, causing the wrong IsStar to be sent on toggle).
+    // Update the ref immediately so searchMessages uses the correct mode
+    // on this render cycle (the useEffect update lags by one render).
     starFilterRef.current = next;
-    // Reload messages with the star filter applied — pass the star value
-    // directly so the API gets IsStar=1 when enabling, IsStar=0 when disabling.
-    const lastMsgId = Number(selectedCustomer?.LastMessageId) || 0;
-    loadConversationRef.current(1, true, true, lastMsgId, next ? 1 : 0);
-  }, [uiState.starFilter, selectedCustomer, dispatchUI]);
+    if (next) {
+      loadStarredMessages();
+    } else {
+      dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
+    }
+  }, [uiState.starFilter, dispatchUI, loadStarredMessages]);
 
   // Count new (non-starred) messages that arrive while star filter is active.
   // These are shown as a badge on the star toggle button.
@@ -726,85 +767,248 @@ export const useConversation = ({
     async (
       messageId: string | number,
       containerRef: React.MutableRefObject<HTMLElement | null>,
-      _attachmentId?: string | null,
+      attachmentId?: string | null,
       searchQuery?: string | null
     ) => {
       if (!containerRef.current || !messageId) return;
       const sid = String(messageId);
-      const el = containerRef.current.querySelector(`[data-message-id="${sid}"]`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Each click supersedes the previous navigation — async continuations
+      // capture `seq` and bail the moment a newer click lands.
+      const seq = ++navSeqRef.current;
+      pendingNavRef.current = { sid, attachmentId };
+      const isCurrent = () => navSeqRef.current === seq;
+
+      // Rows are keyed by getMessageId (MessageId ?? Id ?? ClientMessageId)
+      // but callers pass whichever id they have — resolve the DOM id from the
+      // message list first so an already-rendered message doesn't trigger a
+      // needless cursor API call.
+      const findDomId = (list: ChatMessage[] | null | undefined): string | null => {
+        const m = list?.find(
+          (x) =>
+            String(x.MessageId ?? "") === sid ||
+            String(x.Id ?? "") === sid ||
+            String(x.ClientMessageId ?? "") === sid
+        );
+        return m ? getMessageId(m) || sid : null;
+      };
+      const findEl = (domId: string): Element | null =>
+        containerRef.current?.querySelector(`[data-message-id="${CSS.escape(domId)}"]`) ?? null;
+
+      // Clear this nav's highlight state — the seq guard means a stale
+      // continuation can never clobber a newer nav's blink/highlight.
+      const clearHighlights = () => {
+        if (!isCurrent()) return;
+        dispatchUI({ type: UI.SET_BLINK, value: null });
+        if (searchQuery)
+          dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: null, messageId: null } });
+      };
+
+      // Anchor-lock the target at viewport center until layout settles.
+      // Off-screen rows carry estimated heights (contentVisibility +
+      // containIntrinsicSize) and media resolves real sizes lazily, so the
+      // centered position drifts for a while after an instant jump.
+      // Event-driven (ResizeObserver on the list body) — corrections happen
+      // only when heights actually change, not on a 60fps poll. The lock is
+      // released on the first user scroll gesture so it never fights input.
+      const settleOnTarget = (el: Element) => {
+        const outer = containerRef.current;
+        const inner = outer?.firstElementChild as HTMLElement | null;
+        if (!outer || !inner) return;
+        let done = false;
+        let quietTimer: ReturnType<typeof setTimeout> | null = null;
+        let capTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const finish = () => {
+          if (done) return;
+          done = true;
+          ro.disconnect();
+          outer.removeEventListener("wheel", finish);
+          outer.removeEventListener("touchmove", finish);
+          outer.removeEventListener("pointerdown", finish);
+          if (quietTimer) clearTimeout(quietTimer);
+          if (capTimer) clearTimeout(capTimer);
+        };
+
+        const center = () => {
+          if (done || !isCurrent() || !el.isConnected) return;
+          const rect = el.getBoundingClientRect();
+          const oRect = outer.getBoundingClientRect();
+          const drift = rect.top - oRect.top - (oRect.height - rect.height) / 2;
+          if (Math.abs(drift) <= 2) return;
+          const prev = outer.style.scrollBehavior;
+          outer.style.scrollBehavior = "auto";
+          outer.scrollTop += drift;
+          outer.style.scrollBehavior = prev;
+        };
+
+        const ro = new ResizeObserver(() => {
+          if (!isCurrent()) {
+            finish();
+            return;
+          }
+          center();
+          // Stop 500ms after the last resize — layout has settled.
+          if (quietTimer) clearTimeout(quietTimer);
+          quietTimer = setTimeout(finish, 500);
+        });
+        ro.observe(inner);
+
+        // Any user scroll gesture releases the lock immediately.
+        outer.addEventListener("wheel", finish, { passive: true });
+        outer.addEventListener("touchmove", finish, { passive: true });
+        outer.addEventListener("pointerdown", finish, { passive: true });
+
+        // Catch drift in the first paints before the observer fires.
+        let frames = 0;
+        const initial = () => {
+          if (done) return;
+          center();
+          if (++frames < 4) requestAnimationFrame(initial);
+        };
+        requestAnimationFrame(initial);
+
+        quietTimer = setTimeout(finish, 500);
+        capTimer = setTimeout(finish, 2500); // hard cap — never lock forever
+      };
+
+      const blinkAndHighlight = (el: Element | null, domId: string, smooth = false) => {
+        if (!isCurrent()) return;
+        // WhatsApp-style: near targets smooth-scroll, far (fetched) targets
+        // jump instantly — no animation through hundreds of messages.
+        el?.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
+        // Blink the resolved DOM id — the row's blink check compares against
+        // getMessageId(msg), which may differ from the id the caller passed.
+        // Restart the animation so the flash plays while the row is in view
+        // (deep-fetch rows mount already blinking under the pre-set id, so the
+        // null → id toggle in separate commits is required to restart it).
+        dispatchUI({ type: UI.SET_BLINK, value: null });
+        requestAnimationFrame(() => {
+          if (!isCurrent()) return;
+          dispatchUI({ type: UI.SET_BLINK, value: domId });
+        });
+        // Search text highlight: use the canonical domId so the row's
+        // searchHighlightMessageId comparison actually matches.
+        if (searchQuery)
+          dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: searchQuery, messageId: domId } });
+        setTimeout(() => {
+          if (isCurrent()) dispatchUI({ type: UI.SET_BLINK, value: null });
+        }, 3000);
+        // Anchor-lock for instant (fetched) jumps — media/estimated rows keep
+        // resolving real heights for a while, so correct drift until stable.
+        if (!smooth && el) settleOnTarget(el);
+      };
+
+      // Fetch the page containing the target message (Direction 3 = BETWEEN)
+      // using the message ID as the cursor, then scroll to it.
+      const fetchAndScroll = async () => {
+        const convId = selectedCustomerRef.current?.ConversationId;
+        if (!convId || !auth) return;
+
+        let cursorId = Number(messageId) || 0;
+        if (!cursorId) {
+          // Non-numeric caller id — resolve a numeric cursor from a loaded
+          // alias of the same message before giving up.
+          const m = messagesRef.current?.find(
+            (x) =>
+              String(x.MessageId ?? "") === sid ||
+              String(x.Id ?? "") === sid ||
+              String(x.ClientMessageId ?? "") === sid
+          );
+          cursorId = Number(m?.MessageId ?? m?.Id) || 0;
+        }
+        if (!cursorId) return;
+
+        dispatchMsg({ type: MSG.SET_LOADING, value: true });
+        // Set blink BEFORE loading so MessageList knows to skip auto-scroll.
+        // Cleared on every exit below if the target never materializes.
         dispatchUI({ type: UI.SET_BLINK, value: sid });
         if (searchQuery) dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: searchQuery, messageId: sid } });
-        // Blink clears on 3s timeout; search highlight clears on user interaction
-        setTimeout(() => {
-          dispatchUI({ type: UI.SET_BLINK, value: null });
-        }, 3000);
+        try {
+          const response = await conversationViewCursor(
+            convId,
+            3 as CursorDirection,
+            cursorId,
+            20,
+            auth,
+            null
+          );
+
+          // Guard: bail if the user switched conversations or clicked a newer
+          // target while the request was in flight — stale data must not
+          // overwrite the current view or highlight the wrong message.
+          if (selectedCustomerRef.current?.ConversationId !== convId || !isCurrent()) return;
+
+          const serverMessages = response.data as ChatMessage[];
+          if (!serverMessages.length) {
+            clearHighlights();
+            return;
+          }
+
+          const merged = mergeMessages(serverMessages, messagesRef.current, convId);
+          dispatchMsg({ type: MSG.LOAD, data: merged, total: response.total });
+          dispatchMsg({ type: MSG.SET_HAS_MORE, value: response.hasMoreBefore || response.hasMoreAfter });
+          dispatchMsg({ type: MSG.SET_HAS_MORE_BEFORE, value: response.hasMoreBefore });
+          dispatchMsg({ type: MSG.SET_HAS_MORE_AFTER, value: response.hasMoreAfter });
+          dispatchMsg({
+            type: MSG.SET_CURSORS,
+            beforeCursor: response.beforeCursor,
+            afterCursor: response.afterCursor,
+          });
+
+          const mergedDomId = findDomId(merged) ?? sid;
+
+          // Wait for the merge to commit, then poll for the element. A
+          // rAF-count budget is too tight — large merges on slow devices can
+          // exceed ~160ms before the DOM catches up.
+          await new Promise<void>((resolve) => doubleRequestAnimationFrame(resolve));
+          const deadline = Date.now() + 2500;
+          const poll = () => {
+            if (!isCurrent() || selectedCustomerRef.current?.ConversationId !== convId) return;
+            const byResolved = findEl(mergedDomId);
+            const target = byResolved ?? findEl(sid);
+            if (target) {
+              blinkAndHighlight(target, byResolved ? mergedDomId : sid);
+              return;
+            }
+            if (Date.now() < deadline) {
+              setTimeout(poll, 90);
+            } else {
+              clearHighlights();
+            }
+          };
+          poll();
+        } catch (err) {
+          console.error("scrollToMessage cursor fetch error:", err);
+          clearHighlights();
+        } finally {
+          if (isCurrent()) dispatchMsg({ type: MSG.SET_LOADING, value: false });
+        }
+      };
+
+      const domId = findDomId(messagesRef.current);
+      if (domId) {
+        // Message is in state — it should already be in the DOM, or will be on
+        // the next paint. Retry briefly before falling back to a fetch.
+        let attempts = 0;
+        const tryDom = () => {
+          if (!isCurrent()) return;
+          const byResolved = findEl(domId);
+          const t = byResolved ?? findEl(sid);
+          if (t) {
+            blinkAndHighlight(t, byResolved ? domId : sid, true);
+            return;
+          }
+          if (++attempts < 6) {
+            requestAnimationFrame(tryDom);
+            return;
+          }
+          void fetchAndScroll();
+        };
+        tryDom();
         return;
       }
 
-      // Message not in DOM — fetch it using cursor API (Direction 3 = BETWEEN)
-      // with the message ID as the cursor. This loads a page of messages
-      // anchored around the target message, then we scroll to it.
-      const convId = selectedCustomerRef.current?.ConversationId;
-      if (!convId || !auth) return;
-
-      const cursorId = Number(messageId) || 0;
-      if (!cursorId) return;
-
-      dispatchMsg({ type: MSG.SET_LOADING, value: true });
-      // Set blink BEFORE loading so MessageList knows to skip auto-scroll
-      dispatchUI({ type: UI.SET_BLINK, value: sid });
-      if (searchQuery) dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: searchQuery, messageId: sid } });
-      try {
-        const response = await conversationViewCursor(
-          convId,
-          3 as CursorDirection,
-          cursorId,
-          20,
-          auth,
-          null
-        );
-
-        // Guard: bail if the user switched conversations while the request
-        // was in flight, so we don't overwrite the new chat with stale data.
-        if (selectedCustomerRef.current?.ConversationId !== convId) return;
-
-        const serverMessages = response.data as ChatMessage[];
-        if (!serverMessages.length) {
-          dispatchUI({ type: UI.SET_BLINK, value: null });
-          return;
-        }
-
-        const merged = mergeMessages(serverMessages, messagesRef.current, convId);
-        dispatchMsg({ type: MSG.LOAD, data: merged, total: response.total });
-        dispatchMsg({ type: MSG.SET_HAS_MORE, value: response.hasMoreBefore || response.hasMoreAfter });
-        dispatchMsg({ type: MSG.SET_HAS_MORE_BEFORE, value: response.hasMoreBefore });
-        dispatchMsg({ type: MSG.SET_HAS_MORE_AFTER, value: response.hasMoreAfter });
-        dispatchMsg({
-          type: MSG.SET_CURSORS,
-          beforeCursor: response.beforeCursor,
-          afterCursor: response.afterCursor,
-        });
-
-        // Wait for DOM to render the new messages, then scroll to target
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const target = containerRef.current?.querySelector(`[data-message-id="${sid}"]`);
-            if (target) {
-              target.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
-            // Keep blink for 3s total, then clear (highlight clears on user interaction)
-            setTimeout(() => {
-              dispatchUI({ type: UI.SET_BLINK, value: null });
-            }, 3000);
-          });
-        });
-      } catch (err) {
-        console.error("scrollToMessage cursor fetch error:", err);
-      } finally {
-        dispatchMsg({ type: MSG.SET_LOADING, value: false });
-      }
+      await fetchAndScroll();
     },
     [dispatchUI, dispatchMsg, auth, selectedCustomerRef]
   );
@@ -844,19 +1048,29 @@ export const useConversation = ({
   // ── Search messages ──────────────────────────────────────────────────────
   const searchMessages = useCallback(
     async (query: string) => {
-      if (!selectedCustomer?.ConversationId || !query?.trim()) {
-        dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
+      const convId = selectedCustomer?.ConversationId;
+      const starredOnly = starFilterRef.current;
+      if (!convId || !query?.trim()) {
+        // Empty query: in star mode list all starred messages; otherwise clear.
+        if (convId && starredOnly) {
+          loadStarredMessages();
+        } else {
+          dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
+        }
         return;
       }
       dispatchUI({ type: UI.SET_SEARCHING, value: true });
       try {
-        const convId = selectedCustomer.ConversationId;
-        const cached = await getSearchCache(auth, convId, query);
-        // Guard: bail if the user switched conversations while awaiting cache.
-        if (selectedCustomerRef.current?.ConversationId !== convId) return;
-        if (cached) {
-          dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: cached });
-          return;
+        // Skip the text-search cache in star mode — cached results aren't
+        // star-filtered, and star state changes too often for cached rows.
+        if (!starredOnly) {
+          const cached = await getSearchCache(auth, convId, query);
+          // Guard: bail if the user switched conversations while awaiting cache.
+          if (selectedCustomerRef.current?.ConversationId !== convId) return;
+          if (cached) {
+            dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: cached });
+            return;
+          }
         }
         const response = await conversationView(
           convId,
@@ -868,8 +1082,14 @@ export const useConversation = ({
         );
         // Guard: bail if the user switched conversations while awaiting network.
         if (selectedCustomerRef.current?.ConversationId !== convId) return;
-        const results = (response.data as ChatMessage[]) || [];
-        setSearchCache(auth, convId, query, results).catch(() => {});
+        let results = (response.data as ChatMessage[]) || [];
+        // Combined search — star mode filters the text-search hits to
+        // starred messages only.
+        if (starredOnly) {
+          results = results.filter((m) => m.IsStar === 1);
+        } else {
+          setSearchCache(auth, convId, query, results).catch(() => {});
+        }
         dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: results });
       } catch {
         dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
@@ -877,13 +1097,20 @@ export const useConversation = ({
         dispatchUI({ type: UI.SET_SEARCHING, value: false });
       }
     },
-    [selectedCustomer?.ConversationId, selectedCustomerRef, auth, dispatchUI]
+    [selectedCustomer?.ConversationId, selectedCustomerRef, auth, dispatchUI, loadStarredMessages]
   );
 
   const searchByDate = useCallback(
     async (date: string): Promise<boolean> => {
       const convId = selectedCustomer?.ConversationId;
       if (!convId || !auth || !date) return false;
+      // A date search applies to the whole conversation — reset star mode so
+      // the jump isn't constrained to starred messages.
+      if (starFilterRef.current) {
+        starFilterRef.current = false;
+        dispatchUI({ type: UI.SET_STAR_FILTER, value: false });
+        dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
+      }
       dispatchMsg({ type: MSG.SET_LOADING, value: true });
       try {
         // Direction 4 (date search) — the backend anchors purely on
@@ -938,7 +1165,7 @@ export const useConversation = ({
         dispatchMsg({ type: MSG.SET_LOADING, value: false });
       }
     },
-    [selectedCustomer?.ConversationId, selectedCustomerRef, auth, dispatchMsg]
+    [selectedCustomer?.ConversationId, selectedCustomerRef, auth, dispatchMsg, dispatchUI]
   );
 
   // ── Public API ───────────────────────────────────────────────────────────

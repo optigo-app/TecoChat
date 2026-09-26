@@ -167,26 +167,23 @@ the old CRA app must follow these rules:
 - `src/context/SocketContext.tsx` — React provider wrapping the socket
   lifecycle (connect, disconnect, sessionLogout, 5s status check). Exposes
   `{ status, isConnected, socketId }` via `useSocketContext()`.
-- `src/utils/socketHelper.ts` — `registerSocketId()` wrapper.
 - `src/utils/versionManager.ts` — version checking, comparison, multi-tab
   sync via BroadcastChannel, SW cleanup.
 
-## App Shell (Sidebar + Header + Layout)
+## App Shell (Sidebar + Layout)
 
-- `src/components/AppLayout/` — wraps pages with Header + Sidebar + content
-  area. Manages sidebar collapse state (manual + breakpoint <= 1440px) and
+- `src/components/AppLayout/` — wraps pages with Sidebar + content area.
+  Manages sidebar collapse state (manual + breakpoint <= 1440px) and
   mobile drawer open state. Content gets `marginLeft` = sidebar width.
 - `src/components/Sidebar/` — collapsible sidebar (260px expanded, 76px
   collapsed). Logo + "TeCoChat" title + collapse toggle. Menu items use
   `next/link`. "Powered by" Optigo logo at bottom. localStorage key
   `internal_sidebar_collapsed` persists manual collapse. On mobile (<=768px)
   becomes a slide-in drawer with overlay.
-- `src/components/Header/` — fixed top bar. Left: hamburger (mobile) + logo.
-  Center: socket status indicator (desktop). Right: theme toggle + profile.
 - `src/components/ProfileAvatar/` — "Welcome {username}" text + avatar with
   dropdown menu (Profile, Data Sync, Log out). Logout uses confirmation
   dialog. Avatar colors generated from username hash.
-- Sidebar/header/profile all use CSS variables for dark mode support.
+- Sidebar/profile all use CSS variables for dark mode support.
   Hover backgrounds use `$hover-bg` / `$hover-bg-strong` SCSS vars (mapped
   to `--color-hover-bg` / `--color-hover-bg-strong` CSS vars).
 

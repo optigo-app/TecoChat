@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo } from "react";
+import React, { createContext, useEffect, useMemo } from "react";
 import { getDb, closeDb } from "./tecoDb";
 import type { TecoChatDatabase } from "./tecoDb";
 import { useLoginContext } from "../contexts/LoginData";
@@ -30,8 +30,4 @@ export function DbProvider({ children }: { children: React.ReactNode }) {
   }, [authId]);
 
   return <DbContext.Provider value={db}>{children}</DbContext.Provider>;
-}
-
-export function useDb(): TecoChatDatabase | null {
-  return useContext(DbContext);
 }

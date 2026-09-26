@@ -89,7 +89,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 12px;
+    // WhatsApp-style: the back arrow sits near the screen edge, profile
+    // avatar snug after it — tighter left padding, normal on the right.
+    padding: 0 8px 0 4px;
     background-color: var(--color-surface, #fff);
     border-bottom: 1px solid var(--color-border-light, rgba(0, 0, 0, 0.06));
     flex-shrink: 0;
@@ -124,9 +126,12 @@
     &__back {
         color: $text2ndColor;
         -webkit-tap-highlight-color: transparent;
-        // 44x44 touch target
+        // 44x44 touch target — negative margins keep the tap area while the
+        // glyph sits ~10px from the edge and the avatar right after it.
         min-width: 44px;
         min-height: 44px;
+        margin-left: -4px;
+        margin-right: -6px;
 
         &:hover {
             color: $primary-main;
@@ -215,32 +220,6 @@
         }
     }
 
-    // ── Mobile keyboard: collapse the header to reclaim message space ──
-    // Triggered by the JS-set [data-keyboard="open"] attribute on <html>
-    // (see ThemeRegistry themeNoFlashScript). Pure CSS — no JS reflow.
-    @media (max-width: 768px) {
-        transition: min-height 0.18s ease, padding-top 0.18s ease;
-
-        [data-keyboard="open"] & {
-            // Drop the safe-top padding (keyboard covers the status bar) and
-            // shrink to a single-line compact bar.
-            padding-top: 0;
-            min-height: 44px;
-
-            // Hide the secondary line (email / group description) — the primary
-            // name stays so the user always knows which conversation is open.
-            .chat-header__status,
-            .chat-header__typing {
-                display: none;
-            }
-
-            // Tighten the avatar slightly
-            .chat-header__left > div:first-of-type {
-                width: 32px !important;
-                height: 32px !important;
-            }
-        }
-    }
 }
 
 // ── Message list ─────────────────────────────────────────────────────────────
@@ -676,7 +655,10 @@
 
 .chat-input-container {
     display: flex;
-    align-items: center;
+    // WhatsApp-style: icons stay bottom-aligned when the editor grows
+    // multiline — they pin to the last text line instead of floating
+    // at the vertical middle of a tall input.
+    align-items: flex-end;
     gap: 4px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -707,7 +689,8 @@
         }
     }
 
-    // When editor grows multi-line, buttons stay centered (not sinking)
+    // Editor keeps its text vertically centered for the single-line case;
+    // the container's flex-end pins the side buttons to the bottom row.
     .chat-input-editor-wrapper {
         display: flex;
         align-items: center;

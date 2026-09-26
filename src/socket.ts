@@ -168,8 +168,6 @@ export function initializeSocket(token: string): Socket | null {
   return socketInstance;
 }
 
-export const getSocket = (): Socket | null => socketInstance;
-
 export const reconnectSocket = (): void => {
   if (typeof window === "undefined" || navigator.onLine === false) return;
 
@@ -207,8 +205,6 @@ export const isSocketConnected = (): boolean => {
   }
   return state;
 };
-
-export const isSocketAuthenticated = (): boolean => isAuthenticated;
 
 export const addSessionLogoutHandler = (handler: Handler): Unsubscribe => {
   sessionLogoutHandlers.add(handler);
@@ -352,24 +348,6 @@ export const emitInternalMessageDelete = (payload: Record<string, unknown>): boo
   return true;
 };
 
-export const emitAppVersionUpdate = (payload: Record<string, unknown> = {}): boolean => {
-  if (!socketInstance) return false;
-  const versionData = {
-    version: getAppVersion(),
-    receiveEvent: "internal:app_version_update",
-    ...payload,
-  };
-  socketInstance.emit("internal:app_version_update", versionData);
-  dispatchAppVersionUpdate(versionData);
-  return true;
-};
-
-export const emitGroupInfoRequest = (payload: Record<string, unknown>): boolean => {
-  if (!socketInstance) return false;
-  socketInstance.emit("internal:group_info_request", { ...payload, receiveEvent: "internal:group_info_request" });
-  return true;
-};
-
 export const disconnectSocket = (permanent = false): void => {
   if (socketInstance) {
     socketInstance.disconnect();
@@ -391,10 +369,3 @@ export const disconnectSocket = (permanent = false): void => {
   }
 };
 
-function getAppVersion(): string {
-  try {
-    return localStorage.getItem("app_version_current") || "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}

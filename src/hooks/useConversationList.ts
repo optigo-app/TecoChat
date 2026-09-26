@@ -97,6 +97,7 @@ export const useConversationList = ({
   const typingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   // Track pending setTimeout IDs from socket handlers so they can be cleared on unmount
   const socketTimerIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const notifyQueueRef = useRef<Record<string, unknown>[]>([]);
 
   // Keep refs in sync
   useEffect(() => {
@@ -320,7 +321,19 @@ export const useConversationList = ({
   // ── handleSocketUpdate: the core real-time update function ────────────────
   const handleSocketUpdate = useCallback(
     (incoming: Record<string, unknown>, isStatusChange = false) => {
-      let pendingNotify: Record<string, unknown> | null = null;
+
+      // Debug: entry log — fires for EVERY socket event reaching this
+      // handler, before any gate/early-return. If a message never produces
+      // this line on the receiver, the socket event itself didn't arrive
+      // (not a notification-layer problem).
+      console.log("[NOTIFY] socket event:", {
+        isStatusChange,
+        conversationId: incoming.ConversationId ?? incoming.conversationId,
+        senderId: incoming.SenderId ?? incoming.Sender,
+        myId: auth?.id ?? auth?.userId,
+        hasMessage: incoming.Message != null,
+        MessageType: incoming.MessageType ?? incoming.LastMessageType,
+      });
 
       setChatMembers((prev) => {
         if (!prev?.data) return prev;
@@ -394,8 +407,20 @@ export const useConversationList = ({
         const shouldNotify = !isOutgoing && !isStatusChange && (!isOpenConversation || !isWindowFocused)
           && (!muted || mentioned);
 
+        // Debug: log exactly which gate blocked the notification (silent drops
+        // are otherwise invisible — notify() is never called when blocked).
+        if (!shouldNotify) {
+          const reasons = {
+            isOutgoing: isOutgoing ? "own message" : null,
+            isStatusChange: isStatusChange ? "status receipt, not a message" : null,
+            viewingChat: isOpenConversation && isWindowFocused ? "user is looking at this chat" : null,
+            muted: muted && !mentioned ? "chat muted" : null,
+          };
+          console.log("[NOTIFY] blocked:", conversationId, reasons);
+        }
+
         if (shouldNotify) {
-          pendingNotify = {
+          notifyQueueRef.current.push({
             senderName: resolvedName,
             message: getPreview().text,
             conversationId,
@@ -404,7 +429,7 @@ export const useConversationList = ({
             tag: `msg-${conversationId}`,
             isOpenConversation,
             ...incoming,
-          };
+          });
         }
 
         const nextUnreadCount = (currentCount: number) => {
@@ -568,13 +593,23 @@ export const useConversationList = ({
         }
         return { ...prev, data: updatedData };
       });
-
-      if (pendingNotify) {
-        notify(pendingNotify, "NEW_MESSAGE", auth);
-      }
     },
     [auth]
   );
+
+  // Drain the notification queue once chatMembers state commits. The
+  // setChatMembers updater pushes payloads into notifyQueueRef; React may run
+  // the updater at render time, so this effect (post-commit) is the reliable
+  // place to fire notify(). notify() self-dedupes within 3s, so a
+  // double-invoked updater can't double-notify.
+  useEffect(() => {
+    if (notifyQueueRef.current.length === 0) return;
+    const queue = notifyQueueRef.current;
+    notifyQueueRef.current = [];
+    for (const data of queue) {
+      notify(data, "NEW_MESSAGE", auth);
+    }
+  }, [chatMembers, auth]);
 
   useEffect(() => {
     if (!auth?.token || !auth?.userId) return;

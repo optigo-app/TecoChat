@@ -5,7 +5,6 @@ import {
   type DOMConversionMap,
   type DOMExportOutput,
   type EditorConfig,
-  type LexicalNode,
   type NodeKey,
   type SerializedTextNode,
   type Spread,
@@ -178,10 +177,6 @@ type MentionNodeInstance = TextNode & {
   __mentionData: MentionData;
   getMentionData(): MentionData;
 };
-
-export function $isMentionNode(node: LexicalNode | null | undefined): node is MentionNodeInstance {
-  return node instanceof StableMentionNode;
-}
 
 export function $createMentionNode(mentionData: MentionData): MentionNodeInstance {
   const node = new StableMentionNode(mentionData);

@@ -118,6 +118,58 @@ function EditorRefPlugin({ editorRef }: { editorRef?: React.MutableRefObject<Lex
   return null;
 }
 
+// ── Selection tracker plugin ─────────────────────────────────────────────────
+// Keeps a serialized copy of the last RangeSelection so callers (e.g. emoji
+// insertion) can restore the cursor after the editor blurs — mobile taps on
+// the emoji button blur the editor and lose the selection.
+export interface SavedSelectionPoint {
+  key: string;
+  offset: number;
+  type: "text" | "element";
+}
+export interface SavedSelection {
+  anchor: SavedSelectionPoint;
+  focus: SavedSelectionPoint;
+}
+
+function SelectionTrackerPlugin({
+  selectionRef,
+}: {
+  selectionRef?: React.MutableRefObject<SavedSelection | null>;
+}) {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    if (!selectionRef) return;
+    return editor.registerUpdateListener(({ editorState }) => {
+      // Only persist the selection while the DOM selection is actually inside
+      // the editor. Programmatic updates (draft import, root.clear, node
+      // transforms) can leave a state selection at offset 0 — persisting that
+      // would make emoji restore insert at the start of the text.
+      const rootEl = editor.getRootElement();
+      const domSel = window.getSelection();
+      if (
+        !rootEl ||
+        !domSel ||
+        domSel.rangeCount === 0 ||
+        !rootEl.contains(domSel.anchorNode) ||
+        !rootEl.contains(domSel.focusNode)
+      ) {
+        return;
+      }
+      editorState.read(() => {
+        const sel = $getSelection();
+        if ($isRangeSelection(sel)) {
+          selectionRef.current = {
+            anchor: { key: sel.anchor.key, offset: sel.anchor.offset, type: sel.anchor.type },
+            focus: { key: sel.focus.key, offset: sel.focus.offset, type: sel.focus.type },
+          };
+        }
+      });
+    });
+  }, [editor, selectionRef]);
+  return null;
+}
+
 // ── Enter key plugin ─────────────────────────────────────────────────────────
 function EnterKeyPlugin({
   onEnter,
@@ -464,6 +516,8 @@ interface LexicalChatEditorProps {
   excludeUserId?: string | number;
   onFetchMembers?: () => void;
   isGroup?: boolean;
+  /** Receives the last RangeSelection so callers can restore the cursor after blur */
+  selectionRef?: React.MutableRefObject<SavedSelection | null>;
 }
 
 const LexicalChatEditorComponent: React.FC<LexicalChatEditorProps> = ({
@@ -486,6 +540,7 @@ const LexicalChatEditorComponent: React.FC<LexicalChatEditorProps> = ({
   excludeUserId,
   onFetchMembers,
   isGroup = false,
+  selectionRef,
 }) => {
   const initialConfig = {
     namespace,
@@ -526,6 +581,7 @@ const LexicalChatEditorComponent: React.FC<LexicalChatEditorProps> = ({
         <EmojiPlugin />
         <MarkdownExportPlugin onChange={onChange} lastEmittedRef={lastEmittedRef} />
         <EditorRefPlugin editorRef={editorRef} />
+        <SelectionTrackerPlugin selectionRef={selectionRef} />
         <EnterKeyPlugin onEnter={onKeyDown} submitOnEnter={submitOnEnter} />
         <OneTimeFormattingPlugin />
         <PasteHandlerPlugin

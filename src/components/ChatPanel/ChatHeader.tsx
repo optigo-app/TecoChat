@@ -60,7 +60,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
             size="small"
             className="chat-header__back tap-target"
             aria-label="Back to conversations"
-            sx={{ flexShrink: 0, mr: 0.5 }}
+            sx={{ flexShrink: 0 }}
           >
             <ArrowLeft size={22} />
           </IconButton>
@@ -153,7 +153,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
                 fill={starFilter ? "#FFD700" : "none"}
                 color={starFilter ? "#FFD700" : "currentColor"}
               />
-              {starFilter && starNewMessageCount > 0 && (
+              {/* {starFilter && starNewMessageCount > 0 && (
                 <Box
                   sx={{
                     position: "absolute",
@@ -175,7 +175,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
                 >
                   {starNewMessageCount > 99 ? "99+" : starNewMessageCount}
                 </Box>
-              )}
+              )} */}
             </IconButton>
           </Tooltip>
         )}

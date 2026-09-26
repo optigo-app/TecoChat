@@ -46,6 +46,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Shrink the layout viewport when the on-screen keyboard opens (Android
+  // Chrome) instead of overlaying it — keeps the chat header and composer
+  // visible without the browser scrolling the focused input into view.
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#161622" },

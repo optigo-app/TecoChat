@@ -155,11 +155,14 @@ export async function unregisterStaleServiceWorkers(): Promise<void> {
     const registrations = await navigator.serviceWorker.getRegistrations();
     if (registrations.length === 0) return;
 
-    // Only unregister service workers whose scriptURL contains the app's SW path.
+    // Unregister stale/legacy service workers — anything that is NOT the app's
+    // current SW (/sw.js). Our own /sw.js must stay registered: notifications
+    // on Android/mobile only work via registration.showNotification(), and
+    // NotificationContext registers it on mount.
     const appRegistrations = registrations.filter((reg) => {
       try {
         const scriptURL = reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || "";
-        return scriptURL.includes(APP_SW_PATH);
+        return Boolean(scriptURL) && !scriptURL.endsWith(APP_SW_PATH);
       } catch {
         return false;
       }
@@ -168,7 +171,7 @@ export async function unregisterStaleServiceWorkers(): Promise<void> {
     if (appRegistrations.length === 0) return;
 
     console.info(
-      `[versionManager] Found ${appRegistrations.length} app service worker(s) — unregistering to prevent stale cache issues.`
+      `[versionManager] Found ${appRegistrations.length} stale service worker(s) — unregistering to prevent stale cache issues.`
     );
 
     await Promise.all(

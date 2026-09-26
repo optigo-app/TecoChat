@@ -7,13 +7,53 @@ import type { ChatMessage } from "../../../types/message";
 import { putMessages, getMessagesAround } from "../../../db/messageCache";
 import type { AuthData } from "../../../contexts/LoginData";
 
-/** Stable string ID for any message shape. */
+/** Stable string ID for any message shape. Canonical order:
+ *  server id → local id → optimistic correlation id. */
 export const getMessageId = (msg: ChatMessage | null | undefined): string => {
   if (!msg) return "";
-  const primary = msg.MessageId ?? msg.Id;
+  const primary = msg.MessageId ?? msg.Id ?? msg.ClientMessageId;
   if (primary != null && String(primary)) return String(primary);
-  return `temp_${msg.Direction}_${msg.Message}_${msg.DateTime}`;
+  // Sanitized — this value lands in data-message-id / CSS selectors, so it
+  // must never contain quotes or whitespace.
+  const safeText = String(msg.Message ?? "")
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(0, 24);
+  return `temp_${msg.Direction}_${msg.DateTime}_${safeText}`;
 };
+
+/** Every identity a message can carry. The same logical message arrives in
+ *  different shapes across optimistic / socket / REST / IDB paths — these
+ *  are the keys under which any of those shapes may be found. */
+export const getMessageAliasIds = (msg: ChatMessage | null | undefined): string[] => {
+  if (!msg) return [];
+  const out: string[] = [];
+  for (const v of [msg.MessageId, msg.Id, msg.ClientMessageId]) {
+    const s = v == null ? "" : String(v);
+    if (s && !out.includes(s)) out.push(s);
+  }
+  const k = getMessageId(msg);
+  if (k && !out.includes(k)) out.push(k);
+  return out;
+};
+
+/** True when any alias of `msg` equals `id`. */
+export const matchesMessageId = (
+  msg: ChatMessage | null | undefined,
+  id: string | number | null | undefined
+): boolean => {
+  if (!msg || id == null) return false;
+  const s = String(id);
+  if (!s) return false;
+  return (
+    String(msg.MessageId ?? "") === s ||
+    String(msg.Id ?? "") === s ||
+    String(msg.ClientMessageId ?? "") === s
+  );
+};
+
+const OPTIMISTIC_STATUSES: ReadonlySet<unknown> = new Set(["pending", "failed", 4, "4"]);
+export const isOptimisticStatus = (status: unknown): boolean =>
+  OPTIMISTIC_STATUSES.has(status);
 
 /** Resolve a numeric status from any raw status value. */
 export const resolveStatus = (raw: unknown): number => {
@@ -62,61 +102,134 @@ const tsOf = (m: ChatMessage): number => {
   return t;
 };
 
+/** True when `a` and `b` are the same outgoing message in two shapes — a
+ *  pending/failed optimistic row and its server-confirmed twin. Needed
+ *  because optimistic rows carry temp ids that never match the server id,
+ *  and `ClientMessageId` is not always echoed back. */
+export const isOptimisticPair = (a: ChatMessage, b: ChatMessage): boolean => {
+  if (isOptimisticStatus(a.Status) === isOptimisticStatus(b.Status)) return false;
+  const opt = isOptimisticStatus(a.Status) ? a : b;
+  const srv = opt === a ? b : a;
+  // The optimistic side must be outgoing; the confirmed side may carry a
+  // partial shape (API-response UPSERTs can omit Direction/ConversationId)
+  // so only compare when the field is actually present.
+  if (Number(opt.Direction) !== 1) return false;
+  if (srv.Direction != null && Number(srv.Direction) !== 1) return false;
+  if (
+    srv.ConversationId != null &&
+    opt.ConversationId != null &&
+    String(opt.ConversationId) !== String(srv.ConversationId)
+  )
+    return false;
+  const aType = String(a.MessageType ?? "text");
+  const bType = String(b.MessageType ?? "text");
+  if (aType !== bType) return false;
+  const ta = tsOf(a);
+  const tb = tsOf(b);
+  if (ta && tb && Math.abs(ta - tb) > 120000) return false;
+  // Reply context pins the pair — different reply targets = different messages
+  const aCtx = String(
+    a.ContextId ?? (a as { ReplyTo?: string | number }).ReplyTo ?? ""
+  );
+  const bCtx = String(
+    b.ContextId ?? (b as { ReplyTo?: string | number }).ReplyTo ?? ""
+  );
+  if (aCtx && bCtx && aCtx !== bCtx) return false;
+  const aMsg = String(a.Message ?? "");
+  const bMsg = String(b.Message ?? "");
+  if (aMsg || bMsg) return aMsg === bMsg;
+  // Empty-body media: compare attachment fingerprints (filename/size)
+  const ai = Array.isArray(a.mediaItems) ? a.mediaItems : [];
+  const bi = Array.isArray(b.mediaItems) ? b.mediaItems : [];
+  if (ai.length && bi.length) {
+    if (ai.length !== bi.length) return false;
+    return ai.every((x, i) => {
+      const y = bi[i] as
+        | { filename?: string; size?: number; mimeType?: string }
+        | undefined;
+      return (
+        (!!x?.filename && x.filename === y?.filename) ||
+        (!!x?.size && x.size === y?.size) ||
+        (!!x?.mimeType && x.mimeType === y?.mimeType && ai.length === 1)
+      );
+    });
+  }
+  return true;
+};
+
+/** Collapse rows that share ANY identity alias into one — later entries win
+ *  field conflicts. Used wherever rows from different sources are combined. */
+export const dedupeByAlias = (list: ChatMessage[]): ChatMessage[] => {
+  const byAlias = new Map<string, ChatMessage>();
+  const out: ChatMessage[] = [];
+  for (const m of list) {
+    const aliases = getMessageAliasIds(m);
+    let existing: ChatMessage | undefined;
+    for (const a of aliases) {
+      const e = byAlias.get(a);
+      if (e) {
+        existing = e;
+        break;
+      }
+    }
+    if (!existing) {
+      out.push(m);
+      for (const a of aliases) byAlias.set(a, m);
+      continue;
+    }
+    const merged = { ...existing, ...m } as ChatMessage;
+    const i = out.indexOf(existing);
+    if (i >= 0) out[i] = merged;
+    for (const a of getMessageAliasIds(merged)) byAlias.set(a, merged);
+  }
+  return out;
+};
+
 /**
  * Merge server messages with any optimistic/socket messages already in state.
- * Deduplicates by ID, preserving socket messages that aren't yet on the server.
+ * Deduplicates by every identity alias, and drops pending/failed optimistic
+ * rows whose server twin is already present in the page.
  */
 export const mergeMessages = (
   serverMessages: ChatMessage[],
   prevData: ChatMessage[],
   selectedId: string | number | null | undefined
 ): ChatMessage[] => {
-  if (!selectedId) return [...serverMessages];
+  if (!selectedId) {
+    return dedupeByAlias([...serverMessages]).sort((a, b) => tsOf(a) - tsOf(b));
+  }
 
+  const serverRows = dedupeByAlias([...serverMessages]);
   const recentSocket = prevData.filter(
     (m) => Number(m.ConversationId) === Number(selectedId)
   );
-  const optimistic = recentSocket.filter(
-    (m) => m.Direction === 1 && m.Status === "pending"
-  );
 
   const map = new Map<string, ChatMessage>();
-
-  for (const sm of serverMessages) {
-    const id = getMessageId(sm);
-    if (id && !id.startsWith("temp_")) map.set(id, sm);
+  for (const sm of serverRows) {
+    for (const a of getMessageAliasIds(sm)) map.set(a, sm);
   }
 
+  // A server row can absorb only ONE optimistic twin — a doc batch of N
+  // pending rows must not all be folded into a single confirmed row.
+  const consumed = new Set<ChatMessage>();
   for (const msg of recentSocket) {
-    const id = getMessageId(msg);
-    if (!id || map.has(id)) continue;
-    if (id.startsWith("temp_")) {
-      const ts = tsOf(msg);
-      const matched = serverMessages.some(
+    const aliases = getMessageAliasIds(msg);
+    if (!aliases.length) continue;
+    if (aliases.some((a) => map.has(a))) continue;
+    // Pending/failed optimistic twin of a row already in this page — drop it
+    // or the user sees the same message twice (pending bubble + real bubble).
+    if (
+      isOptimisticStatus(msg.Status) &&
+      serverRows.some(
         (sm) =>
-          sm.Direction === msg.Direction &&
-          sm.Message === msg.Message &&
-          Math.abs(tsOf(sm) - ts) < 15000
-      );
-      if (matched) continue;
-    }
-    map.set(id, msg);
+          !consumed.has(sm) && isOptimisticPair(msg, sm) && consumed.add(sm)
+      )
+    )
+      continue;
+    map.set(aliases[0], msg);
   }
 
-  for (const om of optimistic) {
-    const id = getMessageId(om);
-    if (!id || map.has(id)) continue;
-    const ts = tsOf(om);
-    const matched = serverMessages.some(
-      (sm) =>
-        sm.Direction === om.Direction &&
-        sm.Message === om.Message &&
-        Math.abs(tsOf(sm) - ts) < 15000
-    );
-    if (!matched) map.set(id, om);
-  }
-
-  return Array.from(map.values()).sort((a, b) => tsOf(a) - tsOf(b));
+  return [...new Set(map.values())].sort((a, b) => tsOf(a) - tsOf(b));
 };
 
 /** Group messages by date key for UI date separators. */

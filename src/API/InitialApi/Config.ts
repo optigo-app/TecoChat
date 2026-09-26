@@ -41,8 +41,6 @@ export const REMOVE_FILE_URL = () => `${getApiBaseUrl()}/removefile`;
 
 // Report / Common APIs
 export const APIURL = () => `${getApiBaseUrl()}/report`;
-export const GETCONVERSATIONURL = () => `${getApiBaseUrl()}/report`;
-export const SAVEPLAYERID = () => `${getApiBaseUrl()}/report`;
 
 // file Download APIs
 export const DOWNLOAD_FILE_URL = () => `${getApiBaseUrl()}/downloadfile`;
@@ -100,4 +98,3 @@ export const getApiHeaders = (): Record<string, string> => {
 };
 
 export const getHeaders = (): Record<string, string> => getApiHeaders();
-export const getLoginHeaders = (): Record<string, string> => getApiHeaders();

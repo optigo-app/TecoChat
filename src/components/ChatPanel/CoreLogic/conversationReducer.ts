@@ -4,7 +4,12 @@
 // prepend, upsert, status, reaction, edit, delete, pagination flags).
 
 import type { ChatMessage } from "../../../types/message";
-import { getMessageId } from "./messageHelpers";
+import {
+  getMessageAliasIds,
+  matchesMessageId,
+  isOptimisticStatus,
+  isOptimisticPair,
+} from "./messageHelpers";
 import { parseReactions } from "../../../utils/EmojiUtils";
 
 // Cache DateTime parsing per message object for sorts — Date construction is
@@ -158,29 +163,76 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       return { ...state, data: action.data, total: action.total };
 
     case MSG.APPEND: {
-      const map = new Map<string, ChatMessage>();
-      for (const message of [...state.data, ...action.data] as ChatMessage[]) {
-        const key = getMessageId(message) || `fallback:${message.DateTime}:${message.Message}`;
-        map.set(key, { ...(map.get(key) || {}), ...message });
+      // Dedup by every identity alias, and fold pending/failed optimistic
+      // rows into their server twin — a reconnect-sync APPEND can carry the
+      // confirmed copy of a message that's still pending in state.
+      const byAlias = new Map<string, ChatMessage>();
+      const order: ChatMessage[] = [];
+      const claim = (m: ChatMessage) => {
+        for (const a of getMessageAliasIds(m)) byAlias.set(a, m);
+      };
+      for (const m of state.data) {
+        order.push(m);
+        claim(m);
+      }
+      for (const m of action.data as ChatMessage[]) {
+        const aliases = getMessageAliasIds(m);
+        let hit: ChatMessage | undefined;
+        for (const a of aliases) {
+          const e = byAlias.get(a);
+          if (e) {
+            hit = e;
+            break;
+          }
+        }
+        if (hit) {
+          const merged = { ...hit, ...m } as ChatMessage;
+          const i = order.indexOf(hit);
+          if (i >= 0) order[i] = merged;
+          claim(merged);
+          continue;
+        }
+        const optIdx = order.findIndex(
+          (o) => isOptimisticStatus(o.Status) && isOptimisticPair(o, m)
+        );
+        if (optIdx >= 0) {
+          const merged = { ...order[optIdx], ...m } as ChatMessage;
+          order[optIdx] = merged;
+          claim(merged);
+          continue;
+        }
+        order.push(m);
+        claim(m);
       }
       return {
         ...state,
-        data: Array.from(map.values()).sort((a, b) => tsOf(a) - tsOf(b)),
+        data: order.sort((a, b) => tsOf(a) - tsOf(b)),
         total: action.total,
       };
     }
 
     case MSG.PREPEND: {
-      const map = new Map<string, ChatMessage>();
+      const byAlias = new Map<string, ChatMessage>();
+      const order: ChatMessage[] = [];
+      const claim = (m: ChatMessage) => {
+        for (const a of getMessageAliasIds(m)) byAlias.set(a, m);
+      };
       for (const m of action.data as ChatMessage[]) {
-        const k = getMessageId(m);
-        if (k && !k.startsWith("temp_")) map.set(k, m);
+        order.push(m);
+        claim(m);
       }
       for (const m of state.data) {
-        const k = getMessageId(m);
-        if (k && !map.has(k)) map.set(k, m);
+        const aliases = getMessageAliasIds(m);
+        if (aliases.length && aliases.some((a) => byAlias.has(a))) continue;
+        if (
+          isOptimisticStatus(m.Status) &&
+          order.some((o) => isOptimisticPair(m, o))
+        )
+          continue;
+        order.push(m);
+        claim(m);
       }
-      const merged = Array.from(map.values()).sort((a, b) => tsOf(a) - tsOf(b));
+      const merged = order.sort((a, b) => tsOf(a) - tsOf(b));
       return { ...state, data: merged, total: action.total };
     }
 
@@ -193,12 +245,9 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       );
       const idx = state.data.findIndex(
         (m) =>
-          String(m.MessageId ?? "") === id ||
-          String(m.Id ?? "") === id ||
-          (incomingId !== "" &&
-            (String(m.MessageId ?? "") === incomingId || String(m.Id ?? "") === incomingId)) ||
-          (clientMessageId !== "" &&
-            (String(m.MessageId ?? "") === clientMessageId || String(m.Id ?? "") === clientMessageId))
+          matchesMessageId(m, id) ||
+          matchesMessageId(m, incomingId) ||
+          matchesMessageId(m, clientMessageId)
       );
       if (idx >= 0) {
         const existing = state.data[idx];
@@ -218,8 +267,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       // message (Status "pending" or 4) — otherwise new outgoing messages
       // with the same caption and conversation would overwrite each other.
       const incomingStatus = incoming.Status as unknown;
-      const incomingIsOptimistic =
-        incomingStatus === "pending" || incomingStatus === 4 || incomingStatus === "4";
+      const incomingIsOptimistic = isOptimisticStatus(incomingStatus);
       if (incomingIsOptimistic) {
         const newArr = [...state.data];
         const newMsg = incoming as ChatMessage;
@@ -236,14 +284,9 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       }
       const optimisticCandidates = state.data
         .map((m, index) => ({ message: m, index }))
-        .filter(({ message: m }) => {
-          if (m.Direction !== 1 || (m.Status !== "pending" && m.Status !== 4)) return false;
-          if (String(m.ConversationId ?? "") !== String(incoming.ConversationId ?? "")) return false;
-          if (String(m.Message ?? "") !== String(incoming.Message ?? "")) return false;
-          const existingTime = new Date(m.DateTime || 0).getTime();
-          const incomingTime = new Date(incoming.DateTime || 0).getTime();
-          return !existingTime || !incomingTime || Math.abs(existingTime - incomingTime) <= 120000;
-        });
+        .filter(({ message: m }) =>
+          isOptimisticPair(m, incoming as ChatMessage)
+        );
       const incomingTime = new Date(incoming.DateTime || 0).getTime();
       const optimisticIdx = optimisticCandidates
         .sort((a, b) => {
@@ -284,8 +327,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
           if (msg.Direction !== 1) return msg;
           const idMatch =
             messageId &&
-            (String(msg.Id ?? "") === String(messageId) ||
-              String(msg.MessageId ?? "") === String(messageId) ||
+            (matchesMessageId(msg, messageId) ||
               (msg.Message === extra?.Message &&
                 Math.abs(
                   new Date(msg.DateTime || 0).getTime() -
@@ -319,8 +361,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       return {
         ...state,
         data: state.data.map((msg) => {
-          const id = msg.MessageId || msg.Id;
-          if (String(id ?? "") !== String(messageId)) return msg;
+          if (!matchesMessageId(msg, messageId)) return msg;
 
           let current = parseReactions(msg.ReactionEmojis);
 
@@ -347,8 +388,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       return {
         ...state,
         data: state.data.map((msg) => {
-          const id = msg.MessageId || msg.Id;
-          if (String(id ?? "") !== String(messageId)) return msg;
+          if (!matchesMessageId(msg, messageId)) return msg;
           return {
             ...msg,
             Message: newMessage,
@@ -365,10 +405,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
     case MSG.DELETE_ME:
       return {
         ...state,
-        data: state.data.filter(
-          (m) =>
-            String(m.MessageId ?? m.Id ?? "") !== String(action.messageId)
-        ),
+        data: state.data.filter((m) => !matchesMessageId(m, action.messageId)),
       };
 
     case MSG.DELETE_ALL: {
@@ -376,8 +413,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       return {
         ...state,
         data: state.data.map((msg) => {
-          if (String(msg.MessageId ?? msg.Id ?? "") !== String(messageId))
-            return msg;
+          if (!matchesMessageId(msg, messageId)) return msg;
           return {
             ...msg,
             Message: deletedInfo.Message || "This message was deleted.",
@@ -394,13 +430,16 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       return { ...msgInitialState };
 
     case MSG.BUFFER_NEW: {
-      // Don't buffer duplicates
-      const bufId = getMessageId(action.msg);
-      if (bufId && state.pendingNewMessages.some((m) => getMessageId(m) === bufId)) {
-        return state;
-      }
-      // Also don't buffer if already in the visible list
-      if (bufId && state.data.some((m) => getMessageId(m) === bufId)) {
+      // Don't buffer duplicates — compare every identity alias, not just the
+      // canonical key, so an echo carrying a different id shape can't slip in.
+      const aliases = getMessageAliasIds(action.msg);
+      if (!aliases.length) return state;
+      const collides = (m: ChatMessage) =>
+        getMessageAliasIds(m).some((a) => aliases.includes(a));
+      if (
+        state.pendingNewMessages.some(collides) ||
+        state.data.some(collides)
+      ) {
         return state;
       }
       return {
@@ -411,17 +450,21 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
 
     case MSG.FLUSH_NEW: {
       if (state.pendingNewMessages.length === 0) return state;
-      // Merge buffered messages into the visible list (sorted by date)
-      const map = new Map<string, ChatMessage>();
+      // Merge buffered messages into the visible list (sorted by date),
+      // deduplicating across all identity aliases.
+      const byAlias = new Map<string, ChatMessage>();
+      const order: ChatMessage[] = [];
       for (const m of state.data) {
-        const k = getMessageId(m);
-        if (k) map.set(k, m);
+        order.push(m);
+        for (const a of getMessageAliasIds(m)) byAlias.set(a, m);
       }
       for (const m of state.pendingNewMessages) {
-        const k = getMessageId(m);
-        if (k && !map.has(k)) map.set(k, m);
+        const aliases = getMessageAliasIds(m);
+        if (aliases.length && aliases.some((a) => byAlias.has(a))) continue;
+        order.push(m);
+        for (const a of aliases) byAlias.set(a, m);
       }
-      const merged = Array.from(map.values()).sort(
+      const merged = order.sort(
         (a, b) =>
           new Date(a.DateTime || 0).getTime() - new Date(b.DateTime || 0).getTime()
       );
@@ -436,8 +479,7 @@ export function messagesReducer(state: MsgState, action: MsgAction): MsgState {
       return {
         ...state,
         data: state.data.map((msg) => {
-          if (String(msg.MessageId ?? msg.Id ?? "") !== String(messageId))
-            return msg;
+          if (!matchesMessageId(msg, messageId)) return msg;
           return { ...msg, IsStar: isStar };
         }),
       };

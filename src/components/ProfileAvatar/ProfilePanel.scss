@@ -52,9 +52,11 @@
         .back-btn {
             color: $text2ndColor;
             transition: all 0.2s ease;
-            // Ensure tap target is at least 44x44px
+            // Ensure tap target is at least 44x44px — negative margin keeps
+            // the tap area while the arrow hugs the screen edge (WhatsApp-style)
             min-width: 44px;
             min-height: 44px;
+            margin-left: -8px;
 
             &:hover {
                 background: $hover-bg;

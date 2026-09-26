@@ -66,16 +66,51 @@ export const NotificationProvider = ({
         "Notification" in window &&
         Notification.permission === "granted"
       ) {
-        new Notification("Notifications enabled!", {
+        const options: NotificationOptions = {
           body: "You'll receive real-time updates.",
           icon: NOTIFICATION_ICON,
           tag: "notif-enabled",
-        });
+        };
+        // Android Chrome requires showNotification() via the service worker —
+        // `new Notification()` throws "Illegal constructor" there.
+        if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready
+            .then((reg) => reg.showNotification("Notifications enabled!", options))
+            .catch(() => {
+              try {
+                new Notification("Notifications enabled!", options);
+              } catch {
+                /* unsupported */
+              }
+            });
+        } else {
+          new Notification("Notifications enabled!", options);
+        }
       }
     } catch (e) {
       console.warn("Browser does not support desktop notifications:", e);
     }
   };
+
+  // Register the service worker — required for reliable notifications on
+  // mobile (Chrome/Android + installed-PWA iOS use SW showNotification).
+  // Also relays notificationclick → SELECT_CONVERSATION into the app.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+    const onSwMessage = (e: MessageEvent) => {
+      if (e.data?.type === "SELECT_CONVERSATION" && e.data.conversationId) {
+        window.dispatchEvent(
+          new CustomEvent("SELECT_CONVERSATION", {
+            detail: { conversationId: e.data.conversationId },
+          })
+        );
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onSwMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onSwMessage);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;

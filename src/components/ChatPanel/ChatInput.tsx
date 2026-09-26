@@ -12,9 +12,12 @@ import {
   $isRangeSelection,
   $getRoot,
   $createParagraphNode,
+  $createRangeSelection,
+  $setSelection,
+  $getNodeByKey,
   type LexicalEditor,
 } from "lexical";
-import { LexicalChatEditor } from "./LexicalChatEditor";
+import { LexicalChatEditor, type SavedSelection } from "./LexicalChatEditor";
 import EmojiPickerPopper from "./input/EmojiPickerPopper";
 import AttachmentMenu from "./input/AttachmentMenu";
 import FormattingToolbar from "./input/FormattingToolbar";
@@ -48,9 +51,7 @@ interface ChatInputProps {
   excludeUserId?: string | number;
   onFetchMembers?: () => void;
   isGroup?: boolean;
-  /** Draft text restored from localStorage when switching conversations */
   inputValue?: string;
-  /** Called on every text change so the draft ref in useConversation stays in sync */
   onInputChange?: (val: string) => void;
   isOffline?: boolean;
 }
@@ -87,9 +88,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 }) => {
   const theme = useTheme();
   const isMobile = useIsMobile();
-  // textRef holds the current editor text without triggering re-renders.
-  // We only update React state when the "canSend" boolean or charCount bucket
-  // changes, so typing doesn't re-render the entire ChatInput component tree.
   const textRef = useRef("");
   const [canSend, setCanSend] = useState(false);
   const [charBucket, setCharBucket] = useState(0); // rounded to nearest 10
@@ -101,11 +99,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [pendingPasteText, setPendingPasteText] = useState("");
   const [pendingPasteFileName, setPendingPasteFileName] = useState("");
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
-  // Lightweight state for link preview — only updated when text changes, used
-  // by useLinkPreview to detect URLs. textRef doesn't trigger re-renders so
-  // we keep a separate state that updates on editor change.
   const [previewText, setPreviewText] = useState("");
   const editorRef = useRef<LexicalEditor | null>(null);
+  const lastSelectionRef = useRef<SavedSelection | null>(null);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const emojiButtonRef = useRef<HTMLButtonElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -152,10 +148,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   );
 
   // ── Draft restore: sync local text when inputValue changes externally ──────
-  // This fires when useConversation loads a draft from localStorage on
-  // conversation switch. We also re-sync on syncKey (conversationId) change
-  // to catch the case where inputValue hasn't updated yet but the conversation
-  // has changed — matches old code's ChatBox.js pattern.
   useEffect(() => {
     if (inputValue != null && inputValue !== textRef.current) {
       textRef.current = inputValue;
@@ -263,21 +255,55 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   );
 
   // ── Emoji insertion ──────────────────────────────────────────────────────────
-  // The emoji button uses onMouseDown preventDefault to keep the editor
-  // focused, so the cursor position is always current when the picker opens.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setShowEmoji((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const onEmojiClick = useCallback(
     (emojiData: { emoji: string }) => {
       const emoji = emojiData?.emoji || "";
-      if (editorRef.current) {
-        editorRef.current.update(() => {
-          const root = $getRoot();
-          if (!root.getLastChild()) root.append($createParagraphNode());
-          root.selectEnd();
-          const selection = $getSelection();
+      const editor = editorRef.current;
+      if (editor) {
+        const rootEl = editor.getRootElement();
+        const domSel = window.getSelection();
+        const editorHasDomSelection =
+          !!rootEl &&
+          !!domSel &&
+          domSel.rangeCount > 0 &&
+          rootEl.contains(domSel.anchorNode) &&
+          rootEl.contains(domSel.focusNode);
+        editor.update(() => {
+          let selection = editorHasDomSelection ? $getSelection() : null;
+          if (!$isRangeSelection(selection)) {
+            const saved = lastSelectionRef.current;
+            if (saved && $getNodeByKey(saved.anchor.key) && $getNodeByKey(saved.focus.key)) {
+              try {
+                const sel = $createRangeSelection();
+                sel.anchor.set(saved.anchor.key, saved.anchor.offset, saved.anchor.type);
+                sel.focus.set(saved.focus.key, saved.focus.offset, saved.focus.type);
+                $setSelection(sel);
+                selection = sel;
+              } catch {
+                selection = null;
+              }
+            }
+          }
+          if (!$isRangeSelection(selection)) {
+            const root = $getRoot();
+            if (!root.getLastChild()) root.append($createParagraphNode());
+            root.selectEnd();
+            selection = $getSelection();
+          }
           if ($isRangeSelection(selection)) selection.insertText(emoji);
         });
-        editorRef.current.focus();
+        editor.focus();
       } else {
         textRef.current = textRef.current + emoji;
       }
@@ -658,6 +684,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 // insertion happens at the right spot.
                 e.preventDefault();
               }}
+              onTouchStart={(e) => {
+                // Same for touch — onMouseDown doesn't prevent the blur on
+                // mobile, and losing focus drops the editor selection.
+                e.preventDefault();
+              }}
               onClick={() => setShowEmoji((v) => !v)}
               disabled={disabled}
             >
@@ -711,6 +742,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={isOffline ? "Offline — type and send, we'll deliver when you reconnect" : (mediaFiles.length > 0 ? "Type a caption..." : placeholder)}
             editorRef={editorRef}
+            selectionRef={lastSelectionRef}
             syncKey={syncKey}
             maxChars={MAX_CHARS}
             onPasteTextOverflow={handlePasteOverflow}
