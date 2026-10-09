@@ -43,11 +43,33 @@ const highlightQueryInText = (text: string, query?: string): React.ReactNode => 
   }
 };
 
+// Word-boundary guards — markers only count as formatting at token edges,
+// so `cust_id`, `report_api_url` or `a*b*c` inside URLs/tokens stay literal
+// instead of being italicized (WhatsApp behavior).
+const WB_LEFT = String.raw`(?<=^|[\s([{<'"‘“])`;
+const WB_RIGHT = String.raw`(?=$|[\s)\]}>'"’”.,!?;:])`;
+const chatTextMarkerRegex = new RegExp(
+  "(" +
+    String.raw`(\x60\x60\x60[\s\S]*?\x60\x60\x60|\x60[^\x60]+\x60)` +
+    "|" + WB_LEFT + String.raw`\*\*\*\S(?:.*?\S)?\*\*\*` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`\*\*\S(?:.*?\S)?\*\*` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`\*_\S(?:.*?\S)?_\*` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`___\S(?:.*?\S)?___` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`__\S(?:.*?\S)?__` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`_\*\S(?:.*?\S)?\*_` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`\*\S(?:.*?\S)?\*` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`_\S(?:.*?\S)?_` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`~~\S(?:.*?\S)?~~` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`~\S(?:.*?\S)?~` + WB_RIGHT +
+    "|" + String.raw`\[[^\]]+\]\([^)]+\)` +
+  ")",
+  "g"
+);
+
 const formatChatText = (text: string, highlightQuery?: string): React.ReactNode => {
   if (!text || typeof text !== "string") return text;
 
-  const regex = /(```[\s\S]*?```|`[^`]+`|\*\*\*\S(?:.*?\S)?\*\*\*|\*\*\S(?:.*?\S)?\*\*|\*_\S(?:.*?\S)?_\*|___\S(?:.*?\S)?___|__\S(?:.*?\S)?__|_\*\S(?:.*?\S)?\*_|\*\S(?:.*?\S)?\*|_\S(?:.*?\S)?_|~~\S(?:.*?\S)?~~|~\S(?:.*?\S)?~|\[[^\]]+\]\([^)]+\))/g;
-  const parts = text.split(regex);
+  const parts = text.split(chatTextMarkerRegex);
 
   return parts.map((part, index) => {
     if (!part) return null;
@@ -168,8 +190,7 @@ const escapeHtml = (s: string): string =>
 const formatChatTextToHtml = (text: string): string => {
   if (!text || typeof text !== "string") return "";
 
-  const regex = /(```[\s\S]*?```|`[^`]+`|\*\*\*\S(?:.*?\S)?\*\*\*|\*\*\S(?:.*?\S)?\*\*|\*_\S(?:.*?\S)?_\*|___\S(?:.*?\S)?___|__\S(?:.*?\S)?__|_\*\S(?:.*?\S)?\*_|\*\S(?:.*?\S)?\*|_\S(?:.*?\S)?_|~~\S(?:.*?\S)?~~|~\S(?:.*?\S)?~)/g;
-  const parts = text.split(regex);
+  const parts = text.split(chatTextMarkerRegex);
 
   return parts
     .map((part) => {
@@ -434,10 +455,15 @@ const highlightMentions = (text: string, mentions: MentionInfo[], highlightQuery
 export const renderMessageText = (
   rawText: string | null | undefined,
   mentionUsers?: string | null,
-  highlightQuery?: string
+  highlightQuery?: string,
+  options?: { linkify?: boolean }
 ): React.ReactNode => {
   const text = rawText == null ? "" : String(rawText);
   if (!text) return "";
+
+  // linkify=false renders URLs as plain text — used by the conversation list
+  // preview where a link must not be clickable (the row opens the chat).
+  const linkify = options?.linkify !== false;
 
   const mentions = parseMentionUsers(mentionUsers ?? undefined);
   const urlRegex = /(?:https?:\/\/|www\.)[^\s]+/gi;
@@ -484,8 +510,8 @@ export const renderMessageText = (
       const trailing = trimmed?.[2] ?? "";
       const safeHref = safeUrl(urlPart);
 
-      if (!safeHref) {
-        // Dangerous scheme — render as plain text
+      if (!linkify || !safeHref) {
+        // Plain text — dangerous scheme, or linkify disabled (list preview)
         nodes.push(
           <React.Fragment key={`u-${lineIndex}-${matchIndex}`}>
             {urlPart}

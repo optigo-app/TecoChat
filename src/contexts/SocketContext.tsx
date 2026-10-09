@@ -48,6 +48,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Refs to avoid reconnecting on every auth change
   const authRef = useRef(auth);
   const routerRef = useRef(router);
+  // Grace period before showing the service-down UI. Socket.io drops are
+  // transient (ping timeouts, network switches) and auto-reconnect in
+  // seconds — only surface SERVICE_DOWN if we're still down after 10s.
+  const serviceDownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     authRef.current = auth;
@@ -102,9 +106,28 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const socket = initializeSocket(token);
         if (!socket) return;
 
+        // Defer service-down UI by a grace period — socket drops are usually
+        // transient and socket.io is already auto-reconnecting.
+        const SERVICE_DOWN_GRACE_MS = 10000;
+        const scheduleServiceDown = (message: string) => {
+          if (serviceDownTimerRef.current) return;
+          serviceDownTimerRef.current = setTimeout(() => {
+            serviceDownTimerRef.current = null;
+            if (!isMounted || isSocketConnected() || navigator.onLine === false) return;
+            window.dispatchEvent(new CustomEvent("SERVICE_DOWN", { detail: { message } }));
+          }, SERVICE_DOWN_GRACE_MS);
+        };
+        const cancelServiceDown = () => {
+          if (serviceDownTimerRef.current) {
+            clearTimeout(serviceDownTimerRef.current);
+            serviceDownTimerRef.current = null;
+          }
+        };
+
         const onConnect = () => {
           if (!isMounted) return;
           console.log("✅ Socket connected:", socket.id);
+          cancelServiceDown();
           setSocketId(socket.id ?? null);
           setStatus("connected");
           window.dispatchEvent(new CustomEvent("SERVICE_UP"));
@@ -122,16 +145,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const onDisconnect = (reason: string) => {
           if (!isMounted) return;
           console.warn("⚠️ Socket disconnected:", reason);
-          setStatus("disconnected");
+          // Network still up → socket.io is auto-reconnecting; report
+          // "connecting" (not "disconnected") so the UI shows a subtle
+          // reconnecting state instead of the offline banner.
+          setStatus(navigator.onLine === false ? "disconnected" : "connecting");
           setSocketId(null);
           // If server is unreachable (transport close / io server disconnect),
-          // show service-down UI
+          // surface service-down UI only if still down after the grace period.
           if (reason === "io server disconnect" || reason === "transport close") {
-            window.dispatchEvent(
-              new CustomEvent("SERVICE_DOWN", {
-                detail: { message: "Connection lost. The server may be temporarily unavailable." },
-              })
-            );
+            scheduleServiceDown("Connection lost. The server may be temporarily unavailable.");
           }
         };
 
@@ -148,14 +170,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const isServerDown = err.message.includes("xhr poll error") || err.message.includes("transport close");
 
           if (is502 || isServerDown) {
-            window.dispatchEvent(
-              new CustomEvent("SERVICE_DOWN", {
-                detail: {
-                  message: is502
-                    ? "Server is temporarily unavailable (502 Bad Gateway). Please try again shortly."
-                    : "Cannot connect to the server. Please check your connection.",
-                },
-              })
+            scheduleServiceDown(
+              is502
+                ? "Server is temporarily unavailable (502 Bad Gateway). Please try again shortly."
+                : "Cannot connect to the server. Please check your connection."
             );
           }
         };
@@ -167,6 +185,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // When socket reconnects, dismiss service-down UI
         socket.io.on("reconnect", () => {
           if (!isMounted) return;
+          cancelServiceDown();
           window.dispatchEvent(new CustomEvent("SERVICE_UP"));
         });
 
@@ -212,6 +231,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         cleanup = () => {
           clearInterval(interval);
+          cancelServiceDown();
           window.removeEventListener("online", reconnectWhenOnline);
           window.removeEventListener("offline", handleOffline);
           window.removeEventListener("focus", reconnectWhenOnline);

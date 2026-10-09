@@ -109,6 +109,10 @@ const ProfileSection = ({
       setViewPhotoDialog({ open: true, imageUrl });
     }
   };
+  // No double-tap gesture on mobile — WhatsApp opens the photo on a single tap.
+  const isCoarse =
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse)").matches;
 
   if (loading) {
     return (
@@ -151,6 +155,7 @@ const ProfileSection = ({
         <div
           className={`avatar-container ${customer?.IsGroup === 1 ? "group-avatar-container" : ""}`}
           onDoubleClick={handleAvatarDoubleClick}
+          onClick={isCoarse ? handleAvatarDoubleClick : undefined}
           style={{
             cursor:
               customer?.ProfileImageUrl && !isImageDead(customer?.ProfileImageUrl)

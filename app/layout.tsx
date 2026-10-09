@@ -12,8 +12,6 @@ import { RemoveInGroupProvider } from "@/src/contexts/RemoveInGroupContext";
 import { GroupAdminModeProvider } from "@/src/contexts/GroupAdminModeContext";
 import { GroupSocketProvider } from "@/src/contexts/GroupSocketContext";
 import { NotificationProvider } from "@/src/contexts/NotificationContext";
-import { TagsProvider } from "@/src/contexts/TagsContexts";
-import { ArchieveProvider } from "@/src/contexts/ArchieveContext";
 import PreHydrationLoaderMount from "@/src/components/PreHydrationLoader/PreHydrationLoaderMount";
 import { preHydrationLoaderHTML } from "@/src/components/PreHydrationLoader/PreHydrationLoader";
 import { DbProvider } from "@/src/db/dbContext";
@@ -42,6 +40,23 @@ export const metadata: Metadata = {
 // Next.js 16 viewport config (separate export).
 // viewport-fit=cover enables safe-area-inset on notched devices.
 // Zoom is allowed for accessibility (WCAG 1.4.4).
+// Optimistic auth gate that runs before the JS bundle finishes — mirrors
+// AuthGuard (sessionStorage userData) + LoginData (userData cookie fallback)
+// so logged-out users on "/" skip the whole app download+hydrate+redirect
+// cycle, and logged-in users on "/login" skip to the app.
+const authRedirectScript = `(function(){try{
+var p=location.pathname;
+function hasAuth(){
+  var raw=sessionStorage.getItem("userData");
+  if(!raw){var cs=document.cookie.split(";");for(var i=0;i<cs.length;i++){var s=cs[i].trim();if(s.indexOf("userData=")===0){raw=s.substring(9);break}}}
+  if(!raw)return false;
+  try{var u=JSON.parse(raw);return !!(u&&u.userId&&(u.token||u.ukey))}catch(e){return false}
+}
+var ok=hasAuth();
+if(p==="/"&&!ok){location.replace("/login")}
+else if(p==="/login"&&ok){location.replace("/")}
+}catch(e){}})();`;
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -69,6 +84,11 @@ export default function RootLayout({
           id="theme-no-flash"
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeNoFlashScript }}
+        />
+        <Script
+          id="auth-redirect"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: authRedirectScript }}
         />
         {/* Preconnect to essential external origins */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -108,12 +128,8 @@ export default function RootLayout({
                     <GroupAdminModeProvider>
                       <GroupSocketProvider>
                         <NotificationProvider>
-                          <TagsProvider>
-                            <ArchieveProvider>
-                              {children}
-                              <Toaster {...toastConfig} />
-                            </ArchieveProvider>
-                          </TagsProvider>
+                          {children}
+                          <Toaster {...toastConfig} />
                         </NotificationProvider>
                       </GroupSocketProvider>
                     </GroupAdminModeProvider>

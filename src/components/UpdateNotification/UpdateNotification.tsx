@@ -2,7 +2,7 @@
 
 import { memo, useState, useEffect } from "react";
 import { Box, Button, IconButton, Slide, Tooltip, Typography, useTheme } from "@mui/material";
-import { RefreshCw, X, Sparkles } from "lucide-react";
+import { X, Sparkles, Download } from "lucide-react";
 
 interface UpdateNotificationProps {
   updateAvailable: boolean;
@@ -100,7 +100,7 @@ function UpdateNotification({
                   color: isDark ? "#e0e0e8" : "#444050",
                 }}
               >
-                A new version is available
+                Update available
               </Typography>
             </Box>
             <Tooltip title="Dismiss">
@@ -140,7 +140,7 @@ function UpdateNotification({
               mb: 2,
             }}
           >
-            Refresh to get the latest features and fixes.
+            A newer version of TecoChat is ready to install.
           </Typography>
 
           <Button
@@ -148,7 +148,7 @@ function UpdateNotification({
             size="medium"
             fullWidth
             onClick={onRefresh}
-            startIcon={<RefreshCw size={18} />}
+            startIcon={<Download size={18} />}
             sx={{
               bgcolor: "#7367f0",
               textTransform: "none",
@@ -159,7 +159,7 @@ function UpdateNotification({
               "&:hover": { bgcolor: "#685dd8" },
             }}
           >
-            Refresh
+            Update Now
           </Button>
         </Box>
       </Box>

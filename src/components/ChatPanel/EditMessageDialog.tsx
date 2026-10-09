@@ -219,6 +219,14 @@ const EditMessageDialog = ({
     setShowFormattingToolbar(false);
   }, []);
 
+  // Mobile selection (long-press + drag handles) fires neither mouseup nor
+  // keyup — selectionchange is the reliable signal on all touch devices.
+  useEffect(() => {
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () =>
+      document.removeEventListener("selectionchange", handleSelectionChange);
+  }, [handleSelectionChange]);
+
   const handleEmojiClick = useCallback((emojiData: any) => {
     const emoji = emojiData?.emoji || "";
     if (editEditorRef.current) {
@@ -347,6 +355,7 @@ const EditMessageDialog = ({
             ref={editorWrapperRef}
             onMouseUp={handleSelectionChange}
             onKeyUp={handleSelectionChange}
+            onTouchEnd={handleSelectionChange}
             sx={{
               position: "relative",
               border: "1px solid",

@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { Popover, useTheme, alpha } from "@mui/material";
 import { MentionListContent, type MentionMember } from "./input/MentionDropdown";
+import { markOpenAtLatest } from "../../utils/openAtLatest";
 
 interface AllMentionsPopoverProps {
   anchorEl: HTMLElement | null;
@@ -48,7 +49,9 @@ const AllMentionsPopoverComponent = ({
         members={groupMembers as MentionMember[]}
         onSelect={(member) => {
           if (member.ConversationId) {
-            // Open the member's existing chat
+            // Open the member's existing chat — land on latest, not the
+            // first-unread anchor.
+            markOpenAtLatest(member.ConversationId);
             window.dispatchEvent(
               new CustomEvent("SELECT_CONVERSATION", {
                 detail: { conversationId: member.ConversationId },

@@ -1,5 +1,6 @@
 import { passwordToSha1 } from "../../utils/globalFunc";
 import { CommonAPI, buildLoginBody } from "../InitialApi/CommonApi";
+import { getDeviceDetails } from "../../utils/getDeviceDetails";
 
 interface LoginCredentials {
   companycode?: string;
@@ -21,6 +22,8 @@ export const fetchLoginApi = async (data: LoginCredentials): Promise<any> => {
       Ufcc: (data?.companycode ?? "").trim(),
       UserEmail: (data?.userId ?? "").trim(),
       PWD: hashedPassword,
+      // Device fingerprint — same flat fields the mobile clients send.
+      // ...getDeviceDetails(),
     };
 
     const body = buildLoginBody(

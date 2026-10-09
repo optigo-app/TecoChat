@@ -91,14 +91,6 @@ export interface SearchCacheEntry {
   cachedAt: number;
 }
 
-export interface MediaCacheEntry {
-  key: string;
-  blob: Blob;
-  mimeType: string;
-  size: number;
-  cachedAt: number;
-}
-
 export class TecoChatDatabase extends Dexie {
   messages!: Table<CachedMessage, string>;
   conversations!: Table<CachedConversation, string>;
@@ -107,7 +99,6 @@ export class TecoChatDatabase extends Dexie {
   syncState!: Table<SyncState, string>;
   outbox!: Table<OutboxMessage, string>;
   searchCache!: Table<SearchCacheEntry, string>;
-  mediaCache!: Table<MediaCacheEntry, string>;
 
   constructor(authId: string) {
     super(`tecochat_${authId}`);
@@ -125,7 +116,10 @@ export class TecoChatDatabase extends Dexie {
     });
     this.version(3).stores({
       searchCache: "&key, conversationId, query, cachedAt",
-      mediaCache: "&key, cachedAt, size",
+    });
+    // mediaCache store dropped — it was never wired into any flow.
+    this.version(4).stores({
+      mediaCache: null,
     });
   }
 }

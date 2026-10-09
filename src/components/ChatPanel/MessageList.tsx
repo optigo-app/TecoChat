@@ -538,7 +538,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
     useEffect(() => {
       const outer = outerRef.current;
       if (!outer) return;
-      const inner = outer.firstElementChild as HTMLElement | null;
+      const inner = outer.querySelector<HTMLElement>("[data-ml-inner]");
       if (!inner) return;
 
       const resizeObserver = new ResizeObserver(() => {
@@ -995,9 +995,9 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
           <Box
             sx={{
               position: "absolute",
-              top: "50%",
+              top: 60,
               left: "50%",
-              transform: "translate(-50%, -50%)",
+              transform: "translateX(-50%)",
               display: "flex",
               justifyContent: "center",
               px: 2,
@@ -1063,11 +1063,18 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
             onClick={handleListClick}
             onAuxClick={handleListClick}
           >
-            {hasMoreBefore && (
-              <div ref={topSentinelRef} style={{ height: 1 }} />
-            )}
+            {/* Inner body wrapper — ResizeObservers (bottom-pin + jump-to
+                settle) must watch the element that actually grows/shrinks.
+                Rows used to be direct children of the scroller, so
+                `outer.firstElementChild` resolved to the 1px sentinel and
+                the observers never fired — heights drifted after the
+                initial scroll and the chat landed mid-list. */}
+            <div data-ml-inner>
+              {hasMoreBefore && (
+                <div ref={topSentinelRef} style={{ height: 1 }} />
+              )}
 
-            {loadingOlder && (
+              {loadingOlder && (
               <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, py: 0.75 }}>
                 <CircularProgress size={16} thickness={5} />
                 <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 500 }}>
@@ -1153,7 +1160,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>(
                 </Typography>
               </Box>
             )}
-
+            </div>
           </Box>
         </Box>
 

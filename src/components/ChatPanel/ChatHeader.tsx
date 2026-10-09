@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Typography, IconButton, Tooltip, Box } from "@mui/material";
-import { RefreshCw, Search, EllipsisVertical, Star, ArrowLeft, Calendar, WifiOff } from "lucide-react";
+import { RefreshCw, Search, EllipsisVertical, Star, ArrowLeft, Calendar, WifiOff, WifiLow } from "lucide-react";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
 import { getCustomerDisplayName } from "../../utils/globalFunc";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -22,6 +22,7 @@ interface ChatHeaderProps {
   onSearchByDate?: (date: string) => void;
   onOpenDatePicker?: () => void;
   isOffline?: boolean;
+  isReconnecting?: boolean;
   datePickerButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
@@ -39,6 +40,7 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
   onSearchByDate,
   onOpenDatePicker,
   isOffline = false,
+  isReconnecting = false,
   datePickerButtonRef,
 }) => {
   const isMobile = useIsMobile();
@@ -106,6 +108,25 @@ const ChatHeaderComponent: React.FC<ChatHeaderProps> = ({
               }}
             >
               <WifiOff size={isMobile ? 18 : 16} />
+            </Box>
+          </Tooltip>
+        )}
+        {!isOffline && isReconnecting && (
+          <Tooltip title="Reconnecting to chat server… Messages still send normally." arrow>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: isMobile ? 32 : 28,
+                height: isMobile ? 32 : 28,
+                borderRadius: "50%",
+                backgroundColor: "rgba(255, 167, 38, 0.14)",
+                color: "#f9a825",
+                flexShrink: 0,
+              }}
+            >
+              <WifiLow size={isMobile ? 18 : 16} className="spin" />
             </Box>
           </Tooltip>
         )}

@@ -322,14 +322,21 @@
                     margin-bottom: 4px;
                 }
 
-                &:hover {
-                    background-color: $hover-bg;
+                // Only apply hover on real pointing devices. On iOS the
+                // first tap on an element whose :hover changes interactivity
+                // (the more-btn reveal) is consumed as "hover" and the click
+                // is swallowed — users had to tap twice. On touch devices the
+                // tap fires click immediately.
+                @media (hover: hover) and (pointer: fine) {
+                    &:hover {
+                        background-color: $hover-bg;
 
-                    // Show more button on hover
-                    .more-btn-wrapper {
-                        opacity: 1 !important;
-                        transform: translateY(0) scale(1) !important;
-                        pointer-events: auto !important;
+                        // Show more button on hover
+                        .more-btn-wrapper {
+                            opacity: 1 !important;
+                            transform: translateY(0) scale(1) !important;
+                            pointer-events: auto !important;
+                        }
                     }
                 }
 
@@ -633,6 +640,13 @@
                             .unread-badge {
                                 flex-shrink: 0;
                                 margin-right: 4px;
+
+                                // Standalone badge (no anchor child) — render in
+                                // flow so "99+" never overlays the trailing icons.
+                                .MuiBadge-badge {
+                                    position: static;
+                                    transform: none;
+                                }
                             }
                         }
                     }
@@ -798,4 +812,89 @@
     &:active {
         transform: scale(0.94);
     }
+}
+
+// ── Long-press avatar preview (WhatsApp-style, mobile) ───────────────────────
+// Portaled to <body>: a card pops over the list at the avatar position —
+// square photo, name on a bottom gradient, action row. Backdrop tap closes.
+.avatar-preview-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+    background: rgba(0, 0, 0, 0.4);
+    animation: avatarPreviewFade 0.15s ease;
+}
+
+.avatar-preview-card {
+    position: fixed;
+    z-index: 1401;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--color-surface-elevated, #fff);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    transform-origin: top left;
+    animation: avatarPreviewPop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    display: flex;
+    flex-direction: column;
+    -webkit-tap-highlight-color: transparent;
+
+    .avatar-preview-photo {
+        position: relative;
+        width: 100%;
+        background: $hover-bg-strong;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+
+        img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+    }
+
+    .avatar-preview-name {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 28px 12px 10px;
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+        color: #fff;
+        font-weight: 500;
+        font-size: 15px;
+        line-height: 1.3;
+        pointer-events: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .avatar-preview-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 2;
+        min-width: 36px;
+        min-height: 36px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(4px);
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.65);
+        }
+    }
+}
+
+@keyframes avatarPreviewFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes avatarPreviewPop {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: scale(1); }
 }

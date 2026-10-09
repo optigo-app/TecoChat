@@ -29,6 +29,7 @@ import {
 } from "../../API/ConversationMute/MuteConversationApi";
 import MuteNotificationDialog from "../ChatPanel/MuteNotificationDialog";
 import { isConversationMuted } from "../../utils/mentionUtils";
+import { markOpenAtLatest } from "../../utils/openAtLatest";
 import { showToast } from "../../utils/toastHelper";
 import DetailsHeader from "./DetailsHeader";
 import DetailsViews from "./DetailsViews";
@@ -425,8 +426,10 @@ const CustomerDetails = ({
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
-  // Reset media when customer changes
+  // Reset media when customer changes — also close the viewer, it belongs
+  // to the previous conversation.
   useEffect(() => {
+    setMediaOpen(false);
     if (conversationId) {
       setMediaItems({ images: [], videos: [], documents: [] });
       setPagination({
@@ -897,6 +900,7 @@ const CustomerDetails = ({
       const member = confirmationModal.member;
       if (member) {
         if (member.ConversationId) {
+          markOpenAtLatest(member.ConversationId);
           window.dispatchEvent(
             new CustomEvent("SELECT_CONVERSATION", {
               detail: { conversationId: member.ConversationId },
@@ -1263,6 +1267,7 @@ const CustomerDetails = ({
     if (!customer) return;
     const convId = (customer as any)?.ConversationId;
     if (convId) {
+      markOpenAtLatest(convId);
       window.dispatchEvent(
         new CustomEvent("SELECT_CONVERSATION", {
           detail: { conversationId: convId },

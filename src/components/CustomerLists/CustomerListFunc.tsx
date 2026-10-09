@@ -106,8 +106,13 @@ export const processApiResponse = (apiData: RawConversation[] | null | undefined
     // messages — not needed on the conversation object itself).
     const { message: _preloadedMessages, ...convWithoutMessages } = conversation;
     const rawLastMessage = convWithoutMessages.LastMessage;
-
-    const lastMessage = rawLastMessage
+    const lastMsgType = Number(convWithoutMessages.LastMessageType ?? 0);
+    // Media/system last messages can have empty Message text (no caption) —
+    // build the preview for any real message type, not only when text is
+    // non-empty, so image/video/doc rows show an icon + label instead of
+    // falling back to "Tap to chat".
+    const lastMessage =
+      rawLastMessage || (lastMsgType >= 2 && lastMsgType <= 5)
       ? {
           MessageType: mapTypeCodeToMessageType(convWithoutMessages.LastMessageType),
           Message: rawLastMessage,

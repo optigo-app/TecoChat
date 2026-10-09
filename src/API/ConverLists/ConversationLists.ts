@@ -98,13 +98,17 @@ export const preLoadConversations = async (
   page = 1,
   pageSize = 50,
   auth: AuthLike | AuthData | null,
-  signal?: AbortSignal | null
+  signal?: AbortSignal | null,
+  messageCount = 100
 ): Promise<PreLoadResult> => {
   try {
     const payload = {
       Page: page ?? 1,
       PageSize: pageSize ?? 50,
       UserId: (auth as AuthLike)?.id ?? "",
+      // Request N recent messages embedded per conversation (WhatsApp-style
+      // warmup). Ignored by backends that don't support it.
+      MessageCount: messageCount,
     };
 
     const body = buildCommonBody(

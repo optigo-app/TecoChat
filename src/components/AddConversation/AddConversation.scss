@@ -270,6 +270,13 @@
                             .unread-badge {
                                 flex-shrink: 0;
                                 transition: all 0.2s ease-in-out;
+
+                                // Standalone badge (no anchor child) — render in
+                                // flow so "99+" never overlays the trailing icons.
+                                .MuiBadge-badge {
+                                    position: static;
+                                    transform: none;
+                                }
                             }
                         }
                     }

@@ -143,6 +143,7 @@ export const buildMediaPayload = ({
   dateTime,
   isGroup,
   memberIds,
+  reply,
 }: {
   auth: { id?: string; userId?: string; ufcc?: string; SocketId?: string; username?: string; firstName?: string; FirstName?: string; firstname?: string; lastName?: string; LastName?: string; lastname?: string; email?: string; ProfileImageUrl?: string; profileImage?: string; profilePicture?: string; ProfileImage?: string; AvatarUrl?: string } | null;
   selectedCustomer: {
@@ -165,6 +166,12 @@ export const buildMediaPayload = ({
   dateTime: string;
   isGroup: boolean;
   memberIds: number[];
+  reply?: {
+    contextId?: string | number | null;
+    contextMsg?: string;
+    sender?: string;
+    attachmentId?: string | number | null;
+  } | null;
 }): Record<string, unknown> => {
   return {
     ufcc: auth?.ufcc,
@@ -219,5 +226,16 @@ export const buildMediaPayload = ({
     ...(isGroup && {
       IsGroup: 1,
     }),
+    // Reply context — receivers render the quoted preview from these fields
+    ...(reply?.contextId
+      ? {
+          ContextType: 2,
+          ContextId: reply.contextId,
+          ReplyContextMsg: reply.contextMsg || "Media",
+          SenderInfo: reply.sender,
+          Sender: reply.sender,
+          ReplyToAttachmentId: reply.attachmentId || null,
+        }
+      : {}),
   };
 };

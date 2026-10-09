@@ -299,12 +299,6 @@ export const emitGroupUpdated = (payload: Record<string, unknown>): boolean => {
   return true;
 };
 
-export const emitGroupDeleted = (payload: Record<string, unknown>): boolean => {
-  if (!socketInstance) return false;
-  socketInstance.emit("internal:group_deleted", { ...payload, receiveEvent: "internal:group_deleted" });
-  return true;
-};
-
 export const emitMemberAdded = (payload: Record<string, unknown>): boolean => {
   if (!socketInstance) return false;
   socketInstance.emit("internal:member_added", { ...payload, receiveEvent: "internal:member_added" });

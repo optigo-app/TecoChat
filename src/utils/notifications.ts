@@ -5,6 +5,7 @@
 
 import { showToast } from "./toastHelper";
 import { playNotificationSound } from "./sound";
+import { markOpenAtLatest } from "./openAtLatest";
 
 const NOTIFICATION_ICON = "/icons/brand/tecoChat_logo.png";
 
@@ -140,6 +141,7 @@ export const showBrowserNotification = async ({
           const conversationId =
             (data as any)?.conversationId || (data as any)?.ConversationId;
           if (conversationId) {
+            markOpenAtLatest(conversationId);
             window.dispatchEvent(
               new CustomEvent("SELECT_CONVERSATION", {
                 detail: { conversationId },

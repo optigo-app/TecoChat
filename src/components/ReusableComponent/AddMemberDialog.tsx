@@ -28,6 +28,7 @@ import { Search, X as Clear, Check } from "lucide-react";
 import { fetchCustomerLists } from "../../API/CustomerLists/CustomerLists";
 import { PastParticipantListApi } from "../../API/Groups/PastParticipantListApi";
 import { useLoginContext } from "../../contexts/LoginData";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import {
   getCustomerDisplayName,
   getWhatsAppAvatarConfig,
@@ -95,6 +96,7 @@ const AddMemberDialog = ({
   conversationId,
 }: AddMemberDialogProps) => {
   const { auth } = useLoginContext();
+  const isMobile = useIsMobile();
   const [searchTerm, setSearchTerm] = useState("");
   const [availableCustomers, setAvailableCustomers] = useState<any[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<(string | number)[]>([]);
@@ -295,15 +297,32 @@ const AddMemberDialog = ({
       onClose={onClose}
       fullWidth
       maxWidth="xs"
+      fullScreen={isMobile}
       className="add-member-dialog"
       slotProps={{
         paper: {
-          sx: { borderRadius: "16px", height: "80vh" },
+          sx: {
+            borderRadius: isMobile ? 0 : "16px",
+            height: isMobile ? "100dvh" : "80vh",
+          },
         },
       }}
     >
-      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 2, pb: 1, fontWeight: 600 }}>
-        <IconButton onClick={onClose} size="small">
+      <DialogTitle
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          pb: 1,
+          fontWeight: 600,
+          paddingTop: isMobile ? "calc(12px + var(--safe-top))" : undefined,
+        }}
+      >
+        <IconButton
+          onClick={onClose}
+          size="small"
+          sx={isMobile ? { minWidth: 40, minHeight: 40 } : undefined}
+        >
           <Clear size={20} />
         </IconButton>
         {mode === "search"
@@ -314,7 +333,14 @@ const AddMemberDialog = ({
           ? "Past participants"
           : "Add member"}
       </DialogTitle>
-      <DialogContent sx={{ p: "0 24px" }}>
+      <DialogContent
+        sx={{
+          p: isMobile ? "0 16px" : "0 24px",
+          pb: isMobile ? "calc(8px + var(--safe-bottom))" : undefined,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <Box sx={{ mt: 1, mb: 2 }}>
           <TextField
             fullWidth
@@ -336,6 +362,8 @@ const AddMemberDialog = ({
                   backgroundColor: "var(--color-hover-bg)",
                   border: "none",
                   "& fieldset": { border: "none" },
+                  // >=16px on mobile — smaller text triggers iOS focus zoom
+                  fontSize: isMobile ? "1rem" : undefined,
                 },
               },
             }}
@@ -440,7 +468,13 @@ const AddMemberDialog = ({
           </List>
         )}
       </DialogContent>
-      <DialogActions sx={{ p: 2, justifyContent: "center" }}>
+      <DialogActions
+        sx={{
+          p: 2,
+          pb: isMobile ? "calc(16px + var(--safe-bottom))" : undefined,
+          justifyContent: "center",
+        }}
+      >
         {mode !== "search" &&
           mode !== "viewPastParticipants" &&
           (mode === "editAdmins" ||

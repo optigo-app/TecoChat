@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Typography, IconButton, Avatar, Skeleton, Divider, alpha, useTheme, ToggleButton, ToggleButtonGroup, Tooltip } from "@mui/material";
-import { ArrowLeft, Bell, Volume2, Eye, ChevronRight, Sun, Moon, Monitor, LogOut, Hash, Phone } from "lucide-react";
+import { ArrowLeft, Bell, Volume2, Eye, ChevronRight, Sun, Moon, Monitor, LogOut, Hash, Phone, RefreshCw } from "lucide-react";
 import { useLoginContext } from "../../contexts/LoginData";
 import { useColorMode } from "../../theme/ThemeRegistry";
 import type { ColorMode } from "../../theme/themes";
@@ -14,6 +14,7 @@ import { eraseCookie } from "../../utils/cookieUtils";
 import { disconnectSocket } from "../../socket";
 import { deleteDb } from "../../db/tecoDb";
 import { getAppVersion } from "../../utils/versionManager";
+import { resyncApp } from "../../utils/resyncApp";
 import IOSSwitch from "../ReusableComponent/IOSSwitch";
 import ConfirmationDialog from "../ReusableComponent/ConfirmationDialog";
 import { CONFIRM_CONFIG } from "../../hooks/confirmConfig";
@@ -325,7 +326,7 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-start",
-            width: "98%",
+            alignSelf: "stretch",
             px: 2,
             py: 1.5,
             mx: 1.5,
@@ -365,12 +366,59 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
           <ChevronRight size={20} color={theme.palette.text.secondary} />
         </Box>
 
+        {/* Data Sync — full resync without logout: clears IndexedDB + caches,
+            keeps the session, hard reloads so all data re-fetches fresh. */}
+        <Box
+          onClick={() => resyncApp(auth?.id).catch(() => window.location.reload())}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            alignSelf: "stretch",
+            px: 2,
+            py: 1.5,
+            mx: 1.5,
+            my: 1,
+            borderRadius: 2,
+            cursor: "pointer",
+            transition: "background 0.15s ease",
+            "&:hover": {
+              bgcolor: alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.06 : 0.03),
+            },
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              bgcolor: alpha(theme.palette.primary.main, 0.1),
+              color: theme.palette.primary.main,
+              mr: 1.5,
+              flexShrink: 0,
+            }}
+          >
+            <RefreshCw size={20} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 500, fontSize: "0.9rem", color: theme.palette.text.primary }}>
+              Data Sync
+            </Typography>
+            <Typography sx={{ fontSize: "0.75rem", color: theme.palette.text.secondary }}>
+              Refresh chats, messages and media
+            </Typography>
+          </Box>
+        </Box>
+
         {/* ── Theme toggle (Light / Dark / System) ─────────────────────────── */}
         <Box
           sx={{
             display: "flex",
             alignItems: "center",
-            width: "98%",
+            alignSelf: "stretch",
             px: 2,
             py: 1.5,
             mx: 1.5,
@@ -459,7 +507,7 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
           sx={{
             display: "flex",
             alignItems: "center",
-            width: "98%",
+            alignSelf: "stretch",
             px: 2,
             py: 1.5,
             mx: 1.5,
@@ -499,9 +547,9 @@ const ProfilePanel = ({ onBack }: ProfilePanelProps) => {
           </Box>
         </Box>
 
-        {/* ── App version (WhatsApp-style footer) ────────────────────────── */}
+        {/* ── App version (WhatsApp-style footer, pinned to bottom) ────────── */}
         {getAppVersion() !== "0.0.0" && (
-          <Box sx={{ textAlign: "center", py: 2, pb: "calc(var(--safe-bottom, 0px) + 16px)" }}>
+          <Box sx={{ textAlign: "center", py: 2, pb: "calc(var(--safe-bottom, 0px) + 16px)", mt: "auto" }}>
             <Typography sx={{ fontSize: "0.72rem", color: theme.palette.text.secondary }}>
               TeCoChat v{getAppVersion()}
             </Typography>

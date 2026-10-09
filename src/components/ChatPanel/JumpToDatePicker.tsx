@@ -1,8 +1,8 @@
 "use client";
 
 import { memo, useCallback } from "react";
-import { Popover, useTheme, alpha } from "@mui/material";
-import { MobileDatePicker, DateCalendar } from "@mui/x-date-pickers";
+import { Dialog, Popover, useTheme, alpha } from "@mui/material";
+import { DateCalendar } from "@mui/x-date-pickers";
 
 interface JumpToDatePickerProps {
   open: boolean;
@@ -31,36 +31,67 @@ const JumpToDatePickerComponent = ({
     [onAccept, onClose]
   );
 
+  // Shared calendar chrome — dark/light aware via theme + CSS vars.
+  const calendarSx = {
+    "& .MuiDateCalendar-root": {
+      width: "min(320px, 100%)",
+      height: 320,
+      backgroundColor: "transparent",
+      color: "var(--color-title)",
+    },
+    "& .MuiDayCalendar-weekDayLabel": {
+      color: "var(--color-text-secondary)",
+    },
+    "& .MuiPickerDay-today": {
+      borderColor: theme.palette.primary.main,
+    },
+    "& .MuiPickerDay-root:not(.Mui-selected):not(.Mui-disabled):hover": {
+      backgroundColor: alpha(theme.palette.primary.main, 0.15),
+    },
+    "& .Mui-selected": {
+      backgroundColor: `${theme.palette.primary.main} !important`,
+      color: "#fff !important",
+    },
+    "& .MuiPickersCalendarHeader-label": {
+      color: "var(--color-title)",
+    },
+    "& .MuiPickersArrowSwitcher-button": {
+      color: "var(--color-text-secondary)",
+    },
+  };
+
+  // Mobile: a centered Dialog with the same DateCalendar — tapping a day
+  // fires onChange → accept + close, same as desktop. (MobileDatePicker was
+  // broken: controlled value={null} + noop onChange meant OK always
+  // returned null, so the date search never ran.)
   if (isMobile) {
     return (
-      <MobileDatePicker
+      <Dialog
         open={open}
         onClose={onClose}
-        onAccept={onAccept}
-        value={null}
-        onChange={() => {}}
-        maxDate={new Date()}
-        closeOnSelect={false}
         slotProps={{
-          textField: { sx: { display: "none" } },
-          mobilePaper: {
+          paper: {
             sx: {
-              borderRadius: "16px 16px 0 0",
+              borderRadius: "16px",
               backgroundColor: "var(--color-surface-elevated)",
-              pb: "var(--safe-bottom)",
+              border: `1px solid ${alpha(theme.palette.text.primary, 0.08)}`,
+              boxShadow: "var(--shadow-picker)",
               overflow: "hidden",
-            },
-          },
-          dialog: {
-            sx: {
-              "& .MuiDialog-paper": {
-                borderRadius: "16px 16px 0 0 !important",
-                overflow: "hidden",
-              },
+              p: 0,
+              m: 2,
+              ...calendarSx,
             },
           },
         }}
-      />
+      >
+        <DateCalendar
+          value={null}
+          onChange={handleChange}
+          maxDate={new Date()}
+          openTo="day"
+          sx={{ backgroundColor: "transparent" }}
+        />
+      </Dialog>
     );
   }
 
@@ -81,31 +112,7 @@ const JumpToDatePickerComponent = ({
             boxShadow: "var(--shadow-picker)",
             overflow: "hidden",
             p: 0,
-            "& .MuiDateCalendar-root": {
-              width: 320,
-              height: 320,
-              backgroundColor: "transparent",
-              color: "var(--color-title)",
-            },
-            "& .MuiDayCalendar-weekDayLabel": {
-              color: "var(--color-text-secondary)",
-            },
-            "& .MuiPickerDay-today": {
-              borderColor: theme.palette.primary.main,
-            },
-            "& .MuiPickerDay-root:not(.Mui-selected):not(.Mui-disabled):hover": {
-              backgroundColor: alpha(theme.palette.primary.main, 0.15),
-            },
-            "& .Mui-selected": {
-              backgroundColor: `${theme.palette.primary.main} !important`,
-              color: "#fff !important",
-            },
-            "& .MuiPickersCalendarHeader-label": {
-              color: "var(--color-title)",
-            },
-            "& .MuiPickersArrowSwitcher-button": {
-              color: "var(--color-text-secondary)",
-            },
+            ...calendarSx,
           },
         },
       }}

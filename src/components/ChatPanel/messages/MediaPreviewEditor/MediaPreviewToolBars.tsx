@@ -6,6 +6,7 @@ import { HexColorPicker } from "react-colorful";
 import { Check, ChevronUp, RefreshCw, RotateCwSquare, RotateCcwSquare, Trash2, Droplets, Grid } from "lucide-react";
 import type { FilterType, MediaFileItem, ToolMode, TextBgMode, TextElement, ImageEditState } from "./types";
 import { FILTERS, WA_COLORS, WA_TEXT_COLORS, ASPECT_RATIOS, FONT_FAMILIES } from "./constants";
+import { useIsMobile } from "../../../../hooks/useIsMobile";
 
 const COLOR_NAME: Record<string, string> = {
   "#00a884": "Teal",
@@ -48,7 +49,10 @@ export function MediaPreviewFilterBar({
   onHoverFilter,
 }: MediaPreviewFilterBarProps) {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   if (!currentMedia) return null;
+
+  const thumbSize = isMobile ? 44 : 50;
 
   return (
     <div
@@ -56,13 +60,17 @@ export function MediaPreviewFilterBar({
       style={{
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        padding: "8px 12px",
+        // "safe center" — centers when all filters fit, falls back to
+        // start when overflowing so the first filters are never clipped.
+        justifyContent: "safe center",
+        gap: isMobile ? 4 : 8,
+        padding: isMobile ? "6px 8px" : "8px 12px",
         background: isDark ? "rgba(22, 22, 34, 0.98)" : "#f8f9fa",
         borderBottom: `1px solid ${borderColor}`,
         overflowX: "auto",
         WebkitOverflowScrolling: "touch",
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
         flexShrink: 0,
         zIndex: 15,
       }}
@@ -85,7 +93,7 @@ export function MediaPreviewFilterBar({
               alignItems: "center",
               gap: 4,
               cursor: "pointer",
-              padding: "4px 6px",
+              padding: isMobile ? "3px 4px" : "4px 6px",
               borderRadius: 10,
               background: isSel
                 ? alpha(theme.palette.primary.main, 0.14)
@@ -102,8 +110,8 @@ export function MediaPreviewFilterBar({
           >
             <div
               style={{
-                width: 50,
-                height: 50,
+                width: thumbSize,
+                height: thumbSize,
                 borderRadius: 8,
                 overflow: "hidden",
                 position: "relative",
@@ -162,7 +170,7 @@ export function MediaPreviewFilterBar({
             </div>
             <span
               style={{
-                fontSize: 11,
+                fontSize: isMobile ? 10 : 11,
                 fontWeight: isSel ? 700 : isHov ? 600 : 500,
                 color: isSel || isHov ? theme.palette.primary.main : titleColor,
                 userSelect: "none",
@@ -606,6 +614,9 @@ export function MediaPreviewToolControls({
             border: `1px solid ${panelBorder}`,
             boxShadow: panelShadow,
             maxWidth: "100%",
+            overflowX: "auto",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
           {/* Fill color group (first): solid dot with border ring + individual arrow */}
@@ -890,6 +901,9 @@ export function MediaPreviewToolControls({
             border: `1px solid ${panelBorder}`,
             boxShadow: panelShadow,
             maxWidth: "100%",
+            overflowX: "auto",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
           {/* Pixelate style button */}

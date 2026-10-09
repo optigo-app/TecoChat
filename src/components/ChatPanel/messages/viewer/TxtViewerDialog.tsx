@@ -1,14 +1,33 @@
 "use client";
 
-import { useState, useEffect, useRef, memo } from "react";
-import { Dialog, Box, Typography, useTheme, alpha, CircularProgress } from "@mui/material";
-import { FileText, Download } from "lucide-react";
+import { useState, useEffect, useRef, useMemo, memo } from "react";
+import { Dialog, Box, Typography, IconButton, Tooltip, useTheme, alpha, CircularProgress } from "@mui/material";
+import { FileText, Code, Eye } from "lucide-react";
 import { handleDownloadFile } from "../../../../utils/globalFunc";
 import { loadTextFile } from "../../../../utils/txtUtils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import MediaViewerHeader from "./MediaViewerHeader";
 import type { MediaViewerItem } from "../../CoreLogic/uiReducer";
 import type { ChatMessage } from "../../../../types/message";
 import type { ConversationListEntry } from "../../../../types/conversation";
+
+// .md/.markdown always render formatted. For .txt/.log/etc. we sniff the
+// content — pasted ChatGPT/LLM output arrives as .txt but is full of
+// markdown (##, **bold**, - lists, ``` fences) which is unreadable raw.
+const looksLikeMarkdown = (fileName: string, text: string): boolean => {
+  if (/\.(md|markdown)$/i.test(fileName)) return true;
+  if (!text) return false;
+  return (
+    /(^|\n)#{1,6}\s+\S/.test(text) || // headings
+    /```[\s\S]*?```/.test(text) || // code fences
+    /(^|\n)\s*[-*]\s+\S/.test(text) || // bullet lists
+    /(^|\n)\s*\d+\.\s+\S/.test(text) || // ordered lists
+    /(^|\n)>\s*\S/.test(text) || // blockquotes
+    /\*\*\S[^*\n]*\S\*\*/.test(text) || // **bold**
+    /\[[^\]]+\]\(https?:\/\/[^)]+\)/.test(text) // [links](url)
+  );
+};
 
 interface TxtViewerDialogProps {
   open: boolean;
@@ -39,6 +58,8 @@ const TxtViewerDialogComponent = ({
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // null = auto (formatted when content looks like markdown, else raw)
+  const [viewMode, setViewMode] = useState<"formatted" | "raw" | null>(null);
   const cancelledRef = useRef(false);
 
   // Live message (sync with messages array for reaction updates)
@@ -61,6 +82,7 @@ const TxtViewerDialogComponent = ({
     setLoading(true);
     setError(false);
     setContent("");
+    setViewMode(null);
 
     (async () => {
       try {
@@ -80,6 +102,12 @@ const TxtViewerDialogComponent = ({
       cancelledRef.current = true;
     };
   }, [open, item?.src]);
+
+  const isMarkdown = useMemo(
+    () => looksLikeMarkdown(item?.name || "", content),
+    [item?.name, content]
+  );
+  const effectiveView = viewMode ?? (isMarkdown ? "formatted" : "raw");
 
   if (!item) return null;
 
@@ -117,6 +145,25 @@ const TxtViewerDialogComponent = ({
           onQuickReaction={onQuickReaction}
           onRemoveReaction={onRemoveReaction}
           onClose={onClose}
+          extraToolbar={
+            !loading && !error ? (
+              <Tooltip
+                title={effectiveView === "formatted" ? "View raw text" : "View formatted"}
+                placement="bottom"
+                slotProps={{ popper: { sx: { zIndex: 11000 } } }}
+              >
+                <IconButton
+                  className="toolbar-btn"
+                  size="small"
+                  onClick={() =>
+                    setViewMode(effectiveView === "formatted" ? "raw" : "formatted")
+                  }
+                >
+                  {effectiveView === "formatted" ? <Code size={18} /> : <Eye size={18} />}
+                </IconButton>
+              </Tooltip>
+            ) : undefined
+          }
         />
 
         {/* ── Body: scrollable text content ──────────────────────────────── */}
@@ -171,24 +218,67 @@ const TxtViewerDialogComponent = ({
             </Box>
           )}
 
+          {/* Content rendered inside a centered "page" card — like the PDF
+              viewer centers its page — instead of spanning the full width. */}
           {!loading && !error && (
-            <pre
+            <div
               style={{
-                margin: 0,
-                padding: 0,
-                fontFamily:
-                  "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
-                fontSize: 14,
-                lineHeight: 1.6,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                color: theme.palette.text.primary,
-                userSelect: "text",
-                WebkitUserSelect: "text",
+                maxWidth: 860,
+                width: "100%",
+                margin: "0 auto",
               }}
             >
-              {content}
-            </pre>
+              <div
+                style={{
+                  backgroundColor: "var(--color-surface)",
+                  border: "1px solid var(--color-border-light)",
+                  borderRadius: 12,
+                  boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
+                  padding: "clamp(16px, 3vw, 36px)",
+                }}
+              >
+                {effectiveView === "raw" ? (
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 0,
+                      fontFamily:
+                        "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      color: theme.palette.text.primary,
+                      userSelect: "text",
+                      WebkitUserSelect: "text",
+                    }}
+                  >
+                    {content}
+                  </pre>
+                ) : (
+                  <div
+                    className="md-body"
+                    style={{
+                      userSelect: "text",
+                      WebkitUserSelect: "text",
+                    }}
+                  >
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({ href, children }) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer">
+                            {children}
+                          </a>
+                        ),
+                      }}
+                    >
+                      {content}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>

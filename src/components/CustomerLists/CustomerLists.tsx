@@ -635,14 +635,6 @@ export const CustomerLists: React.FC<CustomerListsProps> = ({
         <ul
           ref={containerRef}
           className="app-scroll"
-          style={
-            pull > 0
-              ? {
-                  transform: `translateY(${pull}px)`,
-                  transition: refreshing ? "transform 160ms ease" : "none",
-                }
-              : { transition: "transform 200ms ease" }
-          }
         >
           {/* Archived row — only in normal view, hidden in archive view and favorite tab */}
           {archivedCount > 0 && !searchTerm && !isArchiveOpen && tabValue !== 2 && (

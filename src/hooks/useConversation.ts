@@ -46,6 +46,16 @@ import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { liveQuery } from "dexie";
 import { getDb } from "../db/tecoDb";
 
+// Latest-first ordering for search/starred result lists — newest message on
+// top, WhatsApp-style. Falls back to message id when timestamps are missing.
+const sortMessagesLatestFirst = <T extends ChatMessage>(list: T[]): T[] =>
+  [...list].sort((a, b) => {
+    const tb = new Date(b.DateTime ?? b.Date ?? 0).getTime() || 0;
+    const ta = new Date(a.DateTime ?? a.Date ?? 0).getTime() || 0;
+    if (tb !== ta) return tb - ta;
+    return (Number(b.MessageId ?? b.Id) || 0) - (Number(a.MessageId ?? a.Id) || 0);
+  });
+
 interface UseConversationProps {
   selectedCustomer: ConversationListEntry | null;
   onConversationRead?: ((read: boolean) => void) | null;
@@ -80,8 +90,6 @@ export const useConversation = ({
 
   useEffect(() => {
     selectedCustomerRef.current = selectedCustomer;
-    dispatchUI({ type: UI.SET_MEDIA_FILES, value: [] });
-    dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
   }, [selectedCustomer]);
 
   useEffect(() => {
@@ -261,7 +269,10 @@ export const useConversation = ({
     useMessageLoader({
       selectedCustomer,
       auth,
-      pageSize: 20,
+      // Larger scroll pages: cache-first pagination paints 50 rows instantly
+      // from IndexedDB per sentinel hit — fewer round-trips while scrolling.
+      // initialPageSize stays 20 so the reconcile fetch returns fast.
+      pageSize: 50,
       initialPageSize: 20,
       msgState,
       dispatchMsg,
@@ -281,9 +292,10 @@ export const useConversation = ({
 
   useOutboxSync(auth);
   useReconnectSync(auth, selectedCustomer?.ConversationId, dispatchMsg);
-  const { status: socketStatus } = useSocketContext();
   const isOnline = useOnlineStatus();
-  const isOffline = !isOnline || socketStatus !== "connected";
+  // Offline = no network only. A transient socket drop while online still
+  // allows HTTP sends (socket.io buffers emits until reconnect).
+  const isOffline = !isOnline;
 
   // When an outbox message is successfully sent on reconnect, update the
   // React state so the "Failed" icon changes to the normal sent status.
@@ -505,16 +517,28 @@ export const useConversation = ({
     pendingNavRef.current = null;
     dispatchUI({ type: UI.SET_BLINK, value: null });
     dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: null, messageId: null } });
+    // Close any open viewers — they belong to the previous conversation.
+    dispatchUI({ type: UI.SET_VIEWER, open: false });
+    dispatchUI({ type: UI.SET_PDF_VIEWER, open: false });
+    dispatchUI({ type: UI.SET_TXT_VIEWER, open: false });
 
     if (!nextId) {
       dispatchMsg({ type: MSG.CLEAR });
       dispatchUI({ type: UI.SET_INPUT, value: "" });
+      dispatchUI({ type: UI.SET_MEDIA_FILES, value: [] });
+      dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
       prevConvIdRef.current = null;
       return;
     }
 
     dispatchUI({ type: UI.SET_REPLY, value: null });
     dispatchUI({ type: UI.SET_FORWARD, value: null });
+    // Clear pending attachments + attachment menu only on a real
+    // conversation switch — NOT on selectedCustomer object swaps (silent
+    // list refresh / socket updates produce a new object for the same
+    // conversation and used to wipe the media preview mid-edit).
+    dispatchUI({ type: UI.SET_MEDIA_FILES, value: [] });
+    dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
     // Reset star filter when switching conversations
     dispatchUI({ type: UI.SET_STAR_FILTER, value: false });
     starFilterRef.current = false;
@@ -680,7 +704,7 @@ export const useConversation = ({
         1 // IsStar
       );
       if (selectedCustomerRef.current?.ConversationId !== convId) return;
-      dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: response.data });
+      dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: sortMessagesLatestFirst(response.data || []) });
     } catch {
       dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
     } finally {
@@ -812,7 +836,7 @@ export const useConversation = ({
       // released on the first user scroll gesture so it never fights input.
       const settleOnTarget = (el: Element) => {
         const outer = containerRef.current;
-        const inner = outer?.firstElementChild as HTMLElement | null;
+        const inner = outer?.querySelector<HTMLElement>("[data-ml-inner]");
         if (!outer || !inner) return;
         let done = false;
         let quietTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1068,7 +1092,7 @@ export const useConversation = ({
           // Guard: bail if the user switched conversations while awaiting cache.
           if (selectedCustomerRef.current?.ConversationId !== convId) return;
           if (cached) {
-            dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: cached });
+            dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: sortMessagesLatestFirst(cached) });
             return;
           }
         }
@@ -1090,7 +1114,7 @@ export const useConversation = ({
         } else {
           setSearchCache(auth, convId, query, results).catch(() => {});
         }
-        dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: results });
+        dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: sortMessagesLatestFirst(results) });
       } catch {
         dispatchUI({ type: UI.SET_SEARCH_RESULTS, value: [] });
       } finally {
@@ -1129,7 +1153,15 @@ export const useConversation = ({
         );
         if (selectedCustomerRef.current?.ConversationId !== convId) return false;
         const results = response.data as ChatMessage[];
-        if (results.length > 0) {
+        // The API anchors on MsgDate but can return the NEAREST day's
+        // messages when the requested date is empty — only treat it as a
+        // hit when a returned message actually falls on that date,
+        // otherwise the caller shows the "No messages on this date" pill.
+        const dateHasMessages = results.some((m) => {
+          const raw = String(m?.Date || m?.DateTime || "");
+          return raw.slice(0, 10) === date;
+        });
+        if (results.length > 0 && dateHasMessages) {
           dispatchMsg({
             type: MSG.LOAD,
             data: results,

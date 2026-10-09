@@ -17,7 +17,7 @@ import {
   Skeleton,
   Tooltip,
 } from "@mui/material";
-import { LogOut as LogOutIcon, User, Sun, Moon, Monitor } from "lucide-react";
+import { LogOut as LogOutIcon, User, Sun, Moon, Monitor, RefreshCw } from "lucide-react";
 import { useLoginContext } from "@/src/contexts/LoginData";
 import { useColorMode } from "@/src/theme/ThemeRegistry";
 import type { ColorMode } from "@/src/theme/themes";
@@ -29,6 +29,7 @@ import { CONFIRM_CONFIG } from "@/src/hooks/confirmConfig";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
 import { deleteDb } from "@/src/db/tecoDb";
 import { getAppVersion } from "@/src/utils/versionManager";
+import { resyncApp } from "@/src/utils/resyncApp";
 import "./ProfileAvatar.scss";
 
 const isValidUrl = (url: unknown): url is string => {
@@ -136,6 +137,13 @@ export const ProfileAvatar = ({ collapsed = false, headerVariant = false }: Prof
   const handleLogoutCancel = () => {
     if (logoutLoading) return;
     setLogoutDialogOpen(false);
+  };
+
+  const handleResync = () => {
+    handleClose();
+    // Full data resync without logout: wipes IndexedDB + caches, keeps the
+    // session, then hard-reloads so everything re-fetches from the API.
+    resyncApp(auth?.id).catch(() => window.location.reload());
   };
 
   return (
@@ -393,6 +401,28 @@ export const ProfileAvatar = ({ collapsed = false, headerVariant = false }: Prof
               </span>
             </ListItemIcon>
             <ListItemText primary="Profile" />
+          </MenuItem>
+
+          <MenuItem
+            onClick={handleResync}
+            sx={{
+              "&:hover": {
+                bgcolor: "primary.main",
+                color: "#fff",
+                "& .MuiListItemIcon-root": { color: "#fff" },
+                "& .glass-icon": {
+                  borderColor: "rgba(255,255,255,0.3)",
+                  bgcolor: "rgba(255,255,255,0.15)",
+                },
+              },
+            }}
+          >
+            <ListItemIcon>
+              <span className="glass-icon">
+                <RefreshCw size={18} />
+              </span>
+            </ListItemIcon>
+            <ListItemText primary="Data Sync" />
           </MenuItem>
 
         </Box>

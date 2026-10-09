@@ -5,7 +5,7 @@ import { useSocketContext } from "../../../contexts/SocketContext";
 import { getPendingOutbox, removeFromOutbox, updateOutboxStatus } from "../../../db/outboxCache";
 import { sendTextMessage, sendImageMessage, sendDocumentMessage, sendVideoMessage } from "../../../API/SendMessage/SendMessageApi";
 import { buildMediaPayload, uploadFiles } from "./uploadHelpers";
-import { emitMediaMessage } from "./socketHelpers";
+import { emitMediaMessage, emitTextMessage } from "./socketHelpers";
 import { replyToMessageApi } from "../../../API/SendMessage/replyToMessageApi";
 import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
@@ -51,6 +51,19 @@ export function useOutboxSync(auth: AuthData | null) {
             let resp;
             let uploadedUrls: string[] = [];
             let uploadedFiles: File[] = [];
+            // Reply context survives offline queueing — rebuild it from the
+            // stored outbox entry for both the API call and the socket emit.
+            const mediaReplyTo = String(entry.replyTo ?? "").trim();
+            const mediaReplyData = entry.data as ChatMessage | undefined;
+            const mediaReplyPayload = mediaReplyTo
+              ? {
+                  contextId: mediaReplyTo,
+                  contextMsg: (mediaReplyData?.ReplyContextMsg as string) || "Media",
+                  sender: (mediaReplyData?.SenderInfo as string) || "You",
+                  attachmentId:
+                    (mediaReplyData?.ReplyToAttachmentId as string | number | null) ?? null,
+                }
+              : null;
             if (mediaFiles.length > 0 && entry.mediaType) {
               const files = mediaFiles.map((item) =>
                 new File([item.blob], item.name, { type: item.type, lastModified: item.lastModified })
@@ -69,20 +82,33 @@ export function useOutboxSync(auth: AuthData | null) {
                   ? { Width: mediaFiles[index].width, Height: mediaFiles[index].height }
                   : {}),
               }));
-              const sendFn = entry.mediaType === "image"
-                ? sendImageMessage
-                : entry.mediaType === "video"
-                ? sendVideoMessage
-                : sendDocumentMessage;
-              resp = await sendFn(authRef.current, {
-                senderId: authRef.current?.id,
-                receiverId: Array.isArray(entry.receiverId)
-                  ? entry.receiverId.map(String)
-                  : entry.receiverId ?? undefined,
-                conversationId: entry.conversationId,
-                caption: entry.text,
-                attachments,
-              });
+              resp = mediaReplyTo
+                ? await replyToMessageApi(authRef.current, {
+                    conversationId: entry.conversationId,
+                    replyToMessageId: mediaReplyTo,
+                    ReplyToAttachmentId:
+                      (mediaReplyData?.ReplyToAttachmentId as string | number | null) ?? null,
+                    message: entry.text,
+                    messageType:
+                      entry.mediaType === "image" ? 2 : entry.mediaType === "video" ? 3 : 4,
+                    receiverId: Array.isArray(entry.receiverId)
+                      ? entry.receiverId.map(String)
+                      : entry.receiverId ?? undefined,
+                    attachments,
+                  })
+                : await (entry.mediaType === "image"
+                    ? sendImageMessage
+                    : entry.mediaType === "video"
+                    ? sendVideoMessage
+                    : sendDocumentMessage)(authRef.current, {
+                    senderId: authRef.current?.id,
+                    receiverId: Array.isArray(entry.receiverId)
+                      ? entry.receiverId.map(String)
+                      : entry.receiverId ?? undefined,
+                    conversationId: entry.conversationId,
+                    caption: entry.text,
+                    attachments,
+                  });
             } else {
               const replyTo = String(entry.replyTo ?? "").trim();
               const isReply = replyTo.length > 0;
@@ -92,6 +118,9 @@ export function useOutboxSync(auth: AuthData | null) {
                     replyToMessageId: replyTo,
                     message: entry.text,
                     messageType: 1,
+                    mentionUsers: entry.mentionUsers
+                      ? JSON.parse(entry.mentionUsers)
+                      : null,
                   })
                 : await sendTextMessage(authRef.current, {
                     senderId: authRef.current?.id,
@@ -166,6 +195,7 @@ export function useOutboxSync(auth: AuthData | null) {
                         dateTime: entry.dateTime || "",
                         isGroup: entry.isGroup ?? false,
                         memberIds: entry.memberIds ?? [],
+                        reply: mediaReplyPayload,
                       })
                     );
 
@@ -217,6 +247,7 @@ export function useOutboxSync(auth: AuthData | null) {
                       dateTime: entry.dateTime || "",
                       isGroup: entry.isGroup ?? false,
                       memberIds: entry.memberIds ?? [],
+                      reply: mediaReplyPayload,
                     })
                   );
                   window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_SENT", {
@@ -239,7 +270,48 @@ export function useOutboxSync(auth: AuthData | null) {
                   }));
                 }
               } else {
-                // Text message
+                // Text message — emit the socket event so receivers get it in
+                // realtime (the media path above does the same). Backend-
+                // normalized mentions from the API response take precedence
+                // over the stored client-built list.
+                const rdMentions = (rd as Record<string, unknown>)?.MentionUsers;
+                const mentionUsersJson =
+                  typeof rdMentions === "string" && rdMentions.trim()
+                    ? rdMentions
+                    : entry.mentionUsers || undefined;
+
+                emitTextMessage({
+                  auth: authRef.current,
+                  selectedCustomer: {
+                    ConversationId: entry.conversationId,
+                    ReceiverId: Array.isArray(entry.receiverId)
+                      ? entry.receiverId.map(String)
+                      : entry.receiverId ?? undefined,
+                    ConversationName: entry.conversationName,
+                    IsGroup: entry.isGroup ? 1 : 0,
+                  },
+                  messageId: rd.MessageId,
+                  message: entry.text,
+                  isEdited: 0,
+                  receiverIds: entry.memberIds?.length
+                    ? entry.memberIds
+                    : (entry.receiverId ?? ""),
+                  extra: {
+                    Status: 1,
+                    MessageStatus: 1,
+                    MessageType: "text",
+                    Time: entry.time || "",
+                    Date: entry.date || "",
+                    DateTime: entry.dateTime || "",
+                    ClientMessageId: entry.messageId,
+                    ConversationId: entry.conversationId,
+                    ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
+                    ...(String(entry.replyTo ?? "").trim()
+                      ? { ContextType: 2, ContextId: entry.replyTo }
+                      : {}),
+                  },
+                });
+
                 window.dispatchEvent(new CustomEvent("OUTBOX_MESSAGE_SENT", {
                   detail: {
                     tempId: entry.messageId,

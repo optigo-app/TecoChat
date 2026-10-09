@@ -125,39 +125,50 @@ const LoginPageV2 = () => {
     }
   };
 
-  const handleCompanyCodeBlur = async (): Promise<boolean> => {
-    if (!credentials.companycode.trim()) return false;
-    setIsVerifying(true);
-    try {
-      const tokenData = await getToken(credentials.companycode.trim());
-      if (!tokenData || !tokenData?.rd?.[0]) {
-        setErrors((prev) => ({ ...prev, companycode: "Invalid company code" }));
-        setToken({ sv: "", yc: "" });
-        setCompanyVerified(false);
-        return false;
-      }
-      if (tokenData?.rd?.[0]?.stat === 0) {
-        setErrors((prev) => ({ ...prev, companycode: "Invalid company code" }));
-        setToken({ sv: "", yc: "" });
-        setCompanyVerified(false);
-        return false;
-      } else if (tokenData?.rd?.[0]?.stat === 1) {
-        const tData = tokenData.rd[0];
-        setToken({ sv: tData.sv.toString(), yc: tData.yc || "" });
-        sessionStorage.setItem("token", JSON.stringify(tData));
-        setCompanyVerified(true);
-        return true;
-      }
-      setErrors((prev) => ({ ...prev, companycode: "Unable to verify company code" }));
-      setCompanyVerified(false);
-      return false;
-    } catch {
-      setErrors((prev) => ({ ...prev, companycode: "Error validating company code" }));
-      setCompanyVerified(false);
-      return false;
-    } finally {
-      setIsVerifying(false);
+  // In-flight verify promise — blur and submit share it so they can never
+  // fire two getToken calls for the same code.
+  const verifyPromiseRef = useRef<Promise<boolean> | null>(null);
+
+  const handleCompanyCodeBlur = (): Promise<boolean> => {
+    if (!credentials.companycode.trim()) return Promise.resolve(false);
+    if (!verifyPromiseRef.current) {
+      verifyPromiseRef.current = (async () => {
+        setIsVerifying(true);
+        try {
+          const tokenData = await getToken(credentials.companycode.trim());
+          if (!tokenData || !tokenData?.rd?.[0]) {
+            setErrors((prev) => ({ ...prev, companycode: "Invalid company code" }));
+            setToken({ sv: "", yc: "" });
+            setCompanyVerified(false);
+            return false;
+          }
+          if (tokenData?.rd?.[0]?.stat === 0) {
+            setErrors((prev) => ({ ...prev, companycode: "Invalid company code" }));
+            setToken({ sv: "", yc: "" });
+            setCompanyVerified(false);
+            return false;
+          } else if (tokenData?.rd?.[0]?.stat === 1) {
+            const tData = tokenData.rd[0];
+            setToken({ sv: tData.sv.toString(), yc: tData.yc || "" });
+            sessionStorage.setItem("token", JSON.stringify(tData));
+            setCompanyVerified(true);
+            return true;
+          }
+          setErrors((prev) => ({ ...prev, companycode: "Unable to verify company code" }));
+          setCompanyVerified(false);
+          return false;
+        } catch {
+          setErrors((prev) => ({ ...prev, companycode: "Error validating company code" }));
+          setCompanyVerified(false);
+          return false;
+        } finally {
+          setIsVerifying(false);
+        }
+      })().finally(() => {
+        verifyPromiseRef.current = null;
+      });
     }
+    return verifyPromiseRef.current;
   };
 
   const handleCompanySubmit = async (e?: React.FormEvent | React.KeyboardEvent) => {
@@ -166,7 +177,8 @@ const LoginPageV2 = () => {
       setErrors((prev) => ({ ...prev, companycode: "Company code is required" }));
       return;
     }
-    const ok = await handleCompanyCodeBlur();
+    // Skip the API round-trip when the blur check already verified this code.
+    const ok = companyVerified || (await handleCompanyCodeBlur());
     if (ok) {
       setStep("signin");
       setTimeout(() => userIdRef.current?.focus?.(), 200);
@@ -372,10 +384,15 @@ const LoginPageV2 = () => {
                     )}
                   </div>
 
+                  {/* onMouseDown preventDefault keeps focus in the input so the
+                      click doesn't fire the blur-verify and the submit doesn't
+                      get swallowed by the disabled state — one click = verify +
+                      continue, same as pressing Enter. */}
                   <button
                     type="submit"
                     className="loginv2-submit-btn"
                     disabled={isVerifying}
+                    onMouseDown={(e) => e.preventDefault()}
                   >
                     {isVerifying ? (
                       <>

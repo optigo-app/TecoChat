@@ -30,8 +30,9 @@ export function useReconnectSync(
     const prevStatus = prevStatusRef.current;
     prevStatusRef.current = status;
 
-    // Only trigger on reconnect (disconnected → connected)
-    if (prevStatus !== "disconnected" || status !== "connected") return;
+    // Trigger on reconnect from any non-connected state (transient drops
+    // report "connecting" while socket.io auto-reconnects).
+    if (prevStatus === "connected" || status !== "connected") return;
     if (!auth || !convIdRef.current) return;
 
     const convId = convIdRef.current;

@@ -9,7 +9,8 @@
     "Edge >= 100"
   ],
   "scripts": {
-    "dev": "npx fix-react2shell-next && next dev -p 6008",
+    "dev": "npx fix-react2shell-next && next dev -p 5017",
+    "prebuild": "node scripts/generate-version.mjs",
     "build": "npx fix-react2shell-next && next build",
     "start": "npx fix-react2shell-next && next start -p 6008",
     "lint": "eslint"
@@ -18,7 +19,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@lexical/code": "^0.45.0",
-    "@lexical/link": "^0.45.0", 
+    "@lexical/link": "^0.45.0",
     "@lexical/list": "^0.45.0",
     "@lexical/markdown": "^0.45.0",
     "@lexical/react": "^0.45.0",
@@ -45,6 +46,8 @@
     "react-colorful": "5.8.0",
     "react-dom": "19.2.8",
     "react-hot-toast": "^2.6.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "sass": "^1.99.0",
     "socket.io-client": "^4.8.3",
     "swiper": "^14.1.0"

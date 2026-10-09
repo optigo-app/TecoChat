@@ -117,6 +117,12 @@ const MentionPlugin: React.FC<MentionPluginProps> = ({
       if (dirtyLeaves.size === 0) {
         return;
       }
+      // During IME composition the DOM selection can read as non-collapsed
+      // or point at a transient node — running the trigger scan on that
+      // state falsely closes the dropdown mid-delete on mobile.
+      if (editor.isComposing()) {
+        return;
+      }
       editorState.read(() => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
@@ -162,16 +168,29 @@ const MentionPlugin: React.FC<MentionPluginProps> = ({
           return;
         }
 
-        // Position dropdown at cursor using getBoundingClientRect (like formatting toolbar)
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-          const range = sel.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          // Place dropdown above the cursor; if not enough space, Popper will flip
-          setDropdownPos({
-            top: rect.top,
-            left: rect.left,
-          });
+        // Position the dropdown. Mobile (keyboard open): the caret rect is
+        // unreliable and gets covered by the keyboard — WhatsApp anchors
+        // the list directly above the composer, so use the input container
+        // rect. Desktop keeps caret-anchored positioning.
+        const isMobileAnchor = window.matchMedia("(pointer: coarse)").matches;
+        if (isMobileAnchor) {
+          const inputBar = document.querySelector(".chat-input-container") ||
+            document.querySelector(".chat-input-area");
+          if (inputBar) {
+            const barRect = inputBar.getBoundingClientRect();
+            setDropdownPos({ top: barRect.top, left: barRect.left + 8 });
+          }
+        } else {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            // Place dropdown above the cursor; if not enough space, Popper will flip
+            setDropdownPos({
+              top: rect.top,
+              left: rect.left,
+            });
+          }
         }
 
         // Fetch members on-demand every time @ is typed so the dropdown

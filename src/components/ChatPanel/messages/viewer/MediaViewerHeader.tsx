@@ -11,15 +11,15 @@ import {
   Forward,
   Smile,
   User,
-  FileText,
 } from "lucide-react";
 import {
   getCustomerDisplayName,
   getWhatsAppAvatarConfig,
   getCustomerAvatarSeed,
   hasCustomerName,
-  handleDownloadFile,
+  getDocumentMeta,
 } from "../../../../utils/globalFunc";
+import { DocumentTypeIcon } from "../bubble/DocumentTypeIcon";
 import { formatDateTime } from "../../../../utils/dateUtils";
 import { charToUnified, parseReactions } from "../../../../utils/EmojiUtils";
 import { QuickReactionMenu, ReactionDetailsMenu } from "../interactions";
@@ -117,10 +117,12 @@ function MediaViewerHeaderComponent({
       {/* Left: identity */}
       <div className="media-viewer-header-left">
         {fileName ? (
-          // PDF viewer mode — show file info instead of customer
+          // Document viewer mode — show file info instead of customer.
+          // Icon + label come from the file extension (same map as message
+          // bubbles) so .txt/.md/.csv etc. don't all show a "PDF" badge.
           <>
             <div
-              className="document-icon pdf"
+              className="document-icon"
               style={{
                 width: 32,
                 height: 32,
@@ -129,18 +131,17 @@ function MediaViewerHeaderComponent({
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                color: "#f24e1e",
-                background: "rgba(242, 78, 30, 0.1)",
+                background: alpha(theme.palette.text.primary, 0.06),
               }}
             >
-              <FileText size={20} />
+              <DocumentTypeIcon filename={fileName} size={20} />
             </div>
             <div className="media-viewer-user-info">
               <div className="media-viewer-username" title={fileName}>
                 {fileName}
               </div>
               <div className="media-viewer-timestamp">
-                PDF
+                {getDocumentMeta(fileName).label}
                 {fileSize != null && ` · ${formatSize(fileSize)}`}
                 {/* Hide page count on mobile+tablet — the page navigation
                    footer already shows "current / total" there. */}

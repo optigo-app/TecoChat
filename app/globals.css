@@ -615,12 +615,10 @@ a {
   background-color: var(--color-surface-elevated);
 }
 
-/* Mobile dialog — bottom-sheet style: top corners rounded, bottom square.
-   Override the generic .MuiDialog-paper (16px all corners) so the inner
-   calendar content and the outer dialog paper have consistent corners
-   (no square-edge glitch at the bottom). */
+/* Mobile picker dialog — normal centered card, consistent corners so the
+   inner calendar and the paper match (no square-edge glitch). */
 .MuiDialog-paper:has(.MuiPickersLayout-root) {
-  border-radius: 16px 16px 0 0 !important;
+  border-radius: 16px !important;
   overflow: hidden;
 }
 /* Fallback for browsers without :has() — scope via the pickers layout's
@@ -650,11 +648,15 @@ a {
 }
 
 /* Inputs: prevent iOS auto-zoom on focus (font-size >= 16px) and style forms
-   to feel native. */
+   to feel native. The Lexical chat composer is a contenteditable div — iOS
+   Safari auto-zooms those too, which pushes the fixed header/safe-area chrome
+   off-screen, so it's covered here as well. */
 @media (max-width: 768px) {
   input,
   select,
-  textarea {
+  textarea,
+  [contenteditable="true"],
+  .lexical-content-editable {
     font-size: 16px !important;
   }
 }
@@ -877,4 +879,8 @@ a {
   overscroll-behavior-y: contain;
 }
 
-
+/* NOTE: dialogs that need full-screen on mobile opt in via the MUI
+   `fullScreen` prop (ViewPhotoDialog, MediaViewer, PdfViewerDialog,
+   TxtViewerDialog, EditMessageDialog, AddMemberDialog). A global paper
+   override used to live here — it also flattened small dialogs like the
+   date picker and confirmations, so sizing is per-dialog now. */

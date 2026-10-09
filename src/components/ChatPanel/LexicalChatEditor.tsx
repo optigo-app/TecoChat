@@ -13,6 +13,14 @@ import {
   $convertToMarkdownString,
   TRANSFORMERS,
 } from "@lexical/markdown";
+
+// Text-format transformers that require word boundaries — `*`/`~`/backtick
+// don't set intraword:false upstream, so typing `cust_id` or `a*b*c` in a URL
+// would silently apply formatting. intraword:false = markers only trigger at
+// token edges (WhatsApp behavior: no mid-word formatting while typing).
+const BOUNDARY_TRANSFORMERS = TRANSFORMERS.map((t) =>
+  t.type === "text-format" ? { ...t, intraword: false } : t
+);
 import { $generateNodesFromDOM } from "@lexical/html";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode, $isListItemNode } from "@lexical/list";
@@ -29,10 +37,12 @@ import {
   $getRoot,
   $createParagraphNode,
   $createTextNode,
+  TextNode,
   type LexicalEditor,
 } from "lexical";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { ClearEditorPlugin } from "@lexical/react/LexicalClearEditorPlugin";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { MentionNode } from "./input/MentionNode";
 import MentionPlugin from "./input/MentionPlugin";
 import { EmojiNode } from "./input/EmojiNode";
@@ -90,7 +100,10 @@ function MarkdownExportPlugin({
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
         editorState.read(() => {
-          const markdown = $convertToMarkdownString(TRANSFORMERS, undefined, true);
+          // Strip U+FFFC belt-and-suspenders — if a node transform was
+          // deferred mid-composition, the char must never reach the API.
+          const markdown = $convertToMarkdownString(TRANSFORMERS, undefined, true)
+            .replace(/\uFFFC/g, "");
           lastEmittedRefRef.current?.current !== undefined && (lastEmittedRefRef.current.current = markdown);
           onChangeRef.current?.(markdown);
         });
@@ -145,6 +158,9 @@ function SelectionTrackerPlugin({
       // the editor. Programmatic updates (draft import, root.clear, node
       // transforms) can leave a state selection at offset 0 — persisting that
       // would make emoji restore insert at the start of the text.
+      // Mid-composition selections are transient IME ranges — persisting
+      // them would make emoji restore jump to a stale offset.
+      if (editor.isComposing()) return;
       const rootEl = editor.getRootElement();
       const domSel = window.getSelection();
       if (
@@ -254,6 +270,12 @@ function OneTimeFormattingPlugin() {
 
     const unregisterUpdate = editor.registerUpdateListener(({ editorState }) => {
       if (!justFormattedRef.current) return;
+      // Writing sel.format mid-IME-composition triggers an update that
+      // disturbs the composing node — aborts the session on Android.
+      if (editor.isComposing()) {
+        justFormattedRef.current = false;
+        return;
+      }
 
       editorState.read(() => {
         const selection = $getSelection();
@@ -282,6 +304,57 @@ function OneTimeFormattingPlugin() {
   return null;
 }
 
+// ── Mobile IME guard ─────────────────────────────────────────────────────────
+// Android IMEs (Gboard, SwiftKey, Samsung Keyboard) don't send real keydown
+// events for backspace — they emit beforeinput/composition mutations. When
+// the deletion target is an inline atomic element (the EmojiNode's <img>
+// decorator), the browser represents it as U+FFFC OBJECT REPLACEMENT
+// CHARACTER in the DOM text flow, and that char leaks into the adjacent
+// Lexical TextNode — it renders as a visible dashed "OBJ" box on mobile.
+// A TextNode transform is the canonical fix: it runs inside Lexical's update
+// cycle so editor state, DOM, and the markdown onChange export all stay
+// consistent, and the char can never persist regardless of which IME event
+// produced it (deleteContentBackward, insertFromComposition, paste, etc.).
+function ObjectReplacementCharPlugin() {
+  const [editor] = useLexicalComposerContext();
+  const pendingRef = useRef(false);
+  useEffect(() => {
+    const unregister = editor.registerNodeTransform(TextNode, (node) => {
+      const text = node.getTextContent();
+      if (text.indexOf("\uFFFC") === -1) return;
+      // Rewriting the DOM text node while the IME owns it aborts the
+      // composition session — Android drops the keyboard, iOS commits the
+      // half-typed word. Defer the cleanup to compositionend instead.
+      if (editor.isComposing()) {
+        pendingRef.current = true;
+        return;
+      }
+      node.setTextContent(text.replace(/\uFFFC/g, ""));
+    });
+    const rootEl = editor.getRootElement();
+    const flush = () => {
+      if (!pendingRef.current) return;
+      pendingRef.current = false;
+      editor.update(() => {
+        $getRoot()
+          .getAllTextNodes()
+          .forEach((n) => {
+            const t = n.getTextContent();
+            if (t.indexOf("\uFFFC") !== -1) {
+              n.setTextContent(t.replace(/\uFFFC/g, ""));
+            }
+          });
+      });
+    };
+    rootEl?.addEventListener("compositionend", flush);
+    return () => {
+      unregister();
+      rootEl?.removeEventListener("compositionend", flush);
+    };
+  }, [editor]);
+  return null;
+}
+
 // ── Markdown → HTML converter for paste ──────────────────────────────────────
 // Converts inline markdown markers (**bold**, *italic*, ~~strike~~, `code`,
 // ***bold+italic***) to HTML so $generateNodesFromDOM can create formatted
@@ -295,10 +368,31 @@ const escapeHtmlForPaste = (s: string): string =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
+// Word-boundary guards — WhatsApp treats markers as formatting only at token
+// edges, so `cust_id`, `report_api_url` or `a*b*c` inside a URL must stay
+// literal. Without this, pasting a URL containing `_x_` strips the
+// underscores and wraps the span in <em>, which then exports as `*x*`.
+const WB_LEFT = String.raw`(?<=^|[\s([{<'"‘“])`;
+const WB_RIGHT = String.raw`(?=$|[\s)\]}>'"’”.,!?;:])`;
+const markdownMarkerRegex = new RegExp(
+  "(" +
+    String.raw`(\x60\x60\x60[\s\S]*?\x60\x60\x60|\x60[^\x60]+\x60)` +
+    "|" + WB_LEFT + String.raw`\*\*\*\S(?:.*?\S)?\*\*\*` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`\*\*\S(?:.*?\S)?\*\*` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`\*\S(?:.*?\S)?\*` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`___\S(?:.*?\S)?___` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`__\S(?:.*?\S)?__` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`_\S(?:.*?\S)?_` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`~~\S(?:.*?\S)?~~` + WB_RIGHT +
+    "|" + WB_LEFT + String.raw`~\S(?:.*?\S)?~` + WB_RIGHT +
+  ")",
+  "g"
+);
+
 const markdownLineToHtml = (line: string): string => {
   if (!line) return "";
   // Regex order: longest markers first (*** before ** before *, ___ before __ before _, ~~ before ~)
-  const regex = /(```[\s\S]*?```|`[^`]+`|\*\*\*\S(?:.*?\S)?\*\*\*|\*\*\S(?:.*?\S)?\*\*|\*\S(?:.*?\S)?\*|___\S(?:.*?\S)?___|__\S(?:.*?\S)?__|_\S(?:.*?\S)?_|~~\S(?:.*?\S)?~~|~\S(?:.*?\S)?~)/g;
+  const regex = markdownMarkerRegex;
   const parts = line.split(regex);
   return parts
     .map((part) => {
@@ -474,7 +568,10 @@ function ExternalValueSyncPlugin({
     const syncKeyChanged = syncKey !== lastSyncKey.current;
     // Only import from props when the conversation changed OR the external
     // value differs from what the editor itself last emitted (e.g. draft restore).
-    if (syncKeyChanged || normalize(value) !== normalize(lastEmittedRef.current)) {
+    if (!syncKeyChanged && normalize(value) === normalize(lastEmittedRef.current)) {
+      return;
+    }
+    const doImport = () => {
       editor.update(() => {
         if (!value) {
           const root = $getRoot();
@@ -483,12 +580,25 @@ function ExternalValueSyncPlugin({
         } else {
           // shouldPreserveNewLines = true keeps blank lines between paragraphs
           // so spacing is preserved when editing/restoring drafts.
-          $convertFromMarkdownString(value, TRANSFORMERS, undefined, true);
+          $convertFromMarkdownString(value, BOUNDARY_TRANSFORMERS, undefined, true);
         }
       });
       lastSyncKey.current = syncKey;
       lastEmittedRef.current = value || "";
+    };
+    // A root.clear() + reimport destroys every DOM node — if it happens
+    // mid-IME-composition the session is aborted (keyboard drops, caret
+    // resets to 0). Defer the import until composition ends.
+    if (editor.isComposing()) {
+      const rootEl = editor.getRootElement();
+      const flush = () => {
+        rootEl?.removeEventListener("compositionend", flush);
+        doImport();
+      };
+      rootEl?.addEventListener("compositionend", flush);
+      return () => rootEl?.removeEventListener("compositionend", flush);
     }
+    doImport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, value, syncKey]);
 
@@ -564,6 +674,13 @@ const LexicalChatEditorComponent: React.FC<LexicalChatEditorProps> = ({
   // This avoids a SECOND $convertToMarkdownString call per keystroke.
   const lastEmittedRef = useRef("");
 
+  // On touch keyboards, MarkdownShortcutPlugin's space-triggered transforms
+  // (*x* , - , 1. , > , # ) replace the DOM node under the caret the instant
+  // the IME commits the word — Android drops the keyboard on the next key.
+  // Typed markers still render formatted in the sent message via
+  // formatChatText, so mobile loses nothing. Desktop keeps live conversion.
+  const isMobile = useIsMobile();
+
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <div className={`lexical-editor-container ${className || ""}`}>
@@ -577,13 +694,14 @@ const LexicalChatEditorComponent: React.FC<LexicalChatEditorProps> = ({
         <HistoryPlugin />
         <ListPlugin />
         <ClearEditorPlugin />
-        <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
+        {!isMobile && <MarkdownShortcutPlugin transformers={BOUNDARY_TRANSFORMERS} />}
         <EmojiPlugin />
         <MarkdownExportPlugin onChange={onChange} lastEmittedRef={lastEmittedRef} />
         <EditorRefPlugin editorRef={editorRef} />
         <SelectionTrackerPlugin selectionRef={selectionRef} />
         <EnterKeyPlugin onEnter={onKeyDown} submitOnEnter={submitOnEnter} />
         <OneTimeFormattingPlugin />
+        <ObjectReplacementCharPlugin />
         <PasteHandlerPlugin
           maxChars={maxChars}
           onPasteTextOverflow={onPasteTextOverflow}

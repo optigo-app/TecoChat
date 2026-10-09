@@ -447,6 +447,9 @@ The socket module appends `receiveEvent: "internal:group_updated"`.
 
 Notify all members that a group was deleted.
 
+> **Receive-only today** — there is no client emit function for this event;
+> the listener in `socket.ts` remains so the server can still push it.
+
 The socket module appends `receiveEvent: "internal:group_deleted"`.
 
 **Expected payload shape:**
@@ -668,6 +671,8 @@ The socket module appends `receiveEvent: "internal:group_permission"`.
 
 Request group info from the server.
 
+> **Receive-only today** — no client emit function exists.
+
 The socket module appends `receiveEvent: "internal:group_info_request"`.
 
 **Expected payload shape:**
@@ -685,6 +690,9 @@ The socket module appends `receiveEvent: "internal:group_info_request"`.
 ### 1.17 `internal:app_version_update`
 
 Broadcast the current app version to the server (and locally).
+
+> **Receive-only today** — no client emit function exists; version checks use
+> HTTP polling in `src/hooks/useVersionCheck.ts`.
 
 The socket module appends `receiveEvent: "internal:app_version_update"`
 and `version` from `localStorage["app_version_current"]`.
@@ -980,11 +988,12 @@ The server forwards the message to all recipients with the sender's info.
 | `internal:delete_message`     | `emitInternalMessageDelete` | useMessageActions             |
 | `internal:group_created`      | `emitGroupCreated`        | CreateGroupApi                  |
 | `internal:group_updated`      | `emitGroupUpdated`        | EditGroupApi                    |
-| `internal:group_deleted`      | `emitGroupDeleted`        | *(not yet called)*              |
 | `internal:member_added`       | `emitMemberAdded`         | AddGroupParticipantApi          |
 | `internal:member_removed`     | `emitMemberRemoved`       | RemoveMemberApi                 |
 | `internal:member_promoted`    | `emitMemberPromoted`      | AssignRoleApi                   |
 | `internal:member_demoted`     | `emitMemberDemoted`       | AssignRoleApi                   |
 | `internal:group_permission`   | `emitPermissionChanged`   | ChangeGroupPermissionApi        |
-| `internal:group_info_request` | `emitGroupInfoRequest`    | *(not yet called)*              |
-| `internal:app_version_update` | `emitAppVersionUpdate`    | *(not yet called)*              |
+
+> `internal:group_deleted`, `internal:group_info_request`, and
+> `internal:app_version_update` still have receive-side listeners in
+> `socket.ts` (the server can push them), but no client emit functions exist.

@@ -16,9 +16,23 @@ import {
 } from "@mui/material";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { Popover } from "@mui/material";
-import { Search, Calendar } from "lucide-react";
+import {
+  Search,
+  Calendar,
+  Star,
+  CornerUpLeft,
+  Forward,
+  CircleMinus,
+  Check,
+  CheckCheck,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  FileText,
+  File,
+} from "lucide-react";
 import { formatDateTime } from "../../utils/dateUtils";
 import { renderMessageText } from "../../utils/messageTextRenderer";
+import { normalizeMessageType } from "../CustomerLists/CustomerListFunc";
 
 interface SearchMessage {
   MessageId?: string | number;
@@ -279,6 +293,69 @@ const SearchMessages = ({
           <List className="search-results-list" ref={listRef}>
             {searchResults.map((msg, index) => {
               const isHighlighted = highlightedIndex === index;
+
+              // ── Message flags (WhatsApp-style badges) ──────────────────
+              const isDeleted = Number(msg.IsDeletedForEveryone) === 1;
+              const isOutgoing = msg.Direction === 1;
+              const isStarred = Number(msg.IsStar) === 1;
+              const isReply = !!msg.ContextId || Number(msg.ContextType) === 2;
+              const isForwarded =
+                !!msg.ForwardedFrom || Number(msg.IsForwarded) === 1;
+              const isEdited = Number(msg.IsEdited) === 1;
+              const mType = normalizeMessageType(
+                (msg.MessageType as string | number) ?? "text"
+              );
+              const status = Number(msg.MessageStatus ?? msg.Status ?? 0);
+
+              // Media label — same wording as the chat-list preview
+              const mediaFileName =
+                (msg.FileName as string) ||
+                ((msg.mediaItems as Array<{ filename?: string }> | undefined)?.[0]
+                  ?.filename as string) ||
+                "";
+              const MediaIcon =
+                mType === "image"
+                  ? ImageIcon
+                  : mType === "video"
+                  ? VideoIcon
+                  : mType === "document"
+                  ? FileText
+                  : mType === "file"
+                  ? File
+                  : null;
+              const mediaLabel =
+                mType === "image"
+                  ? "Photo"
+                  : mType === "video"
+                  ? "Video"
+                  : mType === "document" || mType === "file"
+                  ? mediaFileName || "Document"
+                  : "";
+
+              // Reactions — JSON string or array
+              const reactions = (() => {
+                const raw = msg.ReactionEmojis;
+                const arr = Array.isArray(raw)
+                  ? raw
+                  : typeof raw === "string"
+                  ? (() => {
+                      try {
+                        const p = JSON.parse(raw);
+                        return Array.isArray(p) ? p : [];
+                      } catch {
+                        return [];
+                      }
+                    })()
+                  : [];
+                return arr
+                  .map(
+                    (r: { Emoji?: string; Reaction?: string }) =>
+                      r.Emoji || r.Reaction || ""
+                  )
+                  .filter(Boolean)
+                  .slice(0, 4);
+              })();
+
               return (
                 <ListItem
                   key={msg.MessageId || msg.id || index}
@@ -294,6 +371,10 @@ const SearchMessages = ({
                     backgroundColor: isHighlighted
                       ? alpha(theme.palette.primary.main, 0.08)
                       : "var(--color-surface-elevated)",
+                    // Same gold gradient the message bubble gets when starred
+                    backgroundImage: isStarred
+                      ? "radial-gradient(circle at top right, rgba(255, 215, 0, 0.22) 0%, rgba(255, 165, 0, 0.1) 30%, transparent 60%)"
+                      : "none",
                     border: "none",
                     boxShadow: isHighlighted
                       ? "0 4px 16px rgba(0, 0, 0, 0.2)"
@@ -306,26 +387,132 @@ const SearchMessages = ({
                     },
                   }}
                 >
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  {/* Message Content - Primary Focus */}
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                    <Typography
-                      variant="body2"
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {/* Forwarded / reply context chips */}
+                  {(isForwarded || isReply) && (
+                    <Box
                       sx={{
-                        color: "var(--color-title)",
-                        fontSize: "0.925rem",
-                        lineHeight: 1.5,
-                        fontWeight: 400,
-                        display: "-webkit-box",
-                        WebkitLineClamp: 4,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                        wordBreak: "break-word",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1.2,
+                        color: "var(--color-text-secondary)",
                       }}
                     >
-                      {renderMessageText(msg.Message || "", undefined, localQuery)}
-                    </Typography>
+                      {isForwarded && (
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            fontSize: "0.7rem",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          <Forward size={12} />
+                          <Typography variant="caption" sx={{ fontSize: "0.7rem", fontStyle: "italic" }}>
+                            Forwarded
+                          </Typography>
+                        </Box>
+                      )}
+                      {isReply && (
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            fontSize: "0.7rem",
+                          }}
+                        >
+                          <CornerUpLeft size={12} />
+                          <Typography variant="caption" sx={{ fontSize: "0.7rem" }}>
+                            Reply{msg.ReplyToSenderName ? ` to ${msg.ReplyToSenderName}` : ""}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Message Content - Primary Focus */}
+                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, minWidth: 0 }}>
+                    {isDeleted ? (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "var(--color-text-secondary)",
+                          fontSize: "0.925rem",
+                          fontStyle: "italic",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.75,
+                        }}
+                      >
+                        <CircleMinus size={15} />
+                        This message was deleted
+                      </Typography>
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "var(--color-title)",
+                          fontSize: "0.925rem",
+                          lineHeight: 1.5,
+                          fontWeight: 400,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                          wordBreak: "break-word",
+                          minWidth: 0,
+                        }}
+                      >
+                        {MediaIcon && (
+                          <Box
+                            component="span"
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 0.5,
+                              mr: 0.5,
+                              verticalAlign: "middle",
+                              color: "var(--color-text-secondary)",
+                            }}
+                          >
+                            <MediaIcon size={14} />
+                            {mediaLabel}
+                            {msg.Message ? " · " : ""}
+                          </Box>
+                        )}
+                        {msg.Message
+                          ? renderMessageText(msg.Message, undefined, localQuery, {
+                              linkify: false,
+                            })
+                          : ""}
+                      </Typography>
+                    )}
                   </Box>
+
+                  {/* Reactions */}
+                  {reactions.length > 0 && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                      {reactions.map((emoji: string, i: number) => (
+                        <Box
+                          key={i}
+                          component="span"
+                          sx={{
+                            fontSize: "0.85rem",
+                            lineHeight: 1,
+                            px: 0.6,
+                            py: 0.2,
+                            borderRadius: "10px",
+                            backgroundColor: "var(--color-wa-surface-3)",
+                            border: "1px solid var(--color-sidebar-border)",
+                          }}
+                        >
+                          {emoji}
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
 
                   {/* Footer Context - Secondary Info */}
                   <Box
@@ -333,7 +520,7 @@ const SearchMessages = ({
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      pt: 1.2,
+                      pt: 1,
                       borderTop: "1px solid var(--color-sidebar-border)",
                     }}
                   >
@@ -345,6 +532,10 @@ const SearchMessages = ({
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
                         color: "var(--color-text-secondary)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        minWidth: 0,
                       }}
                     >
                       {msg.SenderInfo || (msg.Direction === 1 ? "Me" : "System")}
@@ -354,10 +545,27 @@ const SearchMessages = ({
                       sx={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 1,
+                        gap: 0.75,
                         color: "var(--color-text-secondary)",
+                        flexShrink: 0,
                       }}
                     >
+                      {isEdited && (
+                        <Typography
+                          variant="caption"
+                          sx={{ fontSize: "0.7rem", fontStyle: "italic" }}
+                        >
+                          Edited
+                        </Typography>
+                      )}
+                      {isStarred && (
+                        <Star
+                          size={12}
+                          fill="#FFD700"
+                          color="#FFD700"
+                          style={{ flexShrink: 0 }}
+                        />
+                      )}
                       <Typography variant="caption" sx={{ fontSize: "0.725rem" }}>
                         {formatDate(msg.DateTime)}
                       </Typography>
@@ -365,6 +573,17 @@ const SearchMessages = ({
                       <Typography variant="caption" sx={{ fontSize: "0.725rem" }}>
                         {formatTime(msg.DateTime)}
                       </Typography>
+                      {isOutgoing &&
+                        (status >= 2 ? (
+                          <CheckCheck
+                            size={14}
+                            style={{
+                              color: status === 3 ? "#1F8FFF" : "var(--color-text-secondary)",
+                            }}
+                          />
+                        ) : (
+                          <Check size={14} />
+                        ))}
                     </Box>
                   </Box>
                 </Box>

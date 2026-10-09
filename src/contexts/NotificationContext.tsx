@@ -8,6 +8,7 @@
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { showToast } from "../utils/toastHelper";
 import { playNotificationSound, unlockAudio } from "../utils/sound";
+import { markOpenAtLatest } from "../utils/openAtLatest";
 
 const NOTIFICATION_ICON = "/icons/brand/tecoChat_logo.png";
 
@@ -101,6 +102,7 @@ export const NotificationProvider = ({
 
     const onSwMessage = (e: MessageEvent) => {
       if (e.data?.type === "SELECT_CONVERSATION" && e.data.conversationId) {
+        markOpenAtLatest(e.data.conversationId);
         window.dispatchEvent(
           new CustomEvent("SELECT_CONVERSATION", {
             detail: { conversationId: e.data.conversationId },

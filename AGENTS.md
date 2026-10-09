@@ -151,10 +151,9 @@ the old CRA app must follow these rules:
 
 ## Auth Flow (client-side, preserved from CRA)
 
-- `src/context/LoginData.tsx` — `LoginData` provider + `useLoginContext()`.
+- `src/contexts/LoginData.tsx` — `LoginData` provider + `useLoginContext()`.
   Session in `sessionStorage`; remember-me in cookies (`userData`, `token`).
 - `src/components/LoginPage/` — login form (company code → token → SHA1 login).
-- `src/components/LoginExists/` — "already logged in elsewhere" page.
 - `src/components/AuthGuard.tsx` — client-side session gate for protected
   routes (mirrors old `App.js` session check).
 - `proxy.ts` — optimistic redirect: sends remember-me users away from

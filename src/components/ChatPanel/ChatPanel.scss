@@ -19,6 +19,18 @@
     min-width: 0;
     height: 100vh; // fallback
     height: 100dvh;
+    // iOS Safari: the keyboard shrinks only the *visual* viewport (the
+    // layout viewport and 100dvh stay full height) and the page is pushed
+    // up, hiding the header. When the keyboard is open, pin the panel to
+    // the visible area: height = visualViewport.height (--vvh) shifted by
+    // visualViewport.offsetTop (--vvo). Android resizes the layout
+    // viewport via interactive-widget so this is a no-op there.
+    @media (max-width: 768px) {
+        [data-keyboard="open"] & {
+            height: var(--vvh, 100dvh);
+            transform: translateY(var(--vvo, 0px));
+        }
+    }
     width: 100%;
     background:
         linear-gradient(var(--chat-bg-overlay), var(--chat-bg-overlay)),
@@ -659,7 +671,7 @@
     // multiline — they pin to the last text line instead of floating
     // at the vertical middle of a tall input.
     align-items: flex-end;
-    gap: 4px;
+    gap: 0;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 20px;
@@ -701,7 +713,7 @@
 
 .chat-input-btn {
     color: $text2ndColor;
-    padding: 8px;
+    padding: 6px;
     border-radius: 50%;
     transition: all 0.2s ease;
     flex-shrink: 0;

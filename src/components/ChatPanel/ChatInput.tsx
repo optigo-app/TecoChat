@@ -5,6 +5,7 @@ import { IconButton, Tooltip, Box, Typography, useTheme, alpha } from "@mui/mate
 import { Paperclip, Smile, SendHorizontal, X } from "lucide-react";
 import { renderMessageText } from "../../utils/messageTextRenderer";
 import { normalizeMessageText, getSoftAvatarColors } from "../../utils/globalFunc";
+import { showToast } from "../../utils/toastHelper";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import {
   CLEAR_EDITOR_COMMAND,
@@ -105,6 +106,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   const emojiButtonRef = useRef<HTMLButtonElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const editorWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const charCount = charBucket;
@@ -313,10 +315,24 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   );
 
   // ── Formatting toolbar ──────────────────────────────────────────────────────
+  // selectionchange fires for EVERY caret move on mobile — including the
+  // IME's composing (autocorrect-underlined) text, which reads as a
+  // non-collapsed selection and was opening the toolbar while typing.
+  // Guards: skip while the editor is composing, and only show after the
+  // selection has been stable for ~200ms (transient IME ranges die fast).
+  const toolbarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSelectionChange = useCallback(() => {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) {
+    const isCoarse = window.matchMedia("(pointer: coarse)").matches;
+    const hide = () => {
+      if (toolbarTimerRef.current) {
+        clearTimeout(toolbarTimerRef.current);
+        toolbarTimerRef.current = null;
+      }
       setShowFormattingToolbar(false);
+    };
+    if (!sel || sel.isCollapsed || editorRef.current?.isComposing()) {
+      hide();
       return;
     }
 
@@ -326,22 +342,54 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // Ensure the selection is within the lexical editor (matches old code)
     const editorContainer = document.querySelector(".lexical-editor-container");
     if (!editorContainer || !editorContainer.contains(range.startContainer)) {
-      setShowFormattingToolbar(false);
+      hide();
       return;
     }
 
-    const rect = range.getBoundingClientRect();
-    setToolbarPosition({
-      top: rect.top - 50,
-      left: rect.left + rect.width / 2,
-    });
-    setShowFormattingToolbar(true);
+    if (toolbarTimerRef.current) clearTimeout(toolbarTimerRef.current);
+    toolbarTimerRef.current = setTimeout(() => {
+      toolbarTimerRef.current = null;
+      // Re-verify: the composing selection may have collapsed in the meantime
+      const s = window.getSelection();
+      if (!s || s.isCollapsed || editorRef.current?.isComposing()) return;
+      if (isCoarse) {
+        // Mobile: the OS native selection menu sits at the selection — anchor
+        // our toolbar above the input bar instead so the two never overlap.
+        const bar =
+          document.querySelector(".chat-input-container") || editorContainer;
+        const barRect = bar.getBoundingClientRect();
+        setToolbarPosition({
+          top: barRect.top - 56,
+          left: barRect.left + barRect.width / 2,
+        });
+      } else {
+        const rect = range.getBoundingClientRect();
+        setToolbarPosition({
+          top: rect.top - 50,
+          left: rect.left + rect.width / 2,
+        });
+      }
+      setShowFormattingToolbar(true);
+    }, 200);
   }, []);
+
+  // ── Mobile selection → formatting toolbar ─────────────────────────────────
+  // Touch selection (long-press + drag handles) fires neither mouseup nor
+  // keyup — the document-level selectionchange event is the only reliable
+  // signal on iOS Safari, Android Chrome, and every other mobile browser.
+  // handleSelectionChange already filters to selections inside the editor.
+  useEffect(() => {
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      if (toolbarTimerRef.current) clearTimeout(toolbarTimerRef.current);
+    };
+  }, [handleSelectionChange]);
 
   // ── Close formatting toolbar on outside click ──────────────────────────────
   useEffect(() => {
     if (!showFormattingToolbar) return;
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: Event) => {
       const target = e.target as Node;
       // Don't close if clicking inside the toolbar itself
       const toolbar = document.querySelector(".formatting-toolbar");
@@ -352,7 +400,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       setShowFormattingToolbar(false);
     };
     document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
+    // touchstart needed so tapping elsewhere on mobile dismisses the toolbar
+    document.addEventListener("touchstart", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
   }, [showFormattingToolbar]);
 
   // ── Attachment menu ──────────────────────────────────────────────────────────
@@ -384,15 +437,57 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     []
   );
 
+  // Camera capture — opens the OS camera app via <input capture>. No
+  // getUserMedia/permission flow needed (and getUserMedia is unavailable in
+  // older iOS WKWebViews anyway). Must stay inside the tap gesture — a
+  // deferred .click() gets blocked by the browser as non-user-initiated.
+  const openCameraPicker = useCallback(() => {
+    const input = cameraInputRef.current;
+    if (!input) return;
+    // In non-secure contexts (plain HTTP or embedded WebViews without
+    // onShowFileChooser) the camera can fail silently — warn the user
+    // instead of looking broken.
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      showToast("Camera requires a secure (HTTPS) connection.", "warning");
+      return;
+    }
+    input.click();
+  }, []);
+
   const handleFileChangeInternal = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (onFileChange) {
         onFileChange(e);
       }
       setShowAttach(false);
+      // Reset so picking/capturing the same file twice still fires change
+      e.target.value = "";
+      // Drop focus — otherwise the browser scrolls the page to reveal the
+      // focused (hidden) input each time the picker closes.
+      e.target.blur();
     },
     [onFileChange]
   );
+
+  // The 'cancel' event fires when the picker dismisses without a selection.
+  // The input keeps focus afterwards and the browser scrolls it into view —
+  // with a hidden input that nudges the page up slightly each time. Blur +
+  // reset so nothing accumulates.
+  useEffect(() => {
+    const reset = (e: Event) => {
+      const el = e.target as HTMLInputElement;
+      el.value = "";
+      el.blur();
+    };
+    const fileEl = fileInputRef.current;
+    const camEl = cameraInputRef.current;
+    fileEl?.addEventListener("cancel", reset);
+    camEl?.addEventListener("cancel", reset);
+    return () => {
+      fileEl?.removeEventListener("cancel", reset);
+      camEl?.removeEventListener("cancel", reset);
+    };
+  }, []);
 
   // ── Group restriction notice ────────────────────────────────────────────────
   if (inputHidden) {
@@ -656,7 +751,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       )}
 
       <div className="chat-input-container">
-        {/* Attachment button */}
+        {/* Attachment button — hidden while replying: the backend doesn't
+            support media in reply messages yet, so a reply can only be text. */}
+        {!replyToMessage && (
         <Tooltip title="Attach" arrow>
           <span>
             <IconButton
@@ -670,8 +767,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             </IconButton>
           </span>
         </Tooltip>
+        )}
 
-        {/* Emoji button */}
+        {/* Emoji button — hidden on touch devices (mobile + tablet): the
+            device keyboard already has an emoji picker. Desktop keeps it. */}
+        {!window.matchMedia("(pointer: coarse)").matches && (
         <Tooltip title="Emoji" arrow>
           <span>
             <IconButton
@@ -696,6 +796,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             </IconButton>
           </span>
         </Tooltip>
+        )}
 
         <EmojiPickerPopper
           open={showEmoji}
@@ -713,14 +814,57 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             handleAttachMenuClose();
             openFilePicker(e, params);
           }}
+          onCameraPick={() => {
+            handleAttachMenuClose();
+            openCameraPicker();
+          }}
         />
 
+        {/* Hidden but rendered. position:fixed pins it to the viewport so
+            the browser's "scroll focused input into view" on picker close
+            becomes a no-op — absolute inside the scrolling page caused a
+            visible upward nudge every time the picker closed. */}
         <input
           type="file"
           ref={fileInputRef}
-          style={{ display: "none" }}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: "none",
+          }}
+          tabIndex={-1}
           onChange={handleFileChangeInternal}
           multiple
+        />
+
+        {/* Camera capture — capture="environment" launches the OS camera app
+            on iOS/Android; ignored on desktop. No `multiple` (capture is
+            single-shot). accept must be a SINGLE media group — combined
+            "image/*,video/*" makes Android 14+ Chrome fall back to the file
+            picker instead of opening the camera.
+            IMPORTANT: not display:none — iOS Safari ignores capture on
+            non-rendered inputs and shows the Take Photo/Library/Browse
+            sheet instead. Keep it in the render tree, just invisible. */}
+        <input
+          type="file"
+          ref={cameraInputRef}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: "none",
+          }}
+          tabIndex={-1}
+          onChange={handleFileChangeInternal}
+          accept="image/*"
+          capture="environment"
         />
 
         {/* Lexical rich text editor with formatting toolbar */}
@@ -729,6 +873,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           ref={editorWrapperRef}
           onMouseUp={handleSelectionChange}
           onKeyUp={handleSelectionChange}
+          onTouchEnd={handleSelectionChange}
         >
           {showFormattingToolbar && (
             <FormattingToolbar
@@ -744,6 +889,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             editorRef={editorRef}
             selectionRef={lastSelectionRef}
             syncKey={syncKey}
+            // On touch keyboards the return key is a newline (WhatsApp
+            // behavior) — send happens only via the send button. Desktop
+            // keeps Enter = send, Shift+Enter = newline.
+            submitOnEnter={!window.matchMedia("(pointer: coarse)").matches}
             maxChars={MAX_CHARS}
             onPasteTextOverflow={handlePasteOverflow}
             onPasteFiles={handlePasteFiles}

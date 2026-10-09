@@ -140,6 +140,30 @@ export function notifyOtherTabs(info: VersionInfo): void {
   setStoredVersion(info.version);
 }
 
+// ── Hard reload ───────────────────────────────────────────────────────────────
+
+// Clears CacheStorage entries and nudges the service worker to update, then
+// reloads with a cache-busting query param so the HTML document itself can't
+// be served from HTTP cache. Used when applying a new build — a plain
+// location.reload() can still serve the stale HTML shell on mobile/PWA.
+export async function hardReloadWithCacheBust(): Promise<void> {
+  try {
+    if (typeof window !== "undefined" && "caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.update().catch(() => undefined)));
+    }
+  } catch {
+    /* proceed with reload regardless */
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("_cb", Date.now().toString());
+  window.location.replace(url.toString());
+}
+
 // ── Service worker cleanup ────────────────────────────────────────────────────
 
 // Only touch service workers and caches that belong to this app.

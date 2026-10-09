@@ -101,6 +101,7 @@ export default function MediaPreviewCaptionBar({
         ref={editorWrapperRef}
         onMouseUp={onSelectionChange}
         onKeyUp={onSelectionChange}
+        onTouchEnd={onSelectionChange}
         style={{
           flex: 1,
           display: "flex",

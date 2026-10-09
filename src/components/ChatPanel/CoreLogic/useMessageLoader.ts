@@ -27,9 +27,16 @@ import {
 } from "./messageHelpers";
 import { getMessagesBefore, getMessagesAfter, dedupeConversationCache } from "../../../db/messageCache";
 import { setSyncState } from "../../../db/outboxCache";
+import { consumeOpenAtLatest } from "../../../utils/openAtLatest";
 import type { AuthData } from "../../../contexts/LoginData";
 import type { ChatMessage } from "../../../types/message";
 import type { ConversationListEntry } from "../../../types/conversation";
+
+// Background history backfill — how many messages we warm into IndexedDB
+// per opened conversation, and the fetch page size for the backfill calls.
+const BACKFILL_PAGE_SIZE = 100;
+const BACKFILL_TARGET = 1000;
+const BACKFILL_DELAY_MS = 150;
 
 interface UseMessageLoaderProps {
   selectedCustomer: ConversationListEntry | null;
@@ -68,6 +75,7 @@ export function useMessageLoader({
   const loadNewerMessagesRef = useRef<() => void>(() => {});
   const isStarFilterRef = useRef(isStarFilter);
   const hasMoreAfterRef = useRef(msgState.hasMoreAfter);
+  const backfillAbortRef = useRef<AbortController | null>(null);
 
   // Abort all in-flight requests on unmount so older/newer/prefetch
   // requests don't continue after the component is gone.
@@ -76,6 +84,7 @@ export function useMessageLoader({
       initAbortRef.current?.abort();
       olderAbortRef.current?.abort();
       newerAbortRef.current?.abort();
+      backfillAbortRef.current?.abort();
     };
   }, []);
 
@@ -164,6 +173,80 @@ export function useMessageLoader({
     [auth, pageSize, dispatchMsg, selectedCustomer?.ConversationId]
   );
 
+  // ── Background history backfill (WhatsApp-style) ─────────────────────────
+  // After the initial page merges, silently walk BEFORE pages and write them
+  // to IndexedDB ONLY — nothing is rendered and no UI cursors are touched.
+  // Once the cache is warm, scroll-up pagination paints older rows instantly
+  // from IDB (loadOlderMessages is cache-first), so the API call becomes a
+  // silent reconcile instead of a visible wait.
+  //
+  // - Sequential pages of BACKFILL_PAGE_SIZE until BACKFILL_TARGET rows are
+  //   cached or history ends — larger pages = fewer round-trips.
+  // - Aborts/exits on conversation switch (generation check), unmount, or a
+  //   newer backfill starting.
+  // - Skipped under star filter — a filtered subset written to IDB would
+  //   punch holes in the normal history when painted from cache.
+  const startHistoryBackfill = useCallback(
+    (
+      convId: string | number,
+      beforeCursor: number | null,
+      hasMoreBefore: boolean,
+      generation: number,
+      starFilter: 0 | 1
+    ) => {
+      if (!auth || starFilter !== 0 || !hasMoreBefore || beforeCursor == null)
+        return;
+      backfillAbortRef.current?.abort();
+      const controller = new AbortController();
+      backfillAbortRef.current = controller;
+
+      void (async () => {
+        try {
+          let cursor: number | null = beforeCursor;
+          let fetched = 0;
+          while (
+            cursor != null &&
+            fetched < BACKFILL_TARGET &&
+            generation === loadGenerationRef.current &&
+            String(convId) === String(selectedCustomer?.ConversationId) &&
+            !controller.signal.aborted
+          ) {
+            const resp = await conversationViewCursor(
+              convId,
+              2 as CursorDirection, // BEFORE
+              cursor,
+              BACKFILL_PAGE_SIZE,
+              auth,
+              controller.signal,
+              undefined,
+              0 // never backfill a starred-filtered subset
+            );
+            const msgs = resp.data as ChatMessage[];
+            if (msgs.length > 0) {
+              await saveConversationToCache(convId, msgs, auth).catch(() => {});
+              fetched += msgs.length;
+            }
+            const next = resp.beforeCursor;
+            if (
+              msgs.length === 0 ||
+              !resp.hasMoreBefore ||
+              next == null ||
+              next === cursor
+            )
+              break;
+            cursor = next;
+            // Breathe between pages — keep the main thread and network free
+            // for actual user interaction.
+            await new Promise((r) => setTimeout(r, BACKFILL_DELAY_MS));
+          }
+        } catch {
+          /* best-effort — backfill failure never affects the UI */
+        }
+      })();
+    },
+    [auth, selectedCustomer?.ConversationId]
+  );
+
   const loadConversation = useCallback(
     async (page = 1, reset = false, ignoreCache = false, cursorId: number = 0, starOverride?: 0 | 1) => {
       const convId = selectedCustomer?.ConversationId;
@@ -200,7 +283,11 @@ export function useMessageLoader({
           const cached = await getConversationFromCache(
             selectedId,
             auth,
-            Math.max(initialPageSize, 50)
+            // Paint a deep cached window on open — WhatsApp-style: history
+            // lives in IndexedDB (warm via preload + background backfill), so
+            // opening a chat rarely waits on the network. content-visibility
+            // keeps a large row count cheap to render.
+            Math.max(initialPageSize, 200)
           );
           if (
             cached.length > 0 &&
@@ -277,6 +364,13 @@ export function useMessageLoader({
               /* ignore */
             });
           }
+          startHistoryBackfill(
+            selectedId,
+            fallbackResponse.beforeCursor,
+            fallbackResponse.hasMoreBefore,
+            generation,
+            effectiveStar
+          );
           return;
         }
 
@@ -310,7 +404,14 @@ export function useMessageLoader({
         // render and the initial scroll effect runs. Otherwise the effect
         // sees null anchor, scrolls to bottom, and sets didInitialScroll=true
         // before the anchor arrives.
-        const unreadCount = Number(selectedCustomer?.UnreadCount) || Number(selectedCustomer?.UnReadMsgCount) || 0;
+        // Person-open intents (mention click, member "Message", notification
+        // tap) land on the latest message — a stale/large UnreadCount on the
+        // cached list entry would otherwise anchor the deep cache window
+        // hundreds of rows above the bottom.
+        const openAtLatest = reset && consumeOpenAtLatest(selectedId);
+        const unreadCount = openAtLatest
+          ? 0
+          : Number(selectedCustomer?.UnreadCount) || Number(selectedCustomer?.UnReadMsgCount) || 0;
         if (unreadCount > 0 && merged.length > 0) {
           if (unreadCount >= merged.length) {
             // All loaded messages are unread — anchor is the first (oldest) message.
@@ -380,6 +481,17 @@ export function useMessageLoader({
         if (response.hasMoreBefore && response.beforeCursor != null) {
           prefetchOlderPage(selectedId, response.beforeCursor, generation, effectiveStar);
         }
+
+        // WhatsApp-style history sync: keep filling IndexedDB with older
+        // pages in the background so deep scrolling is served from cache
+        // instead of waiting on the network.
+        startHistoryBackfill(
+          selectedId,
+          response.beforeCursor,
+          response.hasMoreBefore,
+          generation,
+          effectiveStar
+        );
       } catch (err) {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("loadConversation error:", err);
@@ -391,7 +503,7 @@ export function useMessageLoader({
         }
       }
     },
-    [selectedCustomer?.ConversationId, auth, initialPageSize, dispatchMsg, prefetchOlderPage]
+    [selectedCustomer?.ConversationId, auth, initialPageSize, dispatchMsg, prefetchOlderPage, startHistoryBackfill]
   );
 
   // ── Load older messages (scroll up, Direction 2 = BEFORE) ────────────────

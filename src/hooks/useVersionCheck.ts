@@ -22,6 +22,7 @@ import {
   onCrossTabVersionNotification,
   notifyOtherTabs,
   unregisterStaleServiceWorkers,
+  hardReloadWithCacheBust,
 } from "../utils/versionManager";
 import { addAppVersionUpdateHandler } from "../socket";
 
@@ -108,7 +109,9 @@ export function useVersionCheck(): VersionCheckResult {
   }, [serverVersion]);
 
   const applyUpdate = useCallback(() => {
-    window.location.reload();
+    // Hard reload: clear CacheStorage + cache-bust the document URL so the
+    // device can't serve the stale build (plain reload() can keep old HTML).
+    hardReloadWithCacheBust();
   }, []);
 
   // ── Effects ─────────────────────────────────────────────────────────────────

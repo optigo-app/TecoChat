@@ -1,10 +1,9 @@
 "use client";
 
 import { useRef, useState, useLayoutEffect } from "react";
-import { alpha, Skeleton, Popover, useTheme } from "@mui/material";
-import { ChevronLeft, ChevronRight, FileText, Trash2, Info } from "lucide-react";
+import { alpha, Skeleton, useTheme } from "@mui/material";
+import { ChevronLeft, ChevronRight, FileText, Trash2 } from "lucide-react";
 import EmojiPickerPopper from "../../input/EmojiPickerPopper";
-import { KEYBOARD_SHORTCUTS } from "./constants";
 import type { MediaFileItem, ImageEditState, ToolMode, TextElement, CropRect, FilterType } from "./types";
 import { getFilterCssString } from "./constants";
 
@@ -128,7 +127,6 @@ export default function MediaPreviewStage({
   const theme = useTheme();
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [textEmojiAnchorEl, setTextEmojiAnchorEl] = useState<HTMLElement | null>(null);
-  const [infoAnchorEl, setInfoAnchorEl] = useState<HTMLElement | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const textMeasureRef = useRef<HTMLSpanElement | null>(null);
   const blurTimeoutRef = useRef<number | null>(null);
@@ -240,96 +238,6 @@ export default function MediaPreviewStage({
           <ChevronRight size={24} />
         </button>
       )}
-
-      {/* Info icon — top right, shows keyboard shortcuts on hover */}
-      <button
-        onClick={(e) => setInfoAnchorEl(e.currentTarget)}
-        aria-label="Keyboard shortcuts"
-        style={{
-          position: "absolute",
-          right: 16,
-          top: 16,
-          width: 36,
-          height: 36,
-          borderRadius: "50%",
-          border: `1px solid ${borderColor}`,
-          background: isDark ? "rgba(30,30,42,0.85)" : "rgba(255,255,255,0.85)",
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
-          color: subtitleColor,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          zIndex: 30,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
-          transition: "all 0.2s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = "scale(1.1)";
-          e.currentTarget.style.color = theme.palette.primary.main;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = "scale(1)";
-          e.currentTarget.style.color = subtitleColor;
-        }}
-      >
-        <Info size={18} />
-      </button>
-      <Popover
-        open={Boolean(infoAnchorEl)}
-        anchorEl={infoAnchorEl}
-        onClose={() => setInfoAnchorEl(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{
-          paper: {
-            sx: {
-              borderRadius: "14px",
-              p: 1.5,
-              bgcolor: isDark ? "rgba(26,26,38,0.98)" : "#fff",
-              border: `1px solid ${borderColor}`,
-              boxShadow: "0 12px 36px rgba(0,0,0,0.28)",
-              maxWidth: 320,
-            },
-          },
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700, color: titleColor, marginBottom: 10 }}>
-          <Info size={18} color={theme.palette.primary.main} />
-          Keyboard Shortcuts
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {KEYBOARD_SHORTCUTS.map((sc) => (
-            <div
-              key={sc.key}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "5px 10px",
-                borderRadius: 8,
-                background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-              }}
-            >
-              <span style={{ fontSize: 12, color: subtitleColor }}>{sc.desc}</span>
-              <span
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: "2px 7px",
-                  borderRadius: 5,
-                  background: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
-                  color: titleColor,
-                }}
-              >
-                {sc.key}
-              </span>
-            </div>
-          ))}
-        </div>
-      </Popover>
 
       {/* Stage Container */}
       <div

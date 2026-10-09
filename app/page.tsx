@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { Box } from "@mui/material";
 import { AuthGuard } from "@/src/components/AuthGuard";
 import { AppLayout } from "@/src/components/AppLayout/AppLayout";
-import { CustomerLists } from "@/src/components/CustomerLists/CustomerLists";
-import { ChatPanel } from "@/src/components/ChatPanel/ChatPanel";
-import ConfirmationDialog from "@/src/components/ReusableComponent/ConfirmationDialog";
 import { NotificationPermissionModal } from "@/src/components/ReusableComponent/NotificationPermissionModal";
 import UpdateNotification from "@/src/components/UpdateNotification/UpdateNotification";
 import { getConversations } from "@/src/db/conversationCache";
@@ -16,6 +14,15 @@ import { useVersionCheck } from "@/src/hooks/useVersionCheck";
 import { useServiceRetry } from "@/src/hooks/useServiceRetry";
 import { useIsMobile } from "@/src/hooks/useIsMobile";
 import type { ConversationListEntry } from "@/src/types/conversation";
+
+// Code-split the heavy chat panels — they fetch as separate chunks after
+// hydration instead of bloating the initial page bundle.
+const CustomerLists = dynamic(
+  () => import("@/src/components/CustomerLists/CustomerLists").then((m) => m.CustomerLists)
+);
+const ChatPanel = dynamic(
+  () => import("@/src/components/ChatPanel/ChatPanel").then((m) => m.ChatPanel)
+);
 
 function HomeContent() {
   const { auth } = useLoginContext();
@@ -92,8 +99,6 @@ function HomeContent() {
   }, [selectedCustomer]);
 
   // ── Mobile back-button navigation ─────────────────────────────────────────
-  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
-
   useEffect(() => {
     if (!isMobile) return;
     if (!history.state?.tecochat) {
@@ -126,14 +131,9 @@ function HomeContent() {
       if (st === "overlay") {
         // Overlay already closed via UI — skip the stale history entry.
         history.back();
-        return;
       }
-      if (st === "root") {
-        // Back on the root screen — ask before exiting the app.
-        setExitConfirmOpen(true);
-        // Re-push the sentinel so cancelling keeps back interception working.
-        history.pushState({ tecochat: "list" }, "");
-      }
+      // st === "root": nothing to intercept — let the next back press exit
+      // the app naturally (programmatic exit doesn't work in a PWA anyway).
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -161,12 +161,6 @@ function HomeContent() {
       setSelectedCustomer(null);
     }
   }, [isMobile]);
-
-  const handleExitConfirm = useCallback(() => {
-    setExitConfirmOpen(false);
-    // Pop the re-pushed "list" + "root" sentinel so the app actually exits.
-    history.go(-2);
-  }, []);
 
   // ── Service down/up events ──────────────────────────────────────────────────
   // When SERVICE_DOWN fires, re-check the cache before triggering the maintenance
@@ -365,17 +359,6 @@ function HomeContent() {
 
       {/* Notification permission guide modal */}
       <NotificationPermissionModal />
-
-      {/* Exit confirmation — shown when back is pressed on the root screen */}
-      <ConfirmationDialog
-        isOpen={exitConfirmOpen}
-        onClose={() => setExitConfirmOpen(false)}
-        onConfirm={handleExitConfirm}
-        title="Exit TecoChat?"
-        description="Are you sure you want to exit the app?"
-        confirmText="Exit"
-        cancelText="Stay"
-      />
 
       {serviceDown && !hasCachedData && cacheCheckDone && (
         <Box

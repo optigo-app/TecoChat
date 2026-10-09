@@ -148,9 +148,16 @@ export const MentionListContent: React.FC<MentionListContentProps> = ({
 
 const usePaperSx = () => {
   const theme = useTheme();
+  const isCoarse =
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse)").matches;
   return {
-    width: 320,
-    maxHeight: 400,
+    // Mobile (keyboard open): near-full-width like WhatsApp's mention list,
+    // shorter max height so it fits in the visual viewport above the
+    // keyboard. Desktop: 320px floating card.
+    width: isCoarse ? "calc(100vw - 32px)" : 320,
+    maxWidth: isCoarse ? "calc(100vw - 32px)" : 320,
+    maxHeight: isCoarse ? "min(300px, 45vh)" : 400,
     overflowY: "auto" as const,
     borderRadius: "16px !important",
     border: "none !important",

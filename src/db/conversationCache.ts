@@ -4,6 +4,7 @@ import { getDb } from "./tecoDb";
 import type { CachedConversation } from "./tecoDb";
 import type { ConversationListEntry } from "../types/conversation";
 import type { AuthData } from "../contexts/LoginData";
+import { getMessagePreview, normalizeMessageType } from "../components/CustomerLists/CustomerListFunc";
 
 function getDbForAuth(auth: AuthData | null) {
   return getDb(auth?.id ?? auth?.userId);
@@ -82,7 +83,29 @@ export async function getConversations(
       const bDate = String(b.lastUpdatedDate ?? "");
       return bDate.localeCompare(aDate);
     })
-    .map(({ conversationId, lastUpdatedDate, isPinned, cachedAt, ...data }) => data as ConversationListEntry);
+    .map(({ conversationId, lastUpdatedDate, isPinned, cachedAt, ...data }) => {
+      const entry = data as ConversationListEntry;
+      // `lastMessage` React nodes can't be stored in IndexedDB — text previews
+      // survive as plain strings, but icon previews (media types) are stripped
+      // by stripNonCloneable, which made cached media rows show "Tap to chat".
+      // Rebuild the node from the persisted LastMessageType + text.
+      const e = entry as ConversationListEntry & {
+        LastMessageType?: number;
+        lastMessageText?: string;
+        LastMessage?: string;
+        LastMessageSystemMsg?: number;
+        SystemMsg?: number;
+        IsDeletedForEveryone?: number;
+      };
+      const preview = getMessagePreview({
+        MessageType: normalizeMessageType(e.LastMessageType ?? 1),
+        Message: e.lastMessageText ?? e.LastMessage ?? "",
+        SystemMsg: e.LastMessageSystemMsg ?? e.SystemMsg,
+        IsDeletedForEveryone: e.IsDeletedForEveryone,
+      });
+      (entry as { lastMessage?: unknown }).lastMessage = preview.node;
+      return entry;
+    });
 }
 
 export async function upsertConversation(

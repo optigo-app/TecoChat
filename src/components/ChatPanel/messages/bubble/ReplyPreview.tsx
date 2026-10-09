@@ -8,6 +8,7 @@
 import { memo } from "react";
 import { Box, Typography, useTheme, alpha } from "@mui/material";
 import { Image as ImageIcon, Video as VideoIcon, FileText } from "lucide-react";
+import DocumentTypeIcon from "./DocumentTypeIcon";
 import { renderMessageText } from "../../../../utils/messageTextRenderer";
 import { getSoftAvatarColors } from "../../../../utils/globalFunc";
 import type { ChatMessage } from "../../../../types/message";
@@ -292,13 +293,31 @@ const ReplyPreviewComponent = ({
               src={replyMediaUrl}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
-          ) : (
+          ) : String(replyMediaUrl).match(/\.(jpe?g|png|gif|webp|bmp|avif)(\?|$)/i) ? (
             <img
               src={replyMediaUrl}
               alt="preview"
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
               draggable="false"
             />
+          ) : (
+            // Non-renderable URL (pdf/docx/etc.) — show the file-type icon
+            // instead of an <img> that renders a broken-image placeholder.
+            <Box
+              sx={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "text.secondary",
+              }}
+            >
+              <DocumentTypeIcon
+                filename={originalFileName || String(replyMediaUrl)}
+                size={22}
+              />
+            </Box>
           )}
         </Box>
       )}

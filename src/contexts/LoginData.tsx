@@ -4,7 +4,6 @@ import React, {
   createContext,
   useState,
   useEffect,
-  useCallback,
   useContext,
   useMemo,
 } from "react";
@@ -25,22 +24,11 @@ export interface TokenData {
   yc: string;
 }
 
-interface Permission {
-  Id: string | number;
-  [key: string]: unknown;
-}
-
 interface LoginContextValue {
   auth: AuthData;
   setAuth: React.Dispatch<React.SetStateAction<AuthData>>;
   token: TokenData;
   setToken: React.Dispatch<React.SetStateAction<TokenData>>;
-  permissions: Permission[] | null;
-  setPermissions: React.Dispatch<React.SetStateAction<Permission[] | null>>;
-  PERMISSION_SET: Set<string | number>;
-  isSyncing: boolean;
-  startSync: (syncCallback?: () => Promise<void>) => Promise<boolean>;
-  setIsSyncing: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export const LoginContext = createContext<LoginContextValue | undefined>(
@@ -131,42 +119,6 @@ export const LoginData = ({ children }: { children: React.ReactNode }) => {
     return EMPTY_AUTH;
   });
 
-  // State for sync functionality
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  const startSync = useCallback(
-    async (syncCallback?: () => Promise<void>): Promise<boolean> => {
-      setIsSyncing(true);
-      try {
-        if (typeof syncCallback === "function") {
-          await syncCallback();
-        }
-        return true;
-      } catch (error) {
-        console.error("Sync error:", error);
-        return false;
-      } finally {
-        setIsSyncing(false);
-      }
-    },
-    []
-  );
-
-  const [permissions, setPermissions] = useState<Permission[] | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const permissionsData = sessionStorage.getItem("userPermissions");
-      return permissionsData ? JSON.parse(permissionsData) : null;
-    } catch (error) {
-      console.error(
-        "❌ LoginContext: Error parsing permissions from sessionStorage:",
-        error
-      );
-      sessionStorage.removeItem("userPermissions");
-      return null;
-    }
-  });
-
   // Update sessionStorage whenever auth changes
   useEffect(() => {
     if (auth?.userId) {
@@ -175,32 +127,14 @@ export const LoginData = ({ children }: { children: React.ReactNode }) => {
     }
   }, [auth]);
 
-  // Update sessionStorage whenever permissions change
-  const PERMISSION_SET = useMemo(
-    () => new Set(permissions?.map((p) => p.Id) || []),
-    [permissions]
-  );
-
-  useEffect(() => {
-    if (permissions) {
-      sessionStorage.setItem("userPermissions", JSON.stringify(permissions));
-    }
-  }, [permissions]);
-
   const contextValue = useMemo(
     () => ({
       auth,
       setAuth,
       token,
       setToken,
-      permissions,
-      setPermissions,
-      PERMISSION_SET,
-      isSyncing,
-      startSync,
-        setIsSyncing,
     }),
-    [auth, setAuth, token, setToken, permissions, setPermissions, PERMISSION_SET, isSyncing, startSync]
+    [auth, setAuth, token, setToken]
   );
 
   return (

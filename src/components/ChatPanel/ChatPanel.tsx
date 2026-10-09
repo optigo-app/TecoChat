@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useRef, useEffect, memo } from "react";
+import { useCallback, useState, useRef, useEffect, memo, type ChangeEvent } from "react";
 import { Box, Typography, IconButton } from "@mui/material";
 import { MessageSquare } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -36,6 +36,7 @@ import MediaPreview from "./messages/MediaPreview";
 import EditMessageDialog from "./EditMessageDialog";
 import MuteNotificationDialog from "./MuteNotificationDialog";
 import { isConversationMuted } from "../../utils/mentionUtils";
+import { markOpenAtLatest } from "../../utils/openAtLatest";
 import ForwardMessage from "../ForwardMessage/ForwardMessage";
 import ConfirmationDialog from "../ReusableComponent/ConfirmationDialog";
 import CustomerDetails from "../CustomerDetails/CustomerDetails";
@@ -107,7 +108,11 @@ export const ChatPanel = memo(({
   const isMobile = useIsMobile(); // <= 768px
   const { status: socketStatus } = useSocketContext();
   const isOnline = useOnlineStatus();
-  const isOffline = !isOnline || socketStatus !== "connected";
+  // Offline = no network. Socket reconnecting (network up) is a separate,
+  // subtler state — HTTP sends still work and socket.io buffers emits
+  // until reconnect, so we don't treat it as offline.
+  const isOffline = !isOnline;
+  const isReconnecting = isOnline && socketStatus !== "connected";
 
   const scrollToBottomRightOffset = 30;
 
@@ -213,6 +218,29 @@ export const ChatPanel = memo(({
     onCustomerSelect,
   });
 
+  // ── Media-in-reply blocked (backend doesn't support reply Attachments yet) ─
+  // Hide the attach button while a reply is active, and guard every other
+  // media entry point (paste, drag-drop, file input, preview add-more) so a
+  // reply can never carry an attachment until the API supports it.
+  const mediaBlockedForReply = !!replyToMessage;
+  const notifyMediaReplyBlocked = useCallback(() => {
+    showToast("Attachments aren't supported in replies yet", "info");
+  }, []);
+  const processFilesGuarded = useCallback(
+    (files: File[], mode?: "replace" | "add") => {
+      if (mediaBlockedForReply) return notifyMediaReplyBlocked();
+      processFiles(files, mode);
+    },
+    [processFiles, mediaBlockedForReply, notifyMediaReplyBlocked]
+  );
+  const handleFileChangeGuarded = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      if (mediaBlockedForReply) return notifyMediaReplyBlocked();
+      handleFileChange(e);
+    },
+    [handleFileChange, mediaBlockedForReply, notifyMediaReplyBlocked]
+  );
+
   // ── Contexts for header menu actions ──────────────────────────────────────
   const { favoriteState, updateFavoriteStatus } = useFavorite();
   const { isRemovedFromGroup, updateRemoveInGroupStatus } = useRemoveInGroup();
@@ -286,7 +314,9 @@ export const ChatPanel = memo(({
 
       if (member) {
         if (member.ConversationId) {
-          // Open the user's existing chat
+          // Open the user's existing chat — land on the latest message,
+          // not the first-unread anchor (this is a direct person jump).
+          markOpenAtLatest(member.ConversationId);
           window.dispatchEvent(
             new CustomEvent("SELECT_CONVERSATION", {
               detail: { conversationId: member.ConversationId },
@@ -676,6 +706,7 @@ export const ChatPanel = memo(({
         onSearchByDate={handleSearchByDate}
         onOpenDatePicker={openDatePicker}
         isOffline={isOffline}
+        isReconnecting={isReconnecting}
         datePickerButtonRef={datePickerButtonRef}
       />
 
@@ -719,7 +750,7 @@ export const ChatPanel = memo(({
         unreadAnchorMessageId={unreadAnchorMessageId}
         unreadCount={unreadCount}
         scrollRestoreKey={selectedCustomer?.ConversationId ?? undefined}
-        processFiles={processFiles}
+        processFiles={processFilesGuarded}
         onContainerRef={handleContainerRef}
         auth={auth}
         scrollToMessageProp={scrollToMessage}
@@ -737,8 +768,8 @@ export const ChatPanel = memo(({
         mediaFiles={mediaFiles}
         onAttachClick={handleAttachClick}
         showMedia={showMedia}
-        onFileChange={handleFileChange}
-        onProcessFiles={processFiles}
+        onFileChange={handleFileChangeGuarded}
+        onProcessFiles={processFilesGuarded}
         onRemoveMedia={(idx) => {
           const next = mediaFiles.filter((_, i) => i !== idx);
           setMediaFiles(next);
@@ -783,7 +814,7 @@ export const ChatPanel = memo(({
         }}
         onAddMore={(files) => {
           // Add more files to existing selection
-          processFiles(files);
+          processFilesGuarded(files);
         }}
         syncKey={selectedCustomer?.ConversationId ?? undefined}
       />
@@ -846,6 +877,7 @@ export const ChatPanel = memo(({
               (m.SenderEmail && String(gm.UserId) === String(m.SenderEmail))
           );
           if (member?.ConversationId) {
+            markOpenAtLatest(member.ConversationId);
             window.dispatchEvent(
               new CustomEvent("SELECT_CONVERSATION", {
                 detail: {
@@ -958,8 +990,8 @@ export const ChatPanel = memo(({
         newFiles={replaceAddDialog.newFiles}
         existingCount={replaceAddDialog.existingCount}
         onClose={() => setReplaceAddDialog({ open: false, newFiles: null, existingCount: 0 })}
-        onReplace={(files) => processFiles(files, "replace")}
-        onAdd={(files) => processFiles(files, "add")}
+        onReplace={(files) => processFilesGuarded(files, "replace")}
+        onAdd={(files) => processFilesGuarded(files, "add")}
       />
 
       {/* Forward Message Panel */}

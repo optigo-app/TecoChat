@@ -10,6 +10,7 @@ import { UI, type UIAction, type MediaFileItem } from "./uiReducer";
 import { validateMediaFiles, getMediaDimensions, uploadFiles, buildMediaPayload } from "./uploadHelpers";
 import { emitMediaMessage } from "./socketHelpers";
 import { sendImageMessage, sendDocumentMessage, sendVideoMessage } from "../../../API/SendMessage/SendMessageApi";
+import { replyToMessageApi } from "../../../API/SendMessage/replyToMessageApi";
 import { showToast } from "../../../utils/toastHelper";
 import { addToOutbox } from "../../../db/outboxCache";
 import { isTextFile } from "../../../utils/txtUtils";
@@ -247,6 +248,7 @@ export function useMediaHandlers({
       time,
       date,
       dateTime,
+      reply,
     }: {
       files: File[];
       fileItems?: MediaFileItem[];
@@ -257,6 +259,12 @@ export function useMediaHandlers({
       time: string;
       date: string;
       dateTime: string;
+      reply?: {
+        targetId: string | number;
+        contextMsg?: string;
+        sender?: string;
+        attachmentId?: string | number | null;
+      } | null;
     }) => {
       const safeFiles = files.filter((f) => f instanceof File);
       if (!safeFiles.length) return;
@@ -286,9 +294,18 @@ export function useMediaHandlers({
               Direction: 1,
               Status: "pending",
               MessageType: type,
+              ...(reply?.targetId
+                ? {
+                    ContextType: 2,
+                    ContextId: reply.targetId,
+                    ReplyContextMsg: reply.contextMsg || "Media",
+                    SenderInfo: reply.sender || "",
+                    ReplyToAttachmentId: reply.attachmentId || null,
+                  }
+                : {}),
             } as ChatMessage,
             caption,
-            null,
+            reply?.targetId ?? null,
             null,
             {
               type,
@@ -367,19 +384,30 @@ export function useMediaHandlers({
           };
         });
 
-        const sendFn =
-          type === "image"
-            ? sendImageMessage
-            : type === "video"
-            ? sendVideoMessage
-            : sendDocumentMessage;
-        const res = await sendFn(auth, {
-          senderId: auth?.id,
-          receiverId,
-          conversationId: convId,
-          caption,
-          attachments,
-        });
+        const mediaTypeCode = type === "image" ? 2 : type === "video" ? 3 : 4;
+        // Reply-with-media uses the ReplyToMessage endpoint (same Attachments
+        // contract as SendMessage) so the bubble keeps its quoted context.
+        const res = reply?.targetId
+          ? await replyToMessageApi(auth, {
+              conversationId: convId ?? "",
+              replyToMessageId: reply.targetId,
+              ReplyToAttachmentId: reply.attachmentId,
+              message: caption,
+              messageType: mediaTypeCode,
+              receiverId,
+              attachments,
+            })
+          : await (type === "image"
+              ? sendImageMessage
+              : type === "video"
+              ? sendVideoMessage
+              : sendDocumentMessage)(auth, {
+              senderId: auth?.id,
+              receiverId,
+              conversationId: convId,
+              caption,
+              attachments,
+            });
 
         const rd = res?.Data?.rd?.[0];
         const stat = rd?.stat;
@@ -443,6 +471,14 @@ export function useMediaHandlers({
                 dateTime,
                 isGroup,
                 memberIds,
+                reply: reply?.targetId
+                  ? {
+                      contextId: reply.targetId,
+                      contextMsg: reply.contextMsg,
+                      sender: reply.sender,
+                      attachmentId: reply.attachmentId,
+                    }
+                  : null,
               })
             );
 
@@ -487,6 +523,14 @@ export function useMediaHandlers({
               dateTime,
               isGroup,
               memberIds,
+              reply: reply?.targetId
+                ? {
+                    contextId: reply.targetId,
+                    contextMsg: reply.contextMsg,
+                    sender: reply.sender,
+                    attachmentId: reply.attachmentId,
+                  }
+                : null,
             })
           );
           dispatchMsg({

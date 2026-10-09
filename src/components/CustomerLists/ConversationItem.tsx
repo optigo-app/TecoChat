@@ -4,6 +4,7 @@ import React, { memo, useState, useRef, useCallback } from "react";
 import { Typography, Badge, IconButton, Tooltip, Avatar } from "@mui/material";
 import { ChevronDown, Pin, Star, CheckCheck, UploadCloud, BellOff } from "lucide-react";
 import { ConversationAvatar } from "../ConversationAvatar/ConversationAvatar";
+import AvatarPreviewCard from "./AvatarPreviewCard";
 import { highlightText } from "./CustomerListFunc";
 import { normalizeMessageText, stripMarkdownFormatting, getWhatsAppAvatarConfig, getSoftAvatarColors } from "../../utils/globalFunc";
 import { renderMessageText } from "../../utils/messageTextRenderer";
@@ -65,6 +66,37 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
   // ── Drag and drop external files ──────────────────────────────────────────
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounter = useRef(0);
+
+  // ── Long-press avatar → WhatsApp-style profile preview (mobile) ───────────
+  const [avatarPreviewRect, setAvatarPreviewRect] = useState<DOMRect | null>(null);
+  const avatarPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A completed long-press shouldn't also fire the row's open-chat click.
+  const suppressClickRef = useRef(false);
+
+  const clearAvatarPressTimer = useCallback(() => {
+    if (avatarPressTimerRef.current) {
+      clearTimeout(avatarPressTimerRef.current);
+      avatarPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleAvatarTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      suppressClickRef.current = false;
+      clearAvatarPressTimer();
+      const el = e.currentTarget as HTMLElement;
+      avatarPressTimerRef.current = setTimeout(() => {
+        suppressClickRef.current = true;
+        setAvatarPreviewRect(el.getBoundingClientRect());
+        try {
+          navigator.vibrate?.(10);
+        } catch {
+          /* ignore */
+        }
+      }, 450);
+    },
+    [clearAvatarPressTimer]
+  );
 
   const isExternalFileDrag = useCallback((e: React.DragEvent): boolean => {
     const types = e.dataTransfer?.types;
@@ -128,7 +160,20 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
   return (
     <li
       className={`member-item ${isSelected ? "active" : ""} ${isSelectedAndReading ? "reading" : ""} ${isKeyboardSelected ? "keyboard-selected" : ""} ${isMenuOpen ? "menu-open" : ""} ${isDragOver ? "drag-over" : ""}`}
-      onClick={() => handleCustomerClick(member)}
+      onClick={() => {
+        // Long-press opened the avatar preview — swallow this click.
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        handleCustomerClick(member);
+      }}
+      onTouchStart={() => {
+        // If a long-press ended without a trailing click (browsers skip click
+        // when the context menu was prevented), don't let the stale flag
+        // swallow the NEXT genuine tap.
+        if (!avatarPreviewRect) suppressClickRef.current = false;
+      }}
       onContextMenu={handleContextMenu}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
@@ -161,8 +206,23 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
         </div>
       )}
       <div className="member-item">
-        {/* Avatar */}
-        <div className="member-avatar">
+        {/* Avatar — long-press (touch) shows the WhatsApp-style big profile
+            preview card; normal taps still open the chat via the row click. */}
+        <div
+          className="member-avatar no-select"
+          onTouchStart={handleAvatarTouchStart}
+          onTouchMove={clearAvatarPressTimer}
+          onTouchEnd={clearAvatarPressTimer}
+          onTouchCancel={clearAvatarPressTimer}
+          onContextMenu={(e) => {
+            // On touch devices the native context menu would fire mid
+            // long-press and hijack the preview — suppress it there only.
+            if (window.matchMedia?.("(pointer: coarse)").matches) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+        >
           <ConversationAvatar member={member} size={40} />
         </div>
 
@@ -226,7 +286,10 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
                   <span style={{ color: "#7367f0", fontWeight: 500 }}>Draft: </span>
                   {typeof draftText === "string" && draftText ? (
                     renderMessageText(
-                      normalizeMessageText(String(draftText)).replace(/\n|\r/g, " ")
+                      normalizeMessageText(String(draftText)).replace(/\n|\r/g, " "),
+                      undefined,
+                      undefined,
+                      { linkify: false }
                     )
                   ) : (
                     draftText || "Tap to chat"
@@ -254,7 +317,10 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
                   >
                     {typeof lastMessage === "string" && lastMessage ? (
                       renderMessageText(
-                        normalizeMessageText(String(lastMessage)).replace(/\n|\r/g, " ")
+                        normalizeMessageText(String(lastMessage)).replace(/\n|\r/g, " "),
+                        undefined,
+                        undefined,
+                        { linkify: false }
                       )
                     ) : (
                       lastMessage || "Tap to chat"
@@ -323,6 +389,17 @@ const ConversationItemComponent: React.FC<ConversationItemProps> = ({
           </div>
         </div>
       </div>
+      {avatarPreviewRect && (
+        <AvatarPreviewCard
+          member={member}
+          anchorRect={avatarPreviewRect}
+          onClose={() => setAvatarPreviewRect(null)}
+          onOpenChat={() => {
+            setAvatarPreviewRect(null);
+            handleCustomerClick(member);
+          }}
+        />
+      )}
     </li>
   );
 };

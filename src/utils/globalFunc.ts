@@ -396,23 +396,14 @@ export const handleDownloadFile = async (
 
   let resolvedFileUrl = fileUrl;
 
-  // Generate filename with timestamp (matches old code)
-  const timestamp = Date.now();
-  let finalFilename: string;
-  if (!filename) {
-    const extensionMatch = fileUrl.match(/\.([a-zA-Z0-9]+)(?:$|[?#])/);
-    const extension = extensionMatch?.[1] || "jpg";
-    finalFilename = `generated-${timestamp}.${extension}`;
-  } else {
-    const lastDotIndex = filename.lastIndexOf(".");
-    if (lastDotIndex > 0) {
-      const nameWithoutExt = filename.substring(0, lastDotIndex);
-      const ext = filename.substring(lastDotIndex);
-      finalFilename = `${nameWithoutExt}_${timestamp}${ext}`;
-    } else {
-      finalFilename = `${filename}_${timestamp}`;
-    }
-  }
+  // Keep the exact filename shown on screen — browsers auto-dedupe duplicates
+  // with "(1)" in the downloads folder, so no timestamp suffix is needed.
+  // Timestamp is only used for the generated fallback name.
+  const finalFilename: string = filename?.trim()
+    ? filename.trim()
+    : `generated-${Date.now()}.${
+        fileUrl.match(/\.([a-zA-Z0-9]+)(?:$|[?#])/)?.[1] || "jpg"
+      }`;
 
   // Try download API first (can return a resolved file URL)
   try {

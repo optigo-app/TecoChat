@@ -1285,6 +1285,15 @@ const MediaPreviewComponent = ({
     setShowFormattingToolbar(true);
   }, []);
 
+  // Mobile selection (long-press + drag handles) fires neither mouseup nor
+  // keyup — selectionchange is the reliable signal on all touch devices.
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () =>
+      document.removeEventListener("selectionchange", handleSelectionChange);
+  }, [open, handleSelectionChange]);
+
   if (!open || mediaFiles.length === 0) return null;
 
   const getMediaUrl = (item: MediaFileItem) =>

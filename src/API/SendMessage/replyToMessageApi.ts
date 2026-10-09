@@ -20,6 +20,9 @@ export const replyToMessageApi = async (
     ReplyToAttachmentId,
     message,
     messageType = 1,
+    receiverId,
+    mentionUsers = null,
+    attachments = null,
     fLabel = "Reply ( Reply to Message )",
   }: {
     conversationId: string | number;
@@ -27,6 +30,9 @@ export const replyToMessageApi = async (
     ReplyToAttachmentId?: string | number | null;
     message: string;
     messageType?: number;
+    receiverId?: string | number | string[];
+    mentionUsers?: Array<{ MentionedUserId: string | number; MentionText: string; MentionType: number }> | null;
+    attachments?: unknown[] | null;
     fLabel?: string;
   }
 ) => {
@@ -35,14 +41,26 @@ export const replyToMessageApi = async (
       throw new Error("auth is required for replyToMessageApi");
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       SenderId: (auth as AuthLike).id ?? 0,
+      ReceiverId: receiverId ?? null,
       ConversationId: conversationId,
       ReplyToMessageId: replyToMessageId,
       ReplyToAttachmentId: ReplyToAttachmentId || null,
       Message: message,
       MessageType: messageType,
     };
+
+    // Same MentionUsers contract as SendMessage — replies can carry mentions.
+    if (mentionUsers && Array.isArray(mentionUsers) && mentionUsers.length > 0) {
+      payload.MentionUsers = JSON.stringify(mentionUsers);
+    }
+
+    // Media replies (image/video/document) — same Attachments contract as
+    // SendMessage so the reply bubble carries the uploaded file(s).
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      payload.Attachments = JSON.stringify(attachments);
+    }
 
     const body = buildCommonBody("ReplyToMessage", auth, payload, fLabel);
     const response = await CommonAPI(body);

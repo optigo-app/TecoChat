@@ -47,6 +47,12 @@ interface UseMessageActionsProps {
     time: string;
     date: string;
     dateTime: string;
+    reply?: {
+      targetId: string | number;
+      contextMsg?: string;
+      sender?: string;
+      attachmentId?: string | number | null;
+    } | null;
   }) => Promise<void>;
   fetchAndCacheGroupMembers?: (conversationId: string | number) => Promise<{ members: Array<{ UserId?: number; userId?: number; id?: number }> } | null>;
   isOffline?: boolean;
@@ -84,9 +90,37 @@ export function useMessageActions({
       // If media files are queued, delegate to uploadAndSendMedia
       if (mediaList?.length && uploadAndSendMedia) {
         const selected = [...mediaList];
+
+        // Reply context — media replies work like text replies: same
+        // replyToMessage/storeMessData snapshot, same optimistic fields.
+        const mediaReplySnapshot = uiState.replyToMessage;
+        const mediaReplyId =
+          String(uiState.storeMessData?.messageId ?? "").trim() || null;
+        const mediaReplyTarget =
+          mediaReplySnapshot && mediaReplyId ? mediaReplySnapshot : null;
+        const mediaReplyFields = mediaReplyTarget
+          ? {
+              ContextType: 2,
+              ContextId: mediaReplyId,
+              ReplyContextMsg: mediaReplyTarget.text || "Media",
+              SenderInfo: mediaReplyTarget.sender || "",
+              ReplyToAttachmentId: mediaReplyTarget.ReplyToAttachmentId || null,
+            }
+          : {};
+        const replyParam = mediaReplyTarget
+          ? {
+              targetId: mediaReplyTarget.Id || mediaReplyId!,
+              contextMsg: mediaReplyTarget.text || "Media",
+              sender: mediaReplyTarget.sender || "",
+              attachmentId: mediaReplyTarget.ReplyToAttachmentId || null,
+            }
+          : null;
+
         dispatchUI({ type: UI.SET_INPUT, value: "" });
         dispatchUI({ type: UI.SET_SHOW_MEDIA, value: false });
         dispatchUI({ type: UI.SET_MEDIA_FILES, value: [] });
+        dispatchUI({ type: UI.SET_REPLY, value: null });
+        dispatchMsg({ type: MSG.SET_STORE_MESS, value: { messageId: "" } });
 
         const byType: Record<string, MediaFileItem[]> = {
           image: [],
@@ -141,12 +175,13 @@ export function useMessageActions({
                   DateTime: dateTime,
                   mediaItems: [tempMediaItem],
                   ConversationId: customer?.ConversationId || tempConversationId,
+                  ...mediaReplyFields,
                 } as Partial<ChatMessage>,
               });
             }
             if (scrollToBottom) scrollToBottom();
             const batchTempId = `${batchTs}-${type}-batch`;
-            await uploadAndSendMedia({ files, fileItems: list, caption, type, tempId: batchTempId, tempIds, time, date, dateTime });
+            await uploadAndSendMedia({ files, fileItems: list, caption, type, tempId: batchTempId, tempIds, time, date, dateTime, reply: replyParam });
           } else {
             // ── Images/videos or single document: one optimistic message
             const tempId = `${batchTs}-${type}-batch`;
@@ -174,10 +209,11 @@ export function useMessageActions({
                 DateTime: dateTime,
                 mediaItems: tempMediaItems,
                 ConversationId: customer?.ConversationId || tempConversationId,
+                ...mediaReplyFields,
               } as Partial<ChatMessage>,
             });
             if (scrollToBottom) scrollToBottom();
-            await uploadAndSendMedia({ files, fileItems: list, caption, type, tempId, time, date, dateTime });
+            await uploadAndSendMedia({ files, fileItems: list, caption, type, tempId, time, date, dateTime, reply: replyParam });
           }
         }
         // Play send sound once after all media batches are uploaded successfully
@@ -263,6 +299,17 @@ export function useMessageActions({
               ReplyToAttachmentId: replyTarget.ReplyToAttachmentId,
               message: caption,
               messageType: 1,
+              // Same fields as SendMessage — replies carry receiver + mentions.
+              receiverId:
+                (customer as { CustomerId?: string | number })?.CustomerId ||
+                (customer as { UserId?: string | number })?.UserId,
+              mentionUsers: mentions && mentions.length > 0
+                ? mentions.map((m) => ({
+                    MentionedUserId: String(m.userId) === "all" ? "" : m.userId,
+                    MentionText: m.mentionText,
+                    MentionType: String(m.userId) === "all" ? 2 : 1,
+                  }))
+                : null,
             })
           : await sendTextMessage(auth, {
               senderId: auth?.id,
@@ -299,6 +346,17 @@ export function useMessageActions({
 
         const sentId = rd?.MessageId;
         const convId = rd?.ConversationId || customer?.ConversationId;
+
+        // Prefer the backend-normalized MentionUsers from the API response —
+        // the server may resolve "@all", fix ids, or add entries the client
+        // didn't know about. Fall back to the locally built JSON.
+        const rdMentions = rd?.MentionUsers;
+        const serverMentionUsers =
+          typeof rdMentions === "string" && rdMentions.trim()
+            ? rdMentions
+            : Array.isArray(rdMentions) && rdMentions.length
+              ? JSON.stringify(rdMentions)
+              : mentionUsersJson;
 
         // Play send sound only after the API confirms success
         playSound("send");
@@ -355,7 +413,7 @@ export function useMessageActions({
               DateTime: dateTime,
               ClientMessageId: tempId,
               ConversationId: convId || tempConversationId,
-              ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
+              ...(serverMentionUsers ? { MentionUsers: serverMentionUsers } : {}),
               ...replyExtra,
             },
           });
@@ -369,7 +427,7 @@ export function useMessageActions({
               Status: 1,
               SenderId: auth?.id,
               Direction: 1,
-              ...(mentionUsersJson ? { MentionUsers: mentionUsersJson, Mentions: mentionUsersJson } : {}),
+              ...(serverMentionUsers ? { MentionUsers: serverMentionUsers, Mentions: serverMentionUsers } : {}),
             },
           });
           if (convIdForOutbox) {
@@ -624,6 +682,15 @@ export function useMessageActions({
         if (response?.Data?.rd?.[0]?.stat == 1) {
           const editedMessage = response.Data.rd[0];
 
+          // Prefer backend-normalized mentions; fall back to client-built JSON
+          const rdMentions = editedMessage.MentionUsers;
+          const serverMentionUsers =
+            typeof rdMentions === "string" && rdMentions.trim()
+              ? rdMentions
+              : Array.isArray(rdMentions) && rdMentions.length
+                ? JSON.stringify(rdMentions)
+                : mentionUsersJson;
+
           // Local update
           dispatchMsg({
             type: MSG.EDIT,
@@ -631,13 +698,13 @@ export function useMessageActions({
             newMessage: editedMessage.Message,
             time,
             date,
-            ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
+            ...(serverMentionUsers ? { MentionUsers: serverMentionUsers } : {}),
           });
 
           const convId = selectedCustomerRef?.current?.ConversationId ?? selectedCustomer?.ConversationId;
           if (convId) {
             updateMessageEdit(auth, convId, messageId, editedMessage.Message, {
-              Time: time, Date: date, ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
+              Time: time, Date: date, ...(serverMentionUsers ? { MentionUsers: serverMentionUsers } : {}),
             }).catch(() => {});
           }
 
@@ -681,7 +748,7 @@ export function useMessageActions({
               Date: date,
               DateTime: dateTime,
               ConversationId: customer?.ConversationId,
-              ...(mentionUsersJson ? { MentionUsers: mentionUsersJson } : {}),
+              ...(serverMentionUsers ? { MentionUsers: serverMentionUsers } : {}),
             },
           });
 
