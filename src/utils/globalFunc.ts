@@ -273,14 +273,20 @@ export const stripMarkdownFormatting = (text: string | null | undefined): string
 
 export const isMessageEditable = (message: { Date?: string; Time?: string; DateTime?: string } | null | undefined, timeLimit = 15): boolean => {
   if (!message) return false;
+  // DateTime is stored local-as-UTC (getLocalTime offsets by timezone before
+  // .toISOString()), so compare against a `now` shifted into the same space —
+  // not Date.now(). Against Date.now() the parse lands hours ahead for users
+  // east of UTC and the diff stays negative forever → edit/delete-for-everyone
+  // never expire.
+  const tzShift = new Date().getTimezoneOffset() * 60000;
+  const nowLocalAsUtc = Date.now() - tzShift;
   const sentTime = message.DateTime
     ? new Date(message.DateTime).getTime()
     : message.Date && message.Time
-      ? new Date(`${message.Date} ${message.Time}`).getTime()
+      ? new Date(`${message.Date} ${message.Time}`).getTime() - tzShift
       : NaN;
   if (isNaN(sentTime)) return false;
-  const currentTime = Date.now();
-  const diffInMinutes = (currentTime - sentTime) / (1000 * 60);
+  const diffInMinutes = (nowLocalAsUtc - sentTime) / (1000 * 60);
   return diffInMinutes <= timeLimit;
 };
 

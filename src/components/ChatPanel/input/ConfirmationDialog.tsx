@@ -68,13 +68,15 @@ const ConfirmationDialogComponent = ({
           onChange={(e) => setFileName(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="filename.txt"
+          // 16px on mobile — anything smaller triggers iOS focus zoom.
+          sx={{ "& .MuiInputBase-input": { fontSize: { xs: "1rem", sm: "0.875rem" } } }}
         />
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onCancel} color="inherit" size="small">
+      <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: 2 }}>
+        <Button onClick={onCancel} color="inherit" size="small" sx={{ minHeight: { xs: 40, sm: "auto" } }}>
           {cancelLabel}
         </Button>
-        <Button onClick={handleConfirm} variant="contained" size="small">
+        <Button onClick={handleConfirm} variant="contained" size="small" sx={{ minHeight: { xs: 40, sm: "auto" } }}>
           {confirmLabel}
         </Button>
       </DialogActions>

@@ -26,6 +26,7 @@ import {
 } from "@mui/material";
 import { X, Send, Search } from "lucide-react";
 import { useLoginContext } from "../../contexts/LoginData";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { getForwardListApi } from "../../API/SendMessage/forwardlistApi";
 import { getWhatsAppAvatarConfig } from "../../utils/globalFunc";
 import "./ForwardMessage.scss";
@@ -57,6 +58,7 @@ const ForwardMessage = ({
   open,
 }: ForwardMessageProps) => {
   const theme = useTheme();
+  const isMobile = useIsMobile(); // <=768px → fullScreen dialog (MUI pattern)
   const { auth } = useLoginContext();
   const [selectedContacts, setSelectedContacts] = useState<ForwardContact[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -243,6 +245,7 @@ const ForwardMessage = ({
       open={open}
       onClose={onClose}
       maxWidth={false}
+      fullScreen={isMobile}
       slotProps={{
         backdrop: {
           sx: { backgroundColor: "rgba(0, 0, 0, 0.5)" },
@@ -250,16 +253,18 @@ const ForwardMessage = ({
         paper: {
           elevation: 0,
           sx: {
-            width: 440,
-            maxWidth: "94vw",
-            height: 620,
-            maxHeight: "90vh",
-            borderRadius: "20px",
+            width: { xs: "100%", sm: 440 },
+            maxWidth: { xs: "none", sm: "94vw" },
+            height: { xs: "100dvh", sm: 620 },
+            maxHeight: { xs: "100dvh", sm: "90vh" },
+            borderRadius: { xs: 0, sm: "20px" },
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
             backgroundColor: "var(--color-surface)",
             backgroundImage: "none",
+            pt: { xs: "var(--safe-top, 0px)", sm: 0 },
+            pb: { xs: "var(--safe-bottom, 0px)", sm: 0 },
           },
         },
       }}
@@ -293,6 +298,7 @@ const ForwardMessage = ({
               ),
             },
           }}
+          sx={{ "& .MuiInputBase-input": { fontSize: { xs: "1rem", sm: "0.875rem" } } }}
         />
       </div>
 

@@ -48,11 +48,12 @@ function UpdateNotification({
       <Box
         sx={{
           position: "fixed",
-          bottom: 24,
-          right: 24,
+          bottom: { xs: "calc(12px + var(--safe-bottom, 0px))", sm: 24 },
+          left: { xs: 12, sm: "auto" },
+          right: { xs: 12, sm: 24 },
           zIndex: 10001,
-          maxWidth: 420,
-          minWidth: 360,
+          maxWidth: { xs: "none", sm: 420 },
+          minWidth: { xs: 0, sm: 360 },
           background: isDark
             ? "linear-gradient(135deg, rgba(35,35,51,0.95) 0%, rgba(42,42,61,0.95) 100%)"
             : "linear-gradient(135deg, #ffffff 0%, #f5f3ff 100%)",
@@ -68,7 +69,7 @@ function UpdateNotification({
           backdropFilter: "blur(12px)",
         }}
       >
-        <Box sx={{ p: 2.5 }}>
+        <Box sx={{ p: { xs: 2, sm: 2.5 } }}>
           <Box
             sx={{
               display: "flex",
@@ -110,6 +111,8 @@ function UpdateNotification({
                 sx={{
                   color: isDark ? "rgba(224,224,232,0.4)" : "rgba(68,64,80,0.4)",
                   p: 0.5,
+                  width: { xs: 40, sm: "auto" },
+                  height: { xs: 40, sm: "auto" },
                   "&:hover": {
                     color: isDark ? "rgba(224,224,232,0.8)" : "rgba(68,64,80,0.8)",
                   },
@@ -153,9 +156,10 @@ function UpdateNotification({
               bgcolor: "#7367f0",
               textTransform: "none",
               fontWeight: 600,
-              fontSize: "0.9375rem",
+              fontSize: { xs: "1rem", sm: "0.9375rem" },
               borderRadius: "10px",
               py: 1,
+              minHeight: { xs: 48, sm: "auto" },
               "&:hover": { bgcolor: "#685dd8" },
             }}
           >

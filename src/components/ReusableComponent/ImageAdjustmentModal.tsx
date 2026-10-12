@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import { X, RotateCw, ZoomIn, ZoomOut, Info } from "lucide-react";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import "./ImageAdjustmentModal.scss";
 
 const CROP_SIZE = 300;
@@ -30,6 +31,7 @@ const ImageAdjustmentModal = ({
   onConfirm,
   title = "Adjust Image",
 }: ImageAdjustmentModalProps) => {
+  const isMobile = useIsMobile(); // <=768px → fullScreen dialog (MUI pattern)
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
@@ -37,18 +39,32 @@ const ImageAdjustmentModal = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+  // Crop circle tracks the real container width so 320px phones don't overflow.
+  const [cropSize, setCropSize] = useState(CROP_SIZE);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const pinchRef = useRef<{ dist: number; scale: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const el = containerRef.current;
+      if (el) setCropSize(Math.min(CROP_SIZE, el.clientWidth - 24));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [open]);
 
   const getBaseDimensions = () => {
-    if (!imageRef.current) return { w: CROP_SIZE, h: CROP_SIZE };
+    if (!imageRef.current) return { w: cropSize, h: cropSize };
     const img = imageRef.current;
     const aspect = img.naturalWidth / img.naturalHeight;
     if (aspect > 1) {
-      return { w: CROP_SIZE * aspect, h: CROP_SIZE };
+      return { w: cropSize * aspect, h: cropSize };
     }
-    return { w: CROP_SIZE, h: CROP_SIZE / aspect };
+    return { w: cropSize, h: cropSize / aspect };
   };
 
   useEffect(() => {
@@ -80,13 +96,25 @@ const ImageAdjustmentModal = ({
     const base = getBaseDimensions();
     const scaledWidth = base.w * currentScale;
     const scaledHeight = base.h * currentScale;
-    const maxX = Math.max(0, (scaledWidth - CROP_SIZE) / 2);
-    const maxY = Math.max(0, (scaledHeight - CROP_SIZE) / 2);
+    const maxX = Math.max(0, (scaledWidth - cropSize) / 2);
+    const maxY = Math.max(0, (scaledHeight - cropSize) / 2);
     return { maxX, maxY };
   };
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    // Two fingers → pinch-zoom the image inside the crop circle (mobile).
+    if ("touches" in e && e.touches.length === 2) {
+      pinchRef.current = {
+        dist: Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        ),
+        scale,
+      };
+      setIsDragging(false);
+      return;
+    }
     setIsDragging(true);
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
@@ -94,8 +122,22 @@ const ImageAdjustmentModal = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDragging) return;
     e.preventDefault();
+    // Pinch → zoom by finger-distance ratio (matches WhatsApp crop behavior).
+    if ("touches" in e && e.touches.length === 2 && pinchRef.current) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const next = Math.min(
+        Math.max(pinchRef.current.scale * (dist / pinchRef.current.dist), 0.5),
+        3
+      );
+      setScale(next);
+      setPosition((p) => clampPosition(p, next));
+      return;
+    }
+    if (!isDragging) return;
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     const newX = clientX - dragStart.x;
@@ -109,6 +151,7 @@ const ImageAdjustmentModal = ({
 
   const handleMouseUp = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    if ("touches" in e && e.touches.length === 0) pinchRef.current = null;
     setIsDragging(false);
   };
 
@@ -243,7 +286,6 @@ const ImageAdjustmentModal = ({
         ctx.rotate((rotation * Math.PI) / 180);
         ctx.scale(scale, scale);
 
-        const cropSize = 300;
         const scaleFactor = size / cropSize;
         const imgAspect = img.width / img.height;
         let drawWidth: number, drawHeight: number;
@@ -292,14 +334,16 @@ const ImageAdjustmentModal = ({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
+      fullScreen={isMobile}
       className="image-adjustment-modal"
       slotProps={{
         paper: {
           sx: {
-            borderRadius: 3,
+            borderRadius: { xs: 0, sm: 3 },
             bgcolor: "var(--color-wa-modal-bg)",
             color: "var(--color-wa-modal-text)",
-            maxHeight: "90vh",
+            maxHeight: { xs: "100dvh", sm: "90vh" },
+            width:'100%',
             boxShadow:
               "0px 5px 5px -3px rgba(0, 0, 0, 0.2), 0px 8px 10px 1px rgba(0, 0, 0, 0.14), 0px 3px 14px 2px rgba(0, 0, 0, 0.12)",
           },
@@ -320,35 +364,47 @@ const ImageAdjustmentModal = ({
           justifyContent: "space-between",
           px: 2,
           py: 1.2,
+          paddingTop: { xs: "calc(8px + var(--safe-top, 0px))", sm: 1.2 },
           borderBottom: "1px solid var(--color-wa-modal-header-border)",
           bgcolor: "var(--color-wa-modal-bg)",
         }}
       >
-        <IconButton onClick={onClose} size="small">
+        <IconButton onClick={onClose} size="small" aria-label="Close">
           <X size={20} />
         </IconButton>
         <Typography
-          sx={{ fontFamily: "Poppins", fontWeight: 500, fontSize: "16px", color: "var(--color-wa-modal-text)" }}
+          sx={{
+            fontFamily: "Poppins",
+            fontWeight: 500,
+            fontSize: { xs: "15px", sm: "16px" },
+            color: "var(--color-wa-modal-text)",
+          }}
         >
           {title}
         </Typography>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
-          <IconButton
-            onClick={handleZoomOut}
-            size="small"
-            disabled={scale <= 0.5}
-            sx={{ bgcolor: "var(--color-wa-icon-bg)", "&:hover": { bgcolor: "var(--color-wa-icon-bg-hover)", color: "#fff" } }}
-          >
-            <ZoomOut size={18} />
-          </IconButton>
-          <IconButton
-            onClick={handleZoomIn}
-            size="small"
-            disabled={scale >= 3}
-            sx={{ bgcolor: "var(--color-wa-icon-bg)", "&:hover": { bgcolor: "var(--color-wa-icon-bg-hover)", color: "#fff" } }}
-          >
-            <ZoomIn size={18} />
-          </IconButton>
+        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 0.8 } }}>
+          {/* Zoom buttons are desktop-only — mobile uses pinch on the image,
+              so they don't crowd the header on small screens. */}
+          {!isMobile && (
+            <>
+              <IconButton
+                onClick={handleZoomOut}
+                size="small"
+                disabled={scale <= 0.5}
+                sx={{ bgcolor: "var(--color-wa-icon-bg)", "&:hover": { bgcolor: "var(--color-wa-icon-bg-hover)", color: "#fff" } }}
+              >
+                <ZoomOut size={18} />
+              </IconButton>
+              <IconButton
+                onClick={handleZoomIn}
+                size="small"
+                disabled={scale >= 3}
+                sx={{ bgcolor: "var(--color-wa-icon-bg)", "&:hover": { bgcolor: "var(--color-wa-icon-bg-hover)", color: "#fff" } }}
+              >
+                <ZoomIn size={18} />
+              </IconButton>
+            </>
+          )}
           <IconButton
             onClick={handleRotate}
             size="small"
@@ -359,38 +415,54 @@ const ImageAdjustmentModal = ({
           <Button
             size="small"
             onClick={handleReset}
-            sx={{ textTransform: "none", fontSize: 13, minWidth: "auto", px: 1 }}
+            sx={{ textTransform: "none", fontSize: { xs: 12, sm: 13 }, minWidth: "auto", px: 1 }}
           >
             Reset
           </Button>
-          <Tooltip
-            title="Keyboard shortcuts: Arrows=Move, +/-=Zoom, R=Rotate, 0=Reset, Enter=Confirm, Esc=Cancel"
-            arrow
-            placement="bottom-end"
-          >
-            <IconButton
-              sx={{ color: "var(--color-text-secondary)", "&:hover": { color: "var(--color-primary)", bgcolor: "rgba(115, 103, 240, 0.08)" } }}
+          {/* Keyboard shortcuts tooltip is meaningless on touch — hide on mobile. */}
+          {!isMobile && (
+            <Tooltip
+              title="Keyboard shortcuts: Arrows=Move, +/-=Zoom, R=Rotate, 0=Reset, Enter=Confirm, Esc=Cancel"
+              arrow
+              placement="bottom-end"
             >
-              <Info size={18} />
-            </IconButton>
-          </Tooltip>
+              <IconButton
+                sx={{ color: "var(--color-text-secondary)", "&:hover": { color: "var(--color-primary)", bgcolor: "rgba(115, 103, 240, 0.08)" } }}
+              >
+                <Info size={18} />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
       </Box>
 
-      <DialogContent sx={{ p: 0, bgcolor: "var(--color-wa-input-bg)" }}>
+      <DialogContent
+        sx={{
+          p: 0,
+          bgcolor: "var(--color-wa-input-bg)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <Box
           ref={containerRef}
           onWheel={handleWheel}
           className="image-adjustment-container"
           sx={{
             position: "relative",
-            height: 320,
+            // Mobile: flex-grow fills the full-screen dialog height;
+            // desktop keeps the fixed 320px stage.
+            height: { xs: "auto", sm: 320 },
+            flex: { xs: 1, sm: "0 0 auto" },
             overflow: "hidden",
             cursor: isDragging ? "grabbing" : "grab",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             bgcolor: "var(--color-wa-input-bg)",
+            // Browser must not scroll/zoom the page on touch — our handlers
+            // own the gestures (drag = pan, pinch = zoom).
+            touchAction: "none",
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -406,8 +478,8 @@ const ImageAdjustmentModal = ({
               top: "50%",
               left: "50%",
               transform: "translate(-50%, -50%)",
-              width: 300,
-              height: 300,
+              width: cropSize,
+              height: cropSize,
               borderRadius: "50%",
               border: "2px solid rgba(255,255,255,0.9)",
               boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
@@ -454,12 +526,20 @@ const ImageAdjustmentModal = ({
           )}
         </Box>
 
-        <Box sx={{ display: "flex", gap: 2, p: 2, bgcolor: "var(--color-wa-modal-bg)" }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 2,
+            p: 2,
+            paddingBottom: { xs: "calc(16px + var(--safe-bottom, 0px))", sm: 2 },
+            bgcolor: "var(--color-wa-modal-bg)",
+          }}
+        >
           <Button
             fullWidth
             variant="outlined"
             onClick={onClose}
-            sx={{ fontFamily: "Poppins", textTransform: "capitalize", borderRadius: "16px" }}
+            sx={{ fontFamily: "Poppins", textTransform: "capitalize", borderRadius: "16px", minHeight: { xs: 48, sm: "auto" } }}
           >
             Cancel
           </Button>
@@ -467,7 +547,7 @@ const ImageAdjustmentModal = ({
             fullWidth
             variant="contained"
             onClick={handleConfirm}
-            sx={{ fontFamily: "Poppins", textTransform: "capitalize", borderRadius: "16px" }}
+            sx={{ fontFamily: "Poppins", textTransform: "capitalize", borderRadius: "16px", minHeight: { xs: 48, sm: "auto" } }}
           >
             Done
           </Button>

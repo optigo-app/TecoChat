@@ -87,6 +87,7 @@ export const useConversation = ({
   // newer click cancels older in-flight fetches, retries, and blinks.
   const navSeqRef = useRef(0);
   const pendingNavRef = useRef<{ sid: string; attachmentId?: string | null } | null>(null);
+  const highlightActivatedAtRef = useRef(0);
 
   useEffect(() => {
     selectedCustomerRef.current = selectedCustomer;
@@ -895,31 +896,48 @@ export const useConversation = ({
         capTimer = setTimeout(finish, 2500); // hard cap — never lock forever
       };
 
-      const blinkAndHighlight = (el: Element | null, domId: string, smooth = false) => {
-        if (!isCurrent()) return;
-        // WhatsApp-style: near targets smooth-scroll, far (fetched) targets
-        // jump instantly — no animation through hundreds of messages.
-        el?.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
-        // Blink the resolved DOM id — the row's blink check compares against
-        // getMessageId(msg), which may differ from the id the caller passed.
-        // Restart the animation so the flash plays while the row is in view
-        // (deep-fetch rows mount already blinking under the pre-set id, so the
-        // null → id toggle in separate commits is required to restart it).
-        dispatchUI({ type: UI.SET_BLINK, value: null });
-        requestAnimationFrame(() => {
-          if (!isCurrent()) return;
-          dispatchUI({ type: UI.SET_BLINK, value: domId });
-        });
-        // Search text highlight: use the canonical domId so the row's
-        // searchHighlightMessageId comparison actually matches.
-        if (searchQuery)
-          dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: searchQuery, messageId: domId } });
-        setTimeout(() => {
-          if (isCurrent()) dispatchUI({ type: UI.SET_BLINK, value: null });
-        }, 3000);
-        // Anchor-lock for instant (fetched) jumps — media/estimated rows keep
-        // resolving real heights for a while, so correct drift until stable.
-        if (!smooth && el) settleOnTarget(el);
+      const blinkAndHighlight = (el: Element | null, domId: string, preferSmooth = false) => {
+        const outer = containerRef.current;
+        if (!isCurrent() || !el || !outer) return;
+
+        const rect = el.getBoundingClientRect();
+        const outerRect = outer.getBoundingClientRect();
+        const drift = rect.top - outerRect.top - (outerRect.height - rect.height) / 2;
+        const useSmooth = preferSmooth && Math.abs(drift) <= outerRect.height * 1.25;
+        el.scrollIntoView({ block: "center", behavior: useSmooth ? "smooth" : "auto" });
+
+        let activated = false;
+        let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+        const activate = () => {
+          if (activated) return;
+          activated = true;
+          if (fallbackTimer) clearTimeout(fallbackTimer);
+          outer.removeEventListener("scrollend", activate);
+          if (!isCurrent() || !el.isConnected) return;
+
+          // Keep the row centered while lazy rows/media resolve, then start the
+          // visual cue only after navigation has reached the target viewport.
+          settleOnTarget(el);
+          dispatchUI({ type: UI.SET_BLINK, value: null });
+          requestAnimationFrame(() => {
+            if (!isCurrent()) return;
+            highlightActivatedAtRef.current = Date.now();
+            dispatchUI({ type: UI.SET_BLINK, value: domId });
+            if (searchQuery) {
+              dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: searchQuery, messageId: domId } });
+            }
+            setTimeout(() => {
+              if (isCurrent()) dispatchUI({ type: UI.SET_BLINK, value: null });
+            }, 3000);
+          });
+        };
+
+        if (useSmooth) {
+          outer.addEventListener("scrollend", activate, { once: true });
+          fallbackTimer = setTimeout(activate, 500);
+        } else {
+          requestAnimationFrame(activate);
+        }
       };
 
       // Fetch the page containing the target message (Direction 3 = BETWEEN)
@@ -1045,6 +1063,9 @@ export const useConversation = ({
   // something else.
   useEffect(() => {
     const clearHighlight = () => {
+      // Ignore the event that initiated navigation and immediate follow-up
+      // events while the target is still being centered.
+      if (Date.now() - highlightActivatedAtRef.current < 500) return;
       dispatchUI({ type: UI.SET_SEARCH_HIGHLIGHT, value: { query: null, messageId: null } });
     };
     // Use passive listeners so we don't block scrolling

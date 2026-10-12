@@ -76,6 +76,7 @@ const ReplaceAddMediaDialogComponent = ({
             fontWeight: 600,
             px: 2,
             py: 0.75,
+            minHeight: { xs: 44, sm: "auto" },
             color: theme.palette.text.secondary,
             "&:hover": { bgcolor: alpha(theme.palette.text.primary, isDark ? 0.12 : 0.06) },
             "&:focus-visible": { outline: `2px solid ${alpha(theme.palette.primary.main, 0.5)}`, outlineOffset: 2 },
@@ -98,6 +99,7 @@ const ReplaceAddMediaDialogComponent = ({
             fontWeight: 600,
             px: 2,
             py: 0.75,
+            minHeight: { xs: 44, sm: "auto" },
             borderColor: alpha(theme.palette.primary.main, isDark ? 0.6 : 0.5),
             color: theme.palette.primary.main,
             "&:hover": {
@@ -125,6 +127,7 @@ const ReplaceAddMediaDialogComponent = ({
             fontWeight: 700,
             px: 2,
             py: 0.75,
+            minHeight: { xs: 44, sm: "auto" },
             bgcolor: theme.palette.primary.main,
             color: "#ffffff !important",
             "&:hover": {

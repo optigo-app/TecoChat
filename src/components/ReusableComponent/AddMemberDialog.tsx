@@ -390,7 +390,17 @@ const AddMemberDialog = ({
           </Box>
         ) : (
           <List
-            sx={{ width: "100%", overflowY: "auto", flex: 1 }}
+            className="app-scroll"
+            sx={{
+              width: "100%",
+              overflowY: "auto",
+              overflowX: "hidden",
+              flex: 1,
+              // Hide scrollbars on all sizes — scroll stays enabled.
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+              "&::-webkit-scrollbar": { display: "none" },
+            }}
             ref={listContainerRef as any}
           >
             {filteredAvailableCustomers.map((cust, index) => {
